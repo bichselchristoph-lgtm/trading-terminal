@@ -11,7 +11,7 @@ tree hashed identically. A regenerated ledger is a well-formed value answering a
 different question, and it would be read later as a record of what happened -- so the
 hash is the point of this file, not decoration.
 
-Carried 2026-08-10 · 172 files · 0 hash mismatches · 0 carry-list entries absent at source
+Carried 2026-08-10 · 179 files · 0 hash mismatches · 0 carry-list entries absent at source
 
 | date | path in new tree | source path | sha256 (source) | bytes | verified |
 |---|---|---|---|---|---|
@@ -187,7 +187,29 @@ Carried 2026-08-10 · 172 files · 0 hash mismatches · 0 carry-list entries abs
 | 2026-08-10 | `handoff/inbox/H9 — Commit the specs into the repo.md` | `D:/Dev/momentum-harness/handoff/inbox/H9 — Commit the specs into the repo.md` | `e9d26434fdbaed391ced101cead77cb883b5df1097b221cc7cdd12a246a789b6` | 5,427 | yes |
 | 2026-08-10 | `handoff/inbox/M001-new-repo-and-adoption-gate.md` | `D:/Dev/momentum-harness/handoff/inbox/M001-new-repo-and-adoption-gate.md` | `70290ec74c44ba19b9ec3a37c7ee971e5f35193e15fb5065a5b30750763f896e` | 12,607 | yes |
 | 2026-08-10 | `handoff/inbox/separation-guard-inactive-on-official-venues.md` | `D:/Dev/momentum-harness/handoff/inbox/separation-guard-inactive-on-official-venues.md` | `f0e6dfaff74dc174bcc49f67de0a2fc654852dcc261a1776043a84ee2feca27c` | 5,664 | yes |
+| 2026-08-10 | `docs/observations/gap-off-lows.md` | `D:/Dev/momentum-harness/docs/observations/gap-off-lows.md` | `b659e4bf4a5047be479192f9a1fe12c7d40a45726089cfcfeccb4c6d3f67b381` | 5,072 | yes |
+| 2026-08-10 | `docs/observations/README.md` | `D:/Dev/momentum-harness/docs/observations/README.md` | `d4fb72f824f1bef197d3670d9c1a6d970a306dea243eeabef2180a9c1b977fbb` | 1,972 | yes |
+| 2026-08-10 | `docs/observations/replay-slices-do-not-record-their-source-dataset.md` | `D:/Dev/momentum-harness/docs/observations/replay-slices-do-not-record-their-source-dataset.md` | `0d96ab1f7890997b1a68e4519037d7aef92a901e655548f95fb019dcdbf0d8cc` | 3,872 | yes |
+| 2026-08-10 | `docs/observations/rvol-registration-is-gated-not-pending.md` | `D:/Dev/momentum-harness/docs/observations/rvol-registration-is-gated-not-pending.md` | `3fd11d3e0fd239b7f664bcaadb1c9ba84e6f6398b7e3d0c51439cd15e99f95ef` | 4,444 | yes |
+| 2026-08-10 | `docs/observations/session-defined-twice.md` | `D:/Dev/momentum-harness/docs/observations/session-defined-twice.md` | `77ef9f792731d9309034d99c578e4e6b11413075471dfe17a34f9904ba2439fb` | 3,012 | yes |
+| 2026-08-10 | `docs/observations/vwap-has-no-single-definition.md` | `D:/Dev/momentum-harness/docs/observations/vwap-has-no-single-definition.md` | `95d436a1be21c8f7c78817b21b60d93ca13cf94328c8c8951b5f9584e6ae7873` | 4,064 | yes |
+| 2026-08-10 | `docs/observations/watchlist-builder-contradicts-ingestion.md` | `D:/Dev/momentum-harness/docs/observations/watchlist-builder-contradicts-ingestion.md` | `07229603923487a14583649b5fc09aa725044803e2a5db694fa92cd794153891` | 1,851 | yes |
 
 ## Hash mismatches
 
 None. Every carried file hashed identically at source and destination.
+
+## Second carry — `docs/observations/`, 2026-08-10
+
+**M001 §4's carry-list omitted `docs/observations/` entirely.** 7 files carried here,
+on the same terms as the first batch: byte-identical, hash-verified, not through the
+adoption gate.
+
+An observation is evidence by the definition §4 uses — it records what was seen, what
+produced it, and what would settle it. The gate's question, *is this worth keeping*, is the
+wrong question to ask of one.
+
+**One of the seven was untracked in the old repo** —
+`replay-slices-do-not-record-their-source-dataset.md`, written 2026-08-10. Before this carry
+its only copy was an uncommitted file in an archived repository: no git history, no second
+copy, nothing pointing at it. It is the exact loss this manifest exists to make impossible.
