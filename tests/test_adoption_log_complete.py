@@ -71,6 +71,23 @@ def logged_paths(filename: str, column: int) -> set[str]:
     return found
 
 
+#: Surfaces where files are AUTHORED in this tree rather than arriving from
+#: anywhere. A done-note written here is native work: it was neither adopted nor
+#: carried, and demanding a log row for it would make the log meaningless.
+#:
+#: The trade-off, stated rather than left implicit: a file could be copied
+#: wholesale into handoff/ or docs/observations/ without tripping the gate. That
+#: is accepted because these hold prose, not behaviour -- nothing here is
+#: imported and then silently relied on, which is the failure the gate exists to
+#: stop. NO CODE TREE gets this carve-out; core/, live/, harness/ and tools/
+#: always need a row.
+NATIVE_PREFIXES = ("handoff/", "docs/observations/", "docs/specs/")
+
+
+def is_native(path: str) -> bool:
+    return path.startswith(NATIVE_PREFIXES)
+
+
 def accounted_for() -> set[str]:
     return (
         BOOTSTRAP_ALLOWLIST
@@ -82,7 +99,7 @@ def accounted_for() -> set[str]:
 def test_every_tracked_file_is_accounted_for() -> None:
     """The rule. A file in git that nobody logged arrived by copying."""
     known = accounted_for()
-    orphans = sorted(f for f in tracked_files() if f not in known)
+    orphans = sorted(f for f in tracked_files() if f not in known and not is_native(f))
     assert not orphans, (
         "these tracked files arrived by neither adoption nor evidence carry:\n  "
         + "\n  ".join(orphans)
@@ -102,6 +119,17 @@ def test_the_allowlist_does_not_rot() -> None:
         f"BOOTSTRAP_ALLOWLIST names files that do not exist: {stale}. "
         "Remove them -- a stale entry silently pre-authorises any future file with that name."
     )
+
+
+def test_no_code_tree_is_native() -> None:
+    """The carve-out must never reach a directory that holds behaviour. If
+    NATIVE_PREFIXES ever grows to include one, every file in it stops needing an
+    adoption row and the gate quietly stops applying to code."""
+    for tree in ("core/", "live/", "harness/", "tools/"):
+        assert not is_native(tree + "anything.py"), (
+            f"NATIVE_PREFIXES now exempts {tree} -- that is a code tree, and exempting it "
+            "means files with behaviour can arrive with no provenance and no test."
+        )
 
 
 def test_the_check_can_actually_fail() -> None:
