@@ -1,0 +1,177 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>05 Live session context — terminal blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Terminal blueprint — shared tokens.
+   The running dashboard is a PowerShell console. These files are BLUEPRINTS:
+   faithful console output, pinned to blueprint paper, annotated in the margin. */
+
+:root{
+  --paper:#D8E0E6;        /* cool blueprint stock (not warm cream) */
+  --ink:#24333D;          /* annotation ink */
+  --ink-dim:#5E7080;
+  --console:#0B1B2B;      /* console field */
+  --panel:#102437;
+  --rule:#20405B;
+  --txt:#D6E2EC;
+  --dim:#6E8CA5;
+  --amber:#E8B04B;        /* attention / staleness / unfitted */
+  --ok:#5FBF8F;
+  --bad:#E06C6C;
+  --cyan:#66B8D6;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  background-image:linear-gradient(rgba(36,51,61,.055) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(36,51,61,.055) 1px,transparent 1px);
+  background-size:22px 22px;
+  padding:32px 20px 72px;
+}
+.sheet{max-width:1180px;margin:0 auto}
+
+/* masthead */
+.mast{display:flex;align-items:flex-end;gap:18px;border-bottom:1.5px solid var(--ink);
+      padding-bottom:10px;margin-bottom:6px;flex-wrap:wrap}
+.stage{font-family:"IBM Plex Mono",monospace;font-size:44px;line-height:.9;font-weight:600;
+       letter-spacing:-.03em}
+.mast h1{font-size:23px;font-weight:600;letter-spacing:.01em;margin:0 0 3px;text-transform:uppercase}
+.mast .sub{font-size:14px;color:var(--ink-dim);margin:0 0 4px}
+.mast .tag{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+      border:1px solid var(--ink-dim);padding:4px 9px;border-radius:2px}
+
+.lede{font-size:15px;max-width:74ch;color:var(--ink-dim);margin:12px 0 26px;line-height:1.5}
+
+/* layout: console + margin notes */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:26px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--console);border:1px solid var(--rule);border-radius:3px;
+  box-shadow:0 14px 30px -18px rgba(11,27,43,.7);overflow:hidden}
+.chrome{display:flex;align-items:center;gap:8px;background:var(--panel);
+  border-bottom:1px solid var(--rule);padding:7px 11px;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim)}
+.chrome b{color:var(--txt);font-weight:500}
+pre.out{margin:0;padding:16px 18px 20px;color:var(--txt);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.62;
+  white-space:pre;overflow-x:auto}
+pre.out .d{color:var(--dim)}
+pre.out .c{color:var(--cyan)}
+pre.out .a{color:var(--amber)}
+pre.out .g{color:var(--ok)}
+pre.out .r{color:var(--bad)}
+pre.out .w{color:#fff;font-weight:500}
+pre.out .inv{background:var(--amber);color:#0B1B2B;padding:0 3px}
+pre.out .invr{background:var(--bad);color:#0B1B2B;padding:0 3px}
+
+/* margin annotations */
+.notes{font-size:13.5px;line-height:1.5}
+.notes h2{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-dim);border-bottom:1px solid rgba(36,51,61,.3);
+  padding-bottom:6px;margin:0 0 14px}
+.note{position:relative;padding-left:26px;margin-bottom:15px}
+.note .n{position:absolute;left:0;top:1px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;font-weight:600;color:var(--paper);background:var(--ink);
+  width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.note b{display:block;font-weight:600;font-size:13.5px}
+.note span{color:var(--ink-dim)}
+
+.rulebox{border:1.5px solid var(--ink);border-radius:3px;padding:13px 15px;margin-top:26px;
+  font-size:13px;line-height:1.5}
+.rulebox b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+
+.foot{margin-top:30px;border-top:1px solid rgba(36,51,61,.35);padding-top:12px;
+  font-size:12.5px;color:var(--ink-dim);display:flex;gap:22px;flex-wrap:wrap}
+.foot a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-dim)}
+
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .console{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+}
+
+</style></head><body>
+<div class="sheet">
+  <div class="mast">
+    <div class="stage">05</div>
+    <div>
+      <h1>Live session context</h1>
+      <p class="sub">The three Layer 0 rows that keep moving &mdash; shown, never folded into the frozen score</p>
+    </div>
+    <div class="tag">Layer 0 Amdt 2</div>
+  </div>
+  <p class="lede">Eleven of Layer 0's fourteen rows are computed once at 08:00 and cached. Three are not: gap breadth,
+  the index instance of the tape functions, and TICK / ADD / RSP. Cached and displayed unchanged, those three show
+  numbers that have since moved. They get their own block, between the ranked watchlist and the attached symbol.</p>
+
+  <div class="grid">
+    <div class="console">
+      <div class="chrome"><b>PowerShell</b><span>&mdash; momentum \ desk &nbsp; live session context</span></div>
+<pre class="out">
+<span class="d">┌─ LIVE SESSION CONTEXT ─────────────── updates &middot; last 09:47:12 ────┐</span>
+  <span class="d">market-wide, time-varying &mdash; NOT part of the 08:00 cached score</span>
+
+  <span class="d">row 10</span>  gap breadth        <span class="w">18 names / 4 sectors</span>       <span class="d">08:00:</span> <span class="d">11 / 3</span>
+          <span class="a">veto row</span> <span class="d">&mdash; single-theme threshold not tripped</span>
+
+  <span class="d">row 12</span>  index tape         SPY <span class="w">drive 0.61</span>  <span class="w">pullback 0.9%</span>
+                             QQQ <span class="w">drive 0.74</span>  <span class="w">pullback 0.6%</span>
+          <span class="d">same functions as the per-name tape, called on an index</span>
+
+  <span class="d">row 13</span>  TICK / ADD / RSP   <span class="d">n/a &mdash; subscription unverified</span>
+          <span class="d">absent, not zero. Row excluded from any denominator.</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ LAYER 0 &middot; FROZEN COMPOSITE ─────────────── computed 08:00 ET ─────┐</span>
+  <span class="invr"> NOT BUILT </span> <span class="r">No score is displayed. layer0.py does not exist.</span>
+           <span class="d">0 of 14 rows implemented. Spec'd, build deferred behind the</span>
+           <span class="d">data synthesis. A rendered AMBER here would look operational.</span>
+
+  <span class="d">when built: rows 1-9, 11, 14 &rarr; one cached score, denominator per</span>
+  <span class="d">Amendment 1's exclusion rule. It does not move during the session.</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">─ WHAT MUST NOT HAPPEN ───────────────────────────────────────────────</span>
+
+<span class="inv"> STALE </span> <span class="a">A live row rendered without its update time.</span>
+        <span class="d">The pre-market zone is marked "frozen at open". These three need</span>
+        <span class="d">the opposite mark &mdash; still updating, with a last-updated stamp.</span>
+
+<span class="invr"> WRONG </span> <span class="r">The frozen score silently recomputing when a live row moves.</span>
+        <span class="d">"Computed once at 08:00" and "responds to live rows" cannot both</span>
+        <span class="d">be true of one number. If the three are to move exposure, that is</span>
+        <span class="d">a recompute with a declared cadence, and the panel must say so.</span>
+</pre>
+    </div>
+
+    <div class="notes">
+      <h2>Margin notes</h2>
+      <div class="note"><span class="n">1</span><b>Shown, not scored</b>
+        <span>The three live rows display current values beside the frozen composite. They are not folded into it.</span></div>
+      <div class="note"><span class="n">2</span><b>08:00 value kept alongside</b>
+        <span>Each live row shows what it read at the cache time, so drift since the open is visible rather than lost.</span></div>
+      <div class="note"><span class="n">3</span><b>Placement is the point</b>
+        <span>Market-wide but time-varying, so it sits between day-level context and per-name detail &mdash; below the ranked watchlist, above the attached symbol.</span></div>
+      <div class="note"><span class="n">4</span><b>None of the fourteen is per-ticker</b>
+        <span>The split is frozen versus live, not market versus name. Layer 0 stays entirely market-wide.</span></div>
+      <div class="note"><span class="n">5</span><b>Unbuilt says unbuilt</b>
+        <span>Until layer0.py exists the composite renders a refusal, not a score. The mockup was faithful to the spec and not to the code; this corrects that.</span></div>
+
+      <div class="rulebox"><b>Open decision</b>
+        Row 10 is live AND one of the four hard vetoes, so it can fire mid-session with positions already open. Either the veto is evaluated once at 08:00 and the live display is context only, or it is genuinely live &mdash; and then withdrawing exposure while positioned needs defined behaviour before it is built.</div>
+    </div>
+  </div>
+  <div class="foot"><a href="mockup-02-regime.html">&larr; 02 Regime</a>
+    <a href="mockup-03-watchlist.html">03 Watchlist &rarr;</a>
+    <span>Sits between 03 and the attached-symbol block.</span></div>
+</div>
+
+</body></html>

@@ -1,0 +1,162 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 Regime read — terminal blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Terminal blueprint — shared tokens.
+   The running dashboard is a PowerShell console. These files are BLUEPRINTS:
+   faithful console output, pinned to blueprint paper, annotated in the margin. */
+
+:root{
+  --paper:#D8E0E6;        /* cool blueprint stock (not warm cream) */
+  --ink:#24333D;          /* annotation ink */
+  --ink-dim:#5E7080;
+  --console:#0B1B2B;      /* console field */
+  --panel:#102437;
+  --rule:#20405B;
+  --txt:#D6E2EC;
+  --dim:#6E8CA5;
+  --amber:#E8B04B;        /* attention / staleness / unfitted */
+  --ok:#5FBF8F;
+  --bad:#E06C6C;
+  --cyan:#66B8D6;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  background-image:linear-gradient(rgba(36,51,61,.055) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(36,51,61,.055) 1px,transparent 1px);
+  background-size:22px 22px;
+  padding:32px 20px 72px;
+}
+.sheet{max-width:1180px;margin:0 auto}
+
+/* masthead */
+.mast{display:flex;align-items:flex-end;gap:18px;border-bottom:1.5px solid var(--ink);
+      padding-bottom:10px;margin-bottom:6px;flex-wrap:wrap}
+.stage{font-family:"IBM Plex Mono",monospace;font-size:44px;line-height:.9;font-weight:600;
+       letter-spacing:-.03em}
+.mast h1{font-size:23px;font-weight:600;letter-spacing:.01em;margin:0 0 3px;text-transform:uppercase}
+.mast .sub{font-size:14px;color:var(--ink-dim);margin:0 0 4px}
+.mast .tag{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+      border:1px solid var(--ink-dim);padding:4px 9px;border-radius:2px}
+
+.lede{font-size:15px;max-width:74ch;color:var(--ink-dim);margin:12px 0 26px;line-height:1.5}
+
+/* layout: console + margin notes */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:26px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--console);border:1px solid var(--rule);border-radius:3px;
+  box-shadow:0 14px 30px -18px rgba(11,27,43,.7);overflow:hidden}
+.chrome{display:flex;align-items:center;gap:8px;background:var(--panel);
+  border-bottom:1px solid var(--rule);padding:7px 11px;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim)}
+.chrome b{color:var(--txt);font-weight:500}
+pre.out{margin:0;padding:16px 18px 20px;color:var(--txt);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.62;
+  white-space:pre;overflow-x:auto}
+pre.out .d{color:var(--dim)}
+pre.out .c{color:var(--cyan)}
+pre.out .a{color:var(--amber)}
+pre.out .g{color:var(--ok)}
+pre.out .r{color:var(--bad)}
+pre.out .w{color:#fff;font-weight:500}
+pre.out .inv{background:var(--amber);color:#0B1B2B;padding:0 3px}
+pre.out .invr{background:var(--bad);color:#0B1B2B;padding:0 3px}
+
+/* margin annotations */
+.notes{font-size:13.5px;line-height:1.5}
+.notes h2{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-dim);border-bottom:1px solid rgba(36,51,61,.3);
+  padding-bottom:6px;margin:0 0 14px}
+.note{position:relative;padding-left:26px;margin-bottom:15px}
+.note .n{position:absolute;left:0;top:1px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;font-weight:600;color:var(--paper);background:var(--ink);
+  width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.note b{display:block;font-weight:600;font-size:13.5px}
+.note span{color:var(--ink-dim)}
+
+.rulebox{border:1.5px solid var(--ink);border-radius:3px;padding:13px 15px;margin-top:26px;
+  font-size:13px;line-height:1.5}
+.rulebox b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+
+.foot{margin-top:30px;border-top:1px solid rgba(36,51,61,.35);padding-top:12px;
+  font-size:12.5px;color:var(--ink-dim);display:flex;gap:22px;flex-wrap:wrap}
+.foot a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-dim)}
+
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .console{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+}
+
+</style></head><body>
+<div class="sheet">
+  <div class="mast">
+    <div class="stage">02</div>
+    <div>
+      <h1>Regime read</h1>
+      <p class="sub">Layer 0 pre-market &middot; Layer 1 index &middot; Layer 2 your own follow-through</p>
+    </div>
+    <div class="tag">Priority 1</div>
+  </div>
+  <p class="lede">Computed once at 08:00 ET and cached for the session. It sets how much exposure the day earns
+  before a single symbol is considered. Layers only ever downgrade.</p>
+
+  <div class="grid">
+    <div class="console">
+      <div class="chrome"><b>PowerShell</b><span>&mdash; tradesignals \ regime</span></div>
+<pre class="out">
+<span class="d">┌─ LAYER 0 &middot; PRE-MARKET RISK-ON ─────────── computed 08:00 ET ────────┐</span>
+  score      <span class="w">6 / 9</span>   <span class="a">AMBER</span>   <span class="d">vetoes  none tripped (0/4)</span>
+  <span class="a">reduced denominator</span> <span class="d">&mdash; 2 inputs unavailable, scored out of 9 not 11</span>
+     <span class="d">gap breadth      unavailable   (no screener feed)</span>
+     <span class="d">TICK / ADD       unavailable   (subscription unverified)</span>
+     <span class="d">the other 9 inputs scored normally</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ LAYER 1 &middot; DAILY INDEX REGIME ────────────── IBKR &middot; 07 Aug ────────┐</span>
+  IWM <span class="g">above</span>   SPY <span class="g">above</span>   QQQ <span class="g">above</span>   RSP <span class="a">flat</span>      <span class="g">GREEN</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ LAYER 2 &middot; OWN FOLLOW-THROUGH ───────── intraday_orb &middot; last 20 ────┐</span>
+  breakout follow-through   <span class="w">9 / 20</span>  <span class="d">(45%)</span>            <span class="a">AMBER</span>
+  <span class="d">the only playbook-dependent layer &middot; overrides both above</span>
+  <span class="a">unfitted</span> <span class="d">&mdash; n below the calibration floor, read as a hint not a rate</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ EXPOSURE ──────────────────────────────────────────────────────────┐</span>
+  L0 <span class="a">AMBER</span> &times; L1 <span class="g">GREEN</span>  &rarr;  <span class="w">reduced</span>       L2 <span class="a">AMBER</span> &rarr; <span class="inv"> HALF SIZE </span>
+  <span class="d">grid result never upgrades. Layer 2 had the last word.</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+    </div>
+
+    <div class="notes">
+      <h2>Margin notes</h2>
+      <div class="note"><span class="n">1</span><b>Missing inputs are named</b>
+        <span>Two unavailable rows are listed and the denominator is stated. Absence is never scored as zero.</span></div>
+      <div class="note"><span class="n">2</span><b>Downgrades only</b>
+        <span>A green index cannot lift an amber pre-market read. The grid can lower exposure, never raise it.</span></div>
+      <div class="note"><span class="n">3</span><b>Half size is a discipline rule</b>
+        <span>Fractional sizing comes from the regime grid, not from a learned model. It ships in the core.</span></div>
+      <div class="note"><span class="n">4</span><b>Unfitted says so</b>
+        <span>Layer 2 is honest about a small sample. It shows the count, labels itself unfitted, and stays a hint.</span></div>
+
+      <div class="rulebox"><b>Pending</b>
+        Reduced-denominator scaling is unspecified and currently biases toward amber. Decide the rescale before it drives real sizing.</div>
+    </div>
+  </div>
+  <div class="foot"><a href="mockup-01-ingest.html">&larr; 01 Ingest</a>
+    <a href="mockup-03-watchlist.html">Next: 03 Ranked watchlist &rarr;</a></div>
+</div>
+
+</body></html>

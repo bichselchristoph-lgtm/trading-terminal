@@ -39,6 +39,10 @@ BOOTSTRAP_ALLOWLIST = {
     "tests/test_no_secrets.py",
     "tests/test_pytest_collection.py",
     "tests/test_evidence_carry_intact.py",
+    # Authored here under H9, not adopted. Caught by this very test when
+    # docs/specs/ lost its native-prefix carve-out, which is the gate working
+    # as designed on its own author.
+    "tests/test_spec_pointers.py",
 }
 
 
@@ -81,7 +85,11 @@ def logged_paths(filename: str, column: int) -> set[str]:
 #: imported and then silently relied on, which is the failure the gate exists to
 #: stop. NO CODE TREE gets this carve-out; core/, live/, harness/ and tools/
 #: always need a row.
-NATIVE_PREFIXES = ("handoff/", "docs/observations/", "docs/specs/")
+#: `docs/specs/` was here until H9 and has been REMOVED. The specs turned out to
+#: be adopted, not authored, and all thirteen carry ADOPTION-LOG rows -- so the
+#: carve-out was buying nothing and costing the gate its reach over a directory
+#: that now holds the system's most load-bearing documents.
+NATIVE_PREFIXES = ("handoff/", "docs/observations/")
 
 
 def is_native(path: str) -> bool:

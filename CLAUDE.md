@@ -80,20 +80,33 @@ C:\venvs\trading\Scripts\python.exe -m pytest
 invisible to the side that builds — Layer 0 was fully specified and never built for exactly
 that reason.
 
-A spec quoted into a task file is a **copy**, and the copy is authoritative for that slice
-only; the tree is authoritative for everything else.
+**A spec quoted into a task file is a copy, and the copy is authoritative for that slice
+only. The tree is authoritative for everything else.** Drive is archive: the sync was removed
+2026-08-09, so nothing on disk points at it and its copies cannot drift back in.
 
-**As of this commit none of the four has been supplied.** They are not reachable from any
-repo and must come from Christoph. **Do not reconstruct, paraphrase or regenerate them** —
-from memory, or from quotations in handoff files. A plausible reconstruction of a spec is
-worse than an absent one, because it will be read as the record. H9 owns supplying them.
+**All four are now in the tree**, adopted 2026-08-10 under H9. `tests/test_spec_pointers.py`
+asserts the three canonical ones are present and non-empty, and pins `REGIME-PROMPT.md` at
+v1.1 so a later re-supply cannot silently downgrade it to v1.0.
+
+If any of these ever needs replacing, it comes from Christoph. **Do not reconstruct,
+paraphrase or regenerate one** — from memory, or from quotations in handoff files. A
+plausible reconstruction of a spec is worse than an absent one, because it will be read as
+the record.
+
+`docs/specs/` also holds `REPO_CONSOLIDATION_PLAN.md` (the definition of "step 7"),
+`USE_GUIDE.md`, `layer0-amendment-2-frozen-vs-live.md`, and `docs/specs/mockups/` — the five
+screen mockups and their index.
 
 ## Handoff convention
 
 **Chat and this session cannot see the same things.** Chat does design and review; Claude
-Code builds. Chat has **no direct access to this repo** — it sees only the Drive sync of
-`docs/`, `notes/` and `handoff/`. It cannot read the code, the test output, or anything said
-in a session transcript.
+Code builds. Chat has **no direct access to this repo and no file sync of any kind** — the
+Drive sync was removed 2026-08-09, so nothing on disk reaches chat automatically. It cannot
+read the code, the test output, or anything said in a session transcript.
+
+**Christoph is the only channel between the two halves.** That makes writing things down more
+important, not less: a file is what he can carry. A finding that exists only in session output
+cannot be carried at all.
 
 The consequence is the whole convention: **anything chat needs must be written to a file.**
 A finding explained in session output and nowhere else did not happen, because the half of
@@ -105,11 +118,10 @@ the loop that acts on it will never see it. Write these without being asked.
 | `handoff/done/NNN-*.md` | One per completed task: what changed, what the tests said, what you found. |
 | `handoff/questions/*.md` | Anything needing a **decision rather than a choice**. Frontmatter carries `status: OPEN`. |
 | `docs/observations/*.md` | Durable findings about the system, outliving the task that found them. |
-| `handoff/*.md` (root) | A **standing instruction that is always live**. Not a task; never moves to `done/`. |
+| `handoff/*.md` (root) | A **standing instruction that is always live**. Not a task; never moves to `handoff/done/`. |
 
-`handoff/` is **tracked**. In the old repo these files were untracked, so the convention
-that assumes chat syncs `handoff/` was silently not holding — the task files existed on one
-machine and in nobody's history.
+`handoff/` is **tracked**. In the old repo these files were untracked, so they existed on one
+machine and in nobody's history — no sync, no git, no second copy anywhere.
 
 `handoff/done/NNN-*.md` must be **readable cold** by someone with no session context: name
 the files, quote the numbers, say what surprised you. "Done as specified" is not a handoff.

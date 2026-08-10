@@ -1,0 +1,171 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 Ranked watchlist — terminal blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Terminal blueprint — shared tokens.
+   The running dashboard is a PowerShell console. These files are BLUEPRINTS:
+   faithful console output, pinned to blueprint paper, annotated in the margin. */
+
+:root{
+  --paper:#D8E0E6;        /* cool blueprint stock (not warm cream) */
+  --ink:#24333D;          /* annotation ink */
+  --ink-dim:#5E7080;
+  --console:#0B1B2B;      /* console field */
+  --panel:#102437;
+  --rule:#20405B;
+  --txt:#D6E2EC;
+  --dim:#6E8CA5;
+  --amber:#E8B04B;        /* attention / staleness / unfitted */
+  --ok:#5FBF8F;
+  --bad:#E06C6C;
+  --cyan:#66B8D6;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  background-image:linear-gradient(rgba(36,51,61,.055) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(36,51,61,.055) 1px,transparent 1px);
+  background-size:22px 22px;
+  padding:32px 20px 72px;
+}
+.sheet{max-width:1180px;margin:0 auto}
+
+/* masthead */
+.mast{display:flex;align-items:flex-end;gap:18px;border-bottom:1.5px solid var(--ink);
+      padding-bottom:10px;margin-bottom:6px;flex-wrap:wrap}
+.stage{font-family:"IBM Plex Mono",monospace;font-size:44px;line-height:.9;font-weight:600;
+       letter-spacing:-.03em}
+.mast h1{font-size:23px;font-weight:600;letter-spacing:.01em;margin:0 0 3px;text-transform:uppercase}
+.mast .sub{font-size:14px;color:var(--ink-dim);margin:0 0 4px}
+.mast .tag{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+      border:1px solid var(--ink-dim);padding:4px 9px;border-radius:2px}
+
+.lede{font-size:15px;max-width:74ch;color:var(--ink-dim);margin:12px 0 26px;line-height:1.5}
+
+/* layout: console + margin notes */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:26px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--console);border:1px solid var(--rule);border-radius:3px;
+  box-shadow:0 14px 30px -18px rgba(11,27,43,.7);overflow:hidden}
+.chrome{display:flex;align-items:center;gap:8px;background:var(--panel);
+  border-bottom:1px solid var(--rule);padding:7px 11px;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim)}
+.chrome b{color:var(--txt);font-weight:500}
+pre.out{margin:0;padding:16px 18px 20px;color:var(--txt);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.62;
+  white-space:pre;overflow-x:auto}
+pre.out .d{color:var(--dim)}
+pre.out .c{color:var(--cyan)}
+pre.out .a{color:var(--amber)}
+pre.out .g{color:var(--ok)}
+pre.out .r{color:var(--bad)}
+pre.out .w{color:#fff;font-weight:500}
+pre.out .inv{background:var(--amber);color:#0B1B2B;padding:0 3px}
+pre.out .invr{background:var(--bad);color:#0B1B2B;padding:0 3px}
+
+/* margin annotations */
+.notes{font-size:13.5px;line-height:1.5}
+.notes h2{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-dim);border-bottom:1px solid rgba(36,51,61,.3);
+  padding-bottom:6px;margin:0 0 14px}
+.note{position:relative;padding-left:26px;margin-bottom:15px}
+.note .n{position:absolute;left:0;top:1px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;font-weight:600;color:var(--paper);background:var(--ink);
+  width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.note b{display:block;font-weight:600;font-size:13.5px}
+.note span{color:var(--ink-dim)}
+
+.rulebox{border:1.5px solid var(--ink);border-radius:3px;padding:13px 15px;margin-top:26px;
+  font-size:13px;line-height:1.5}
+.rulebox b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+
+.foot{margin-top:30px;border-top:1px solid rgba(36,51,61,.35);padding-top:12px;
+  font-size:12.5px;color:var(--ink-dim);display:flex;gap:22px;flex-wrap:wrap}
+.foot a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-dim)}
+
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .console{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+}
+
+</style></head><body>
+<div class="sheet">
+  <div class="mast">
+    <div class="stage">03</div>
+    <div>
+      <h1>Ranked watchlist</h1>
+      <p class="sub">All 31 names scored against the chosen playbook &mdash; nothing dropped</p>
+    </div>
+    <div class="tag">Priority 1</div>
+  </div>
+  <p class="lede">The system scores and sorts. It is not a gatekeeper: every name you handed it stays on the
+  screen, ranked by fit, and you decide what to trade. Attaching tape to a symbol spends one of five slots.</p>
+
+  <div class="grid">
+    <div class="console">
+      <div class="chrome"><b>PowerShell</b><span>&mdash; tradesignals \ desk &nbsp; playbook: intraday_orb &nbsp; slots 3/5</span></div>
+<pre class="out">
+<span class="d">┌─ RANKED &middot; intraday_orb ─────────────────────────── 31 names ───────┐</span>
+  <span class="d">#   sym    fit   gap%   rvol   adr%   float   tape   status</span>
+  <span class="w">1   AVTX   0.71</span>   12.4   <span class="w">8.2</span>    9.1    22M     <span class="g">live</span>   <span class="a">unfitted</span>
+  <span class="w">2   RGTI   0.66</span>    8.9   <span class="w">6.7</span>    7.4    61M     <span class="g">live</span>   <span class="a">unfitted</span>
+  <span class="w">3   SMCI   0.58</span>    6.1   <span class="w">4.4</span>    5.9   118M     <span class="g">live</span>   <span class="a">unfitted</span>
+  <span class="d">4   OKLO   0.52</span>    5.7   4.1    6.8    84M     <span class="d">&mdash;</span>      <span class="a">unfitted</span>
+  <span class="d">5   IONQ   0.49</span>    5.2   3.8    6.1   140M     <span class="d">&mdash;</span>      <span class="a">unfitted</span>
+  <span class="d">&hellip; 26 more &middot; scroll &middot; none removed</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ AVTX ─────────────────── attached 09:31:04 &middot; tape live ───────────┐</span>
+  last <span class="w">14.62</span>  <span class="g">+12.4%</span>   vwap <span class="w">14.38</span>   orh <span class="w">14.55</span>   opening low <span class="w">14.02</span>
+
+  <span class="d">levels</span>   14.55 orh      <span class="g">held</span>      &middot;  defended <span class="w">strong</span>  <span class="a">unfitted</span>
+           14.38 vwap     <span class="g">held</span>      &middot;  defended <span class="w">moderate</span> <span class="a">unfitted</span>
+           14.02 open low <span class="d">untested</span>
+
+  <span class="d">rules</span>    opening low holds        <span class="g">yes</span>
+           ORH persistence          <span class="g">yes</span>   <span class="d">3 bars above</span>
+           drive purity             <span class="a">partial</span> <span class="d">one lower high</span>
+           higher-low sequence      <span class="g">yes</span>
+
+  <span class="d">tape</span>     delta <span class="g">+18.4k</span>   speed <span class="w">high</span>   blocks <span class="w">4</span>   vwap breaks <span class="w">0</span>
+
+  <span class="d">context</span>  RS vs peers  <span class="d">n/a &mdash; peer set not classified</span>
+           news         <span class="d">08:52 &mdash; company headline (context only, never scored)</span>
+
+  <span class="d">predictions</span>  <span class="d">dimmed &mdash; unfitted. No calibrated probability exists yet.</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+    </div>
+
+    <div class="notes">
+      <h2>Margin notes</h2>
+      <div class="note"><span class="n">1</span><b>Score, don't cut</b>
+        <span>All 31 stay listed. The ranking is a lens on your list, not a filter that hides names from you.</span></div>
+      <div class="note"><span class="n">2</span><b>Everything wears its status</b>
+        <span>Fit scores and defended-level strengths read unfitted until calibration earns a real number.</span></div>
+      <div class="note"><span class="n">3</span><b>Missing is missing</b>
+        <span>Relative strength shows n/a with the reason, rather than a zero that looks like weak performance.</span></div>
+      <div class="note"><span class="n">4</span><b>News is labelled, never scored</b>
+        <span>A headline sits in context with its timestamp. It cannot move a score or a size.</span></div>
+      <div class="note"><span class="n">5</span><b>Slots are visible</b>
+        <span>Three of five tape lines in use. Exhaustion and the fifteen-second cooldown surface rather than silently failing.</span></div>
+
+      <div class="rulebox"><b>Recorded regardless</b>
+        Every field here is persisted whether or not it's displayed, and whether or not you trade the name. That archive is what later earns the inference engine.</div>
+    </div>
+  </div>
+  <div class="foot"><a href="mockup-02-regime.html">&larr; 02 Regime</a>
+    <a href="mockup-04-size-stage.html">Next: 04 Size and stage &rarr;</a></div>
+</div>
+
+</body></html>

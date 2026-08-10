@@ -1,0 +1,164 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>01 Watchlist ingest — terminal blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Terminal blueprint — shared tokens.
+   The running dashboard is a PowerShell console. These files are BLUEPRINTS:
+   faithful console output, pinned to blueprint paper, annotated in the margin. */
+
+:root{
+  --paper:#D8E0E6;        /* cool blueprint stock (not warm cream) */
+  --ink:#24333D;          /* annotation ink */
+  --ink-dim:#5E7080;
+  --console:#0B1B2B;      /* console field */
+  --panel:#102437;
+  --rule:#20405B;
+  --txt:#D6E2EC;
+  --dim:#6E8CA5;
+  --amber:#E8B04B;        /* attention / staleness / unfitted */
+  --ok:#5FBF8F;
+  --bad:#E06C6C;
+  --cyan:#66B8D6;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  background-image:linear-gradient(rgba(36,51,61,.055) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(36,51,61,.055) 1px,transparent 1px);
+  background-size:22px 22px;
+  padding:32px 20px 72px;
+}
+.sheet{max-width:1180px;margin:0 auto}
+
+/* masthead */
+.mast{display:flex;align-items:flex-end;gap:18px;border-bottom:1.5px solid var(--ink);
+      padding-bottom:10px;margin-bottom:6px;flex-wrap:wrap}
+.stage{font-family:"IBM Plex Mono",monospace;font-size:44px;line-height:.9;font-weight:600;
+       letter-spacing:-.03em}
+.mast h1{font-size:23px;font-weight:600;letter-spacing:.01em;margin:0 0 3px;text-transform:uppercase}
+.mast .sub{font-size:14px;color:var(--ink-dim);margin:0 0 4px}
+.mast .tag{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+      border:1px solid var(--ink-dim);padding:4px 9px;border-radius:2px}
+
+.lede{font-size:15px;max-width:74ch;color:var(--ink-dim);margin:12px 0 26px;line-height:1.5}
+
+/* layout: console + margin notes */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:26px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+/* console */
+.console{background:var(--console);border:1px solid var(--rule);border-radius:3px;
+  box-shadow:0 14px 30px -18px rgba(11,27,43,.7);overflow:hidden}
+.chrome{display:flex;align-items:center;gap:8px;background:var(--panel);
+  border-bottom:1px solid var(--rule);padding:7px 11px;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim)}
+.chrome b{color:var(--txt);font-weight:500}
+pre.out{margin:0;padding:16px 18px 20px;color:var(--txt);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.62;
+  white-space:pre;overflow-x:auto}
+pre.out .d{color:var(--dim)}
+pre.out .c{color:var(--cyan)}
+pre.out .a{color:var(--amber)}
+pre.out .g{color:var(--ok)}
+pre.out .r{color:var(--bad)}
+pre.out .w{color:#fff;font-weight:500}
+pre.out .inv{background:var(--amber);color:#0B1B2B;padding:0 3px}
+pre.out .invr{background:var(--bad);color:#0B1B2B;padding:0 3px}
+
+/* margin annotations */
+.notes{font-size:13.5px;line-height:1.5}
+.notes h2{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-dim);border-bottom:1px solid rgba(36,51,61,.3);
+  padding-bottom:6px;margin:0 0 14px}
+.note{position:relative;padding-left:26px;margin-bottom:15px}
+.note .n{position:absolute;left:0;top:1px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;font-weight:600;color:var(--paper);background:var(--ink);
+  width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.note b{display:block;font-weight:600;font-size:13.5px}
+.note span{color:var(--ink-dim)}
+
+.rulebox{border:1.5px solid var(--ink);border-radius:3px;padding:13px 15px;margin-top:26px;
+  font-size:13px;line-height:1.5}
+.rulebox b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+
+.foot{margin-top:30px;border-top:1px solid rgba(36,51,61,.35);padding-top:12px;
+  font-size:12.5px;color:var(--ink-dim);display:flex;gap:22px;flex-wrap:wrap}
+.foot a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-dim)}
+
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .console{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+}
+
+</style></head><body>
+<div class="sheet">
+  <div class="mast">
+    <div class="stage">01</div>
+    <div>
+      <h1>Watchlist ingest</h1>
+      <p class="sub">D:\tradesignals\watchlists &mdash; drop, verify, commit</p>
+    </div>
+    <div class="tag">Priority 1</div>
+  </div>
+  <p class="lede">You scan in Deepvue, export the CSV with its metadata columns, and drop it in the folder
+  with a dated screenshot of the filter settings. The system reads it &mdash; and checks it before it trusts it.</p>
+
+  <div class="grid">
+    <div class="console">
+      <div class="chrome"><b>PowerShell</b><span>&mdash; tradesignals \ ingest</span></div>
+<pre class="out">
+<span class="d">┌─ WATCHLIST ─────────────────────────────────────────────────────────┐</span>
+  file      <span class="w">watchlist-2026-08-07-v1.csv</span>          <span class="g">name OK</span>
+  symbols   <span class="w">31</span>   columns  gap% rvol adr float mcap    <span class="g">parsed</span>
+  provenance<span class="w">filters-2026-08-07.png</span>               <span class="g">present</span>
+  committed <span class="d">git 4f2ab19 &middot; 07 Aug 08:14</span>
+  age       <span class="w">0 days</span>  <span class="d">&mdash; current</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">┌─ PRIOR DROPS ───────────────────────────────────────────────────────┐</span>
+  <span class="d">2026-08-06-v2   28 sym   prov OK   age 1d</span>
+  <span class="d">2026-08-06-v1   28 sym   prov OK   superseded</span>
+  <span class="d">2026-08-04-v1   33 sym   prov OK   age 3d</span>
+<span class="d">└─────────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">─ WHAT REFUSAL LOOKS LIKE ────────────────────────────────────────────</span>
+
+<span class="invr"> STOP </span> <span class="r">watchlist_final(2).csv &mdash; filename does not match convention.</span>
+      <span class="d">Expected watchlist-YYYY-MM-DD-vN.csv. Not ingested. Rename it.</span>
+
+<span class="invr"> STOP </span> <span class="r">watchlist-2026-08-07-v2.csv &mdash; no filter screenshot for this date.</span>
+      <span class="d">Provenance incomplete. Not ingested. Drop the screenshot.</span>
+
+<span class="inv"> AGE </span> <span class="a">Watchlist is 6 days old.</span> <span class="d">Not an error &mdash; a stable universe is</span>
+      <span class="d">legitimate. Shown so you can judge whether you meant to refresh.</span>
+</pre>
+    </div>
+
+    <div class="notes">
+      <h2>Margin notes</h2>
+      <div class="note"><span class="n">1</span><b>Two hard errors only</b>
+        <span>A malformed filename and missing provenance. Both refuse to ingest rather than guess.</span></div>
+      <div class="note"><span class="n">2</span><b>Age is shown, never enforced</b>
+        <span>A watchlist that hasn't changed is a real state, not a fault. The flag informs; you decide.</span></div>
+      <div class="note"><span class="n">3</span><b>Git is the provenance record</b>
+        <span>CSV and screenshot are both committed, so every universe you traded has a dated, immutable entry for free.</span></div>
+      <div class="note"><span class="n">4</span><b>The system never scans</b>
+        <span>Your Deepvue scan defines the universe boundary. Nothing downstream widens it.</span></div>
+
+      <div class="rulebox"><b>Open item</b>
+        Whether Deepvue can export the filter settings as data. Until it can, the dated screenshot carries provenance.</div>
+    </div>
+  </div>
+  <div class="foot"><span>Blueprint for a PowerShell panel &mdash; not a web app.</span>
+    <a href="mockup-02-regime.html">Next: 02 Regime read &rarr;</a></div>
+</div>
+
+</body></html>
