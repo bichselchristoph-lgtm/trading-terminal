@@ -59,6 +59,7 @@ class Provenance:
     reason: str
     depends: str
     decision: str | None
+    supersedes: str | None
     raw: str
 
 
@@ -75,7 +76,7 @@ def parse_provenance(path: Path) -> Provenance:
     non-empty -- a header with nothing under it is not an answer."""
     text = path.read_text(encoding="utf-8")
     fields: dict[str, str] = {}
-    for key in REQUIRED_PROVENANCE_FIELDS + ("decision",):
+    for key in REQUIRED_PROVENANCE_FIELDS + ("decision", "supersedes"):
         m = re.search(rf"^\s*{key}\s*:\s*(.+?)\s*$", text, re.I | re.M)
         if m:
             fields[key] = m.group(1).strip()
@@ -92,7 +93,7 @@ def parse_provenance(path: Path) -> Provenance:
     return Provenance(
         source=fields["source"], origin=fields["origin"].lower(),
         reason=fields["reason"], depends=fields["depends"],
-        decision=fields.get("decision"), raw=text,
+        decision=fields.get("decision"), supersedes=fields.get("supersedes"), raw=text,
     )
 
 
@@ -153,8 +154,9 @@ def _has_behavioural_assertion(path: Path, stem: str) -> bool:
     return False
 
 
-def check_3_name_collision(name: str, dest: Path, candidate: Path) -> None:
-    target = dest / Path(name).name
+def check_3_name_collision(name: str, dest: Path, candidate: Path, prov: "Provenance",
+                           as_name: str | None = None, supersede: bool = False) -> None:
+    target = dest / (as_name or Path(name).name)
     if not target.exists():
         return
     if sha256(target) == sha256(candidate):
@@ -163,12 +165,37 @@ def check_3_name_collision(name: str, dest: Path, candidate: Path) -> None:
             f"{target.relative_to(REPO)} already exists with IDENTICAL bytes.\n"
             f"       Nothing to do. Not an overwrite, not an error -- just already adopted.",
         )
+
+    rel = target.relative_to(REPO).as_posix()
+    if supersede:
+        # The one legitimate collision: a NEW VERSION of a file already adopted.
+        # It is not a hole in refusal 3 -- it still refuses unless the operator
+        # asks for it explicitly AND the companion names the exact path being
+        # replaced. What it removes is the incentive to delete the old file to
+        # get past the gate, which is how a gate acquires a real hole.
+        if not prov.supersedes:
+            raise Refusal(
+                3,
+                f"--supersede was passed but {candidate.name}.provenance.md has no `supersedes:` line.\n"
+                f"       Add `supersedes: {rel}` naming the exact file this replaces.\n"
+                f"       A supersession that does not say what it supersedes is an overwrite.",
+            )
+        if prov.supersedes.strip().strip("`") != rel:
+            raise Refusal(
+                3,
+                f"companion says `supersedes: {prov.supersedes}` but this adoption targets `{rel}`.\n"
+                f"       Refusing on the mismatch rather than trusting the flag.",
+            )
+        return
     raise Refusal(
         3,
         f"{target.relative_to(REPO)} already exists with DIFFERENT bytes.\n"
         f"       existing sha256 {sha256(target)[:16]}...\n"
         f"       candidate sha256 {sha256(candidate)[:16]}...\n"
-        f"       Refusing. Never silently overwrite; never auto-rename. Resolve by hand.",
+        f"       Refusing. Never silently overwrite; never auto-rename.\n"
+        f"       If this is a NEW VERSION of an adopted file, that is a supersession:\n"
+        f"       add `supersedes: {rel}` to the companion and re-run with --supersede.\n"
+        f"       Do NOT delete the existing file to get past this.",
     )
 
 
@@ -186,19 +213,34 @@ def check_4_origin_decision(prov: Provenance) -> None:
     )
 
 
-def run_checks(name: str, dest: Path) -> tuple[Provenance, list[Path], Path]:
+def run_checks(name: str, dest: Path, as_name: str | None = None,
+               supersede: bool = False) -> tuple[Provenance, list[Path], Path]:
     candidate = ADOPT_DIR / name
     if not candidate.exists():
         raise Refusal(0, f"candidate {candidate} does not exist. Drop it in {ADOPT_DIR} first.")
     prov = check_1_provenance(name)
     check_4_origin_decision(prov)
     tests = check_2_behavioural_test(name, dest)
-    check_3_name_collision(name, dest, candidate)
+    check_3_name_collision(name, dest, candidate, prov, as_name, supersede)
     return prov, tests, candidate
 
 
-def append_log_row(name: str, dest: Path, prov: Provenance, tests: list[Path], by: str) -> None:
-    rel = (dest / Path(name).name).relative_to(REPO).as_posix()
+def mark_superseded(old_rel: str, new_name: str) -> None:
+    """Annotate the row being replaced. Both rows stay: the log is a history
+    of what was adopted, and deleting the old row would erase the fact that a
+    different version was once in the tree."""
+    text = LOG.read_text(encoding="utf-8")
+    out = []
+    for line in text.splitlines():
+        if line.startswith("| ") and f"`{old_rel}`" in line and "SUPERSEDED" not in line:
+            line = line.rstrip()[:-1].rstrip() + f" — **SUPERSEDED** {date.today().isoformat()} |"
+        out.append(line)
+    LOG.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def append_log_row(name: str, dest: Path, prov: Provenance, tests: list[Path], by: str,
+                   landed: str | None = None) -> None:
+    rel = (dest / (landed or Path(name).name)).relative_to(REPO).as_posix()
     test_col = ", ".join(t.relative_to(REPO).as_posix() for t in tests) or "n/a (not a code tree)"
     row = (f"| {date.today().isoformat()} | `{rel}` | `{prov.source}` | {prov.origin} | "
            f"{prov.reason} | `{test_col}` | {by} |\n")
@@ -218,6 +260,11 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--adopt", metavar="NAME", help="run every check, then copy if all pass")
     p.add_argument("--into", help="destination directory, relative to the repo root")
     p.add_argument("--by", help="who is adopting this (required for --adopt)")
+    p.add_argument("--as", dest="as_name", metavar="FILENAME",
+                   help="land under this name instead of the candidate's own")
+    p.add_argument("--supersede", action="store_true",
+                   help="this is a NEW VERSION of an already-adopted file. Still refuses "
+                        "unless the companion carries a matching `supersedes:` line.")
     args = p.parse_args(argv)
 
     name = args.check or args.adopt
@@ -226,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--adopt requires --by: an adoption with no name attached is how the last one happened")
 
     try:
-        prov, tests, candidate = run_checks(name, dest)
+        prov, tests, candidate = run_checks(name, dest, args.as_name, args.supersede)
     except Refusal as r:
         print(f"REFUSED (refusal {r.number}): {r}", file=sys.stderr)
         print("\nNothing was written. A failed adoption leaves no trace in the tree.", file=sys.stderr)
@@ -244,9 +291,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(candidate, dest / Path(name).name)
-    append_log_row(name, dest, prov, tests, args.by)
-    print(f"\nADOPTED -> {(dest / Path(name).name).relative_to(REPO)}")
+    landed = args.as_name or Path(name).name
+    if args.supersede:
+        mark_superseded(prov.supersedes, landed)
+    shutil.copy2(candidate, dest / landed)
+    append_log_row(name, dest, prov, tests, args.by, landed)
+    # `landed`, not the candidate's own name -- with --as those differ, and a
+    # confirmation naming the wrong file is worse than none.
+    print(f"\nADOPTED -> {(dest / landed).relative_to(REPO)}")
     print("ADOPTION-LOG.md updated. Commit the file and the log row together.")
     return 0
 

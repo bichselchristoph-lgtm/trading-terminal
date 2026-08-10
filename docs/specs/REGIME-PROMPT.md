@@ -1,7 +1,9 @@
 # Daily Regime Read — the scheduled Claude prompt
 
-**Version** 1.1 · **Date** 2026-08-10 · **Companion to** `SPEC.md` §3.2, §5.5a
-**Runs** cron `0 5 * * 1-5` (05:00 ET, weekdays) · **Prints** the read in the response · **Writes** `claude/regime-snapshots/YYYY-MM-DD.md` and `.yaml`
+> **STATUS** CURRENT · **date** 2026-08-10
+
+**Version** 1.2 · **Date** 2026-08-10 · **Companion to** `SPEC.md` §3.2, §5.5a
+**Runs** cron `0 5 * * 1-5` (05:00 ET, weekdays) · **Prints** the read in the response · **Writes** `docs/regime-snapshots/YYYY-MM-DD.md` and `.yaml`
 
 > Context for own decision — not financial advice.
 
@@ -35,8 +37,8 @@ You are producing the daily pre-market regime read for a discretionary momentum 
 **Produce three outputs, in this order:**
 
 1. **The response body** — the full read, printed in chat. This is what gets read at 05:00.
-2. `claude/regime-snapshots/YYYY-MM-DD.md` — the same text, as a file.
-3. `claude/regime-snapshots/YYYY-MM-DD.yaml` — the same content as structured data.
+2. `docs/regime-snapshots/YYYY-MM-DD.md` — the same text, as a file.
+3. `docs/regime-snapshots/YYYY-MM-DD.yaml` — the same content as structured data.
 
 **Compose, then print, then write.** If a file write fails, the read has already reached the reader.
 
@@ -103,7 +105,33 @@ Rows 1–9 are Part A's strip, scored. Rows 10–14 are additional.
 | +2 to +5 | AMBER |
 | +1 or lower | RED |
 
-**The denominator is a live problem — handle it explicitly.** If any of rows 1–11 is `unavailable`, **you must not score against 11.** Report the reduced denominator (`6 of 9 scored rows`) *and* state that the GREEN/AMBER/RED bands were set for a denominator of 11 and **do not rescale.** Say plainly that the verdict is therefore lower-confidence, and give the raw counts. Do not invent a rescaled band.
+**The ratification bands, stated so the 05:00 read is checkable later.** You cannot score rows 12–14 at 05:00 — they stay `null` with `pending: true`. **State the bands anyway**, in the prose and in the YAML, so whoever reads the ratification knows what it was measured against rather than deciding after the fact.
+
+| Ratification total (rows 12–14) | Effect on the pre-open read | `source` |
+|---|---|---|
+| +2 or +3 | ratifies — the pre-open read stands | `regime_read_template_2026-08` |
+| 0 or +1 | downgrades one step | `regime_read_template_2026-08` |
+| −1 or lower | forces RED | `regime_read_template_2026-08` |
+
+**The reduced-card floor — a decision made here, not sourced.** These bands were set for three rows. With only two available the arithmetic breaks in one direction: max becomes +2, so "ratifies" requires a perfect score and everything else downgrades. **The card becomes a downgrade machine** — it can only ever lower the read, and it lowers it on most outcomes.
+
+**Therefore: if fewer than three of rows 12–14 are available, ratification is skipped entirely and the pre-open read stands.** Record `ratification: {skipped: true, reason, rows_available: N}`. Do not partially ratify, do not rescale the bands, and do not downgrade on a two-row card.
+
+**This floor carries `source: prompt_decision_2026-08-10` and ships `PROVISIONAL`**, because it is the one threshold in PART B not taken from the template. Row 13's availability (TICK/ADD on IBKR) has never been verified, so the two-row case is the expected one rather than the exception — say in the prose whenever the floor fires.
+
+**The denominator is a live problem — handle it explicitly.** If any of rows 1–11 is `unavailable`, **you must not score against 11.**
+
+Report it in exactly this form, and **name the missing rows**:
+
+```
+pre-open total +4 · 9 of 11 rows scored
+unavailable: row 10 (gap breadth — no source wired), row 5 (commodities — no quote)
+bands set for a denominator of 11 · NOT rescaled · verdict is lower-confidence
+```
+
+**Naming the absent rows is not optional, and this is why.** A bare `6 of 9` is indistinguishable from an arithmetic error: it is legal if two of rows 1–11 are unavailable, and it is also exactly what a reader gets by miscounting an 11-row card as 9. The same string means both things. **A count that does not name its exclusions cannot be checked**, and this specific figure has already propagated once — `mockup-02` renders `6 / 9` inherited from an error in Amendment 1 §A1.5.
+
+**The bands do not rescale.** GREEN/AMBER/RED were set for a denominator of 11. Do not invent a rescaled band, do not scale proportionally, and do not present a reduced-denominator verdict as though it carried the same weight. Give the raw counts and say the verdict is lower-confidence.
 
 **Four hard vetoes — record as a separate boolean list, never summed into the score:**
 
@@ -176,7 +204,7 @@ Report **which index is weakest and by what measure**, because that is the one t
 
 #### E1 — the prose file
 
-`claude/regime-snapshots/YYYY-MM-DD.md`. Structure:
+`docs/regime-snapshots/YYYY-MM-DD.md`. Structure:
 
 1. **The one-paragraph read.** What kind of day this looks like and what would change your mind. Written so it is useful at 05:00 with no other screen open.
 2. **Overnight strip**, in reliability order, with the thin-liquidity caveat as a footer.
@@ -190,10 +218,10 @@ Write it as a colleague would: direct, no hedging language, no "it is important 
 
 #### E2 — the locked snapshot
 
-`claude/regime-snapshots/YYYY-MM-DD.yaml`. **`frozen_at` is written once and never updated.**
+`docs/regime-snapshots/YYYY-MM-DD.yaml`. **`frozen_at` is written once and never updated.**
 
 ```yaml
-schema_version: 1
+schema_version: 2
 session_date:   2026-08-10
 frozen_at:      2026-08-10T05:02:11-04:00
 
@@ -221,7 +249,11 @@ layer_0:
   verdict:          AMBER
   vetoes:           [false, true, false, false]
   vetoes_fired:     ["credit soft while futures green"]
-  ratification:     {row_12: null, row_13: null, row_14: null, pending: true}
+  ratification:     {row_12: null, row_13: null, row_14: null, pending: true,
+                     rows_available: 2, floor_fired: true,
+                     bands: {ratifies: "+2..+3", downgrade_one: "0..+1", forces_red: "<=-1"},
+                     bands_source: regime_read_template_2026-08,
+                     floor_source: prompt_decision_2026-08-10}
   unavailable:
     - {row: 10, reason: "no pre-market gap breadth source wired"}
     - {row: 13, reason: "TICK/ADD availability unverified on IBKR"}
