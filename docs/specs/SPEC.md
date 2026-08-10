@@ -1,5 +1,7 @@
 # Trading Terminal — Consolidated Spec
 
+> **STATUS** CURRENT · **date** 2026-08-10
+
 **Version** 1.1 · **Date** 2026-08-09 · **Status** DRAFT FOR APPROVAL
 **v1.1 change:** Layer 0 leaves the terminal (it is produced by the scheduled cloud task); **no verdict colour renders anywhere** until there is data behind it. §4.1, §12.
 **Supersedes** nothing. Sits *above* the Drive corpus as the single entry point; the Drive specs remain the detailed record.
@@ -556,7 +558,22 @@ tick_cooldown_s:
 
 ### 5.1 Layer 0 — deliberately not in the terminal
 
-**Layer 0 is produced outside the terminal by the scheduled cloud task and consumed as prose.** The task runs pre-market, writes `claude/regime-snapshots/YYYY-MM-DD.md`, and that document *is* the pre-market risk-on read. The terminal links to the morning's file, shows its as-of time, and renders `[ NOT BUILT ]` if no file exists for today. It does not parse it into rows, does not score it, and nothing downstream consumes it as a number.
+**Layer 0 is produced outside the terminal by the scheduled cloud task and consumed as prose.** The task runs pre-market, writes `docs/regime-snapshots/YYYY-MM-DD.md`, and that document *is* the pre-market risk-on read. The terminal links to the morning's file and shows its as-of time. It does not parse it into rows, does not score it, and nothing downstream consumes it as a number.
+
+#### 5.1a Absence has two states, not one
+
+**`[ NOT BUILT ]` on its own is ambiguous, and the ambiguity is dangerous.** Before the market opens, no file is the expected state. After the task was scheduled to have run, no file means **the pipeline failed** — and the two must not render identically, because the one that needs action looks exactly like the one that does not.
+
+This is not hypothetical. The scheduled task is a **cloud** task (§A1, resolved 2026-08-10: a local Desktop task is not being used), so it writes to the cloud session's own filesystem and its output does not reach this disk on its own. Every day currently renders the absent state. On top of that, the task reaches IBKR through a claude.ai connector whose availability depends on the claude.ai login staying valid; when that login expires the task keeps running and produces nothing. **An expired login and a normal pre-open morning would otherwise look the same on screen.**
+
+| State | When | Renders |
+|---|---|---|
+| **`[ NOT BUILT ]`** | No file for today, and the task's scheduled time has **not** passed. | Dim-inverse, per §4's refusal grammar. The system is refusing, not failing. |
+| **`[ NOT BUILT — OVERDUE Nh ]`** | No file for today, and the scheduled time passed **N hours ago**. | Amber-inverse: read this and decide. Carries the hours since the run was due and the expected path. |
+
+The second is an **amber** badge, not dim, because §4 reserves dim-inverse for "the system is refusing, not failing" — and an overdue snapshot is a failure, not a refusal. It is not red: red-inverse is reserved for `[ STOPPED — DAILY LIMIT ]`.
+
+**The overdue threshold comes from config, not a literal** (§4.4), keyed to the task's cron. **Never infer that the task ran from the presence of a file** — a file written yesterday and not overwritten is a third failure that reads as success, so the check is on today's date, not on any file existing.
 
 **Why this is the right shape and not a retreat.** The fourteen-row card was going to be built to answer a question a person already answers each morning by reading five paragraphs. The rows that would have cost the most to wire (gap breadth needs an export; TICK/ADD/RSP availability was never verified) are exactly the ones the prose handles for free. And the composite's only consumer was the exposure dial, which is also gone (§7b.1) — so the score would have been computed for a reader that no longer exists.
 
@@ -570,7 +587,7 @@ IWM / SPY / QQQ / RSP. MA stack 10/20/50/200 + slopes, distribution days (25 and
 
 **`live/regime/regime_pull.py` is currently not runnable.** The consolidation moved the script body into `main()` but left `pull()` referencing a module-global `ib` and `row()` referencing `results`/`order`, which are now locals. It raises `NameError` on the first call. Import coverage cannot see this. **This is the single clearest demonstration that `live/` needs behavioural tests, and it is the first thing to fix.**
 
-The scheduled task "Daily market regime read (Layer 1)" (cron `0 5 * * 1-5`, writing to `claude/regime-snapshots/YYYY-MM-DD.md`) already produces this read via IBKR and Claude. **Keep it running as the independent check.** Two computations of the same quantity from different code paths, compared, is a free correctness test — and per §2.2 the terminal's version writes into the day record while the scheduled task writes prose. Diverging numbers are a finding.
+The scheduled task "Daily market regime read (Layer 1)" (cron `0 5 * * 1-5`, writing to `docs/regime-snapshots/YYYY-MM-DD.md`) already produces this read via IBKR and Claude. **Keep it running as the independent check.** Two computations of the same quantity from different code paths, compared, is a free correctness test — and per §2.2 the terminal's version writes into the day record while the scheduled task writes prose. Diverging numbers are a finding.
 
 ### 5.3 Layer 2 — own follow-through
 
@@ -645,8 +662,8 @@ This is a smaller change than it looks. v1.0 already said the layer does not siz
 **The task emits YAML, not only prose.** Prose is for you; the snapshot is for every consumer that comes later.
 
 ```
-claude/regime-snapshots/YYYY-MM-DD.md     ← the read, for a human
-claude/regime-snapshots/YYYY-MM-DD.yaml   ← the same content, locked
+docs/regime-snapshots/YYYY-MM-DD.md     ← the read, for a human
+docs/regime-snapshots/YYYY-MM-DD.yaml   ← the same content, locked
 ```
 
 ```yaml
@@ -879,6 +896,25 @@ VWAP 47.31  (1-min bars · pre-market incl. · from 04:00 · 18.4M sh)
 #### One data source, and it is IBKR
 
 **Decided: IBKR is the only input. TradingView is not a data source, not a cross-check, and not an authority on any number this terminal renders.** It contributes **definitions only** — the formula conventions, with Kullamägi's parameters — and nothing else.
+
+##### Two IBKR access paths, and they are not interchangeable
+
+**"IBKR" names two entirely different mechanisms in this spec, and until now they shared one word.** They have different authentication, different failure modes, different data, and different consumers. Naming them apart is not pedantry: a plan that says "get it from IBKR" is ambiguous about which one, and the two fail in opposite ways.
+
+| | **IBKR cloud connector** | **Local TWS via `ib_async`** |
+|---|---|---|
+| What it is | A claude.ai MCP connector, reached from Anthropic's cloud | A socket to TWS/IB Gateway on this machine, port `7496`/`7497`/`4001`/`4002` |
+| Auth | Its own, tied to the **claude.ai login**. Cannot be renewed unattended — a non-interactive run has no `/mcp` panel to run the OAuth flow. | None beyond TWS being logged in. No cloud dependency. |
+| Needs TWS running? | **No.** | **Yes.** |
+| Used by | The **scheduled pre-market read** (§5.1, `REGIME-PROMPT.md` PART A–D) | The **terminal, during a live session** |
+| Fails by | **Going quiet.** An expired claude.ai login makes the tools unavailable; the task still runs and writes nothing. Renders as absence, which is why §5.1a exists. | **Failing loudly.** A refused socket is immediate and unambiguous. |
+| Data | What the connector exposes | Richer: full `reqHistoricalData`, `keepUpToDate` streaming, contract details |
+
+**The asymmetry is the point.** The connector's failure is silent and needs a display state to surface it (§5.1a). TWS's failure is loud and needs no such treatment — **when TWS is down the terminal must say so and refuse, never substitute.**
+
+**Measured, not assumed** (tasks 008a/008b, 2026-08-10, AMZN): the local path returned 7,800 one-minute bars in one request in 2.4 s and streamed a forming bar at a ~5 s cadence for 32 minutes with zero errors. It also surfaced a defect the connector's shape would not have exposed — `useRTH=0` inflates ADR% by **+1.1662 points, +44.6 %** — which is why the local path is the terminal's and not merely a fallback. See §4.4 for the `use_rth` constraint that finding produced.
+
+**Do not collapse these into one config key or one client.** They are two sources with two reliability profiles, and a single `ibkr:` block would let a change intended for one silently alter the other.
 
 **This resolves the venue problem by dissolving it.** TradingView's default US equity feed is Cboe One, four lit exchanges, about 25 % of the tape, with odd-lot filtering on all intraday North American bars ([TradingView](https://www.tradingview.com/support/solutions/43000473924-is-us-stock-market-data-free-by-default/) · [Cboe](https://www.cboe.com/market_data_services/us/equities/cboe_one/)). IBKR is consolidated and it is where the order goes. **So when the chart and the terminal disagree, the terminal is right and the chart is the approximation** — and the earlier instruction to "set the platform to match" is withdrawn. **Expect a difference, know its cause, do not chase it.**
 
@@ -2291,9 +2327,19 @@ Routes each (symbol-day, schema) to the cheaper adequate source. **Acceptance te
 
 ---
 
-## 13. Sources
+## 13. Sources — the Drive and OneDrive entries are HUMAN-REACHABLE ONLY
+
+**Read the qualification before the list.** Only the `Repo:` line is reachable from this
+tree. **The Drive and OneDrive entries below resolve for Christoph, on his machine, and for
+nobody and nothing else** — the Drive sync was removed on 2026-08-09, so no path on disk
+points at them, and `tests/test_spec_pointers.py` deliberately excludes external and absolute
+paths, which means it will never flag them however stale they become.
+
+This is the exact mechanism that cost Layer 0: a source that reads as live, is cited like
+every other source, and is reachable by one person. Cite them; do not plan work that assumes
+a session can open them.
 
 Repo: `D:\Dev\CLAUDE.md`, `momentum-harness/CLAUDE.md`, `docs/specs/`, `docs/observations/`, `handoff/`, `harness/config/preregistration.yaml` (v25).
-Drive: 123 documents across three folders (see `DRIVE-ARCHIVE-LIST.md`).
-OneDrive: `D:\chbichOneDrive\OneDrive\Documents\_Trading`, 425 files.
+Drive **(human-reachable only)**: 123 documents across three folders (see `DRIVE-ARCHIVE-LIST.md`).
+OneDrive **(human-reachable only)**: `D:\chbichOneDrive\OneDrive\Documents\_Trading`, 425 files.
 External research: Song & Szafir (VIS 2018) · Daniel & Moskowitz *Momentum Crashes* · Gao/Han/Li/Zhou *Market Intraday Momentum* (JFE 2018) · Lou/Polk/Skouras *A Tug of War* (JFE 2019) · Zarattini/Barbon/Aziz (SSRN 4729284) · Bailey & López de Prado *Deflated Sharpe* · Harvey/Liu/Zhu (RFS 2016) · Dawes (1979) · Kaminski & Lo *When Do Stop-Loss Rules Stop Losses?* · Coval & Shumway (JF 2005) · Gollwitzer & Sheeran (2006) · KC Fed RORO wp 24-12 · FINRA Information Notice 05/10/19 · State Street buyback study · Schwager & Coyle *Market Wizards: The Next Generation* (2026) · Databento, IBKR, Textual documentation.

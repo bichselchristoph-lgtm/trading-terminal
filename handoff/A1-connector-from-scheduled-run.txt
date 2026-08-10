@@ -1,0 +1,40 @@
+H8 A1 - IBKR connector reachability from a SCHEDULED invocation
+==============================================================
+
+(d) Wall-clock  : 2026-08-10 22:20:27 local / 16:20:27 EDT ET
+    Fired by    : one-shot cron job 3248ea27, created in-session via CronCreate
+
+(a) Reachable   : YES. mcp__claude_ai_Interactive_Brokers_IBKR__search_contracts
+                  was callable from the scheduled invocation and returned data.
+
+(b) Result      : query "MSFT" -> first result
+                  underlying_contract_id = 272093
+                  exchange               = NASDAQ
+                  description            = MICROSOFT CORP
+                  (24 STK, 2 BOND, 2 IND rows total)
+
+(c) Error       : none
+
+WHAT THIS DOES AND DOES NOT PROVE
+---------------------------------
+PROVES : a scheduled invocation that runs INSIDE an authenticated interactive
+         session inherits that session's MCP connectors. The connector is not
+         torn down or re-authenticated at fire time.
+
+DOES NOT PROVE : that a local Claude Code Desktop scheduled task can reach it.
+         CronCreate jobs are session-only and in-memory - the tool documents
+         them as "gone when Claude exits", with the durable flag having no effect, and
+         they fire only while the REPL is idle. This job therefore ran with the
+         same tool handles this session already held. It is the closest
+         available analogue, not the thing A1 asks about.
+
+         A true Desktop scheduled task starts its own session. Whether an
+         interactively-authenticated claude.ai connector is present there is
+         NOT answered by this test, and the documented caveat for that class is
+         that such servers MAY BE ABSENT in headless/cron runs.
+
+BEARING ON A1
+-------------
+The in-session scheduler cannot run 05:00 ET daily regardless of the result: it
+requires this session open and idle at 11:00 local every day. So even a green
+result here does not yield a working unattended pipeline.
