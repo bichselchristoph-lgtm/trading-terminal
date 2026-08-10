@@ -1,5 +1,7 @@
 # Trading Terminal — Build Plan
 
+> **STATUS** CURRENT · **date** 2026-08-10
+
 **Version** 1.1 · **Date** 2026-08-09 · **Companion to** `SPEC.md`
 **Method** Agile. Thin vertical slices. Core first, layers later.
 **v1.1 changes:** Layer 0 leaves the terminal (v1.0's slices 016 and 019 deleted; LAYERS renumbered) · no verdict colour renders anywhere (§4.1) · **the terminal advises, it never blocks a trade or changes a size** (§4.2). Both are standing rules below.

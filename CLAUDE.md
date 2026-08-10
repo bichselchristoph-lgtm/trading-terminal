@@ -35,7 +35,7 @@ Four refusals, none of which has a default or an inferred value:
 | # | Refusal |
 |---|---|
 | 1 | **No provenance companion.** `<name>.provenance.md` naming source path, origin, reason for adoption, and what depends on it. |
-| 2 | **No behavioural test.** Nothing enters `core/`, `live/`, `harness/` or `tools/` without a test that fails if the file's behaviour changes. **Import-smoke does not count** — `regime_pull.py` passed import coverage while raising `NameError` on its first call. |
+| 2 | **No behavioural test.** Nothing enters a code tree — core, live, harness or tools — without a test that fails if the file's behaviour changes. **Import-smoke does not count** — `regime_pull.py` passed import coverage while raising `NameError` on its first call. |
 | 3 | **Same name, different content.** Never silently overwrite, never auto-rename. |
 | 4 | **Origin `imported` or `unknown` without an explicit decision.** An `authored` file can be adopted on its merits. A predecessor's artifact needs a person to say why this project is adopting it. |
 
@@ -68,8 +68,8 @@ C:\venvs\trading\Scripts\python.exe -m pytest
 ```
 
 `pytest.ini` lists **every** test directory, not just `tests/`. The old repo set
-`testpaths = tests` and seven behavioural tests in `live/tests/` were never collected.
-`tests/test_pytest_collection.py` keeps that list honest.
+`testpaths = tests` and seven behavioural tests in `momentum-harness/live/tests/` were never
+collected. `tests/test_pytest_collection.py` keeps that list honest.
 
 **IBKR access is `ib_async`, always. Never `ib_insync`.**
 

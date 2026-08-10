@@ -1,5 +1,18 @@
 # MOCKUPS — read this first
 
+> **STATUS** HISTORICAL · **date** 2026-08-10
+> Audited by `docs/specs/SPEC.md` §3.1, which found nine defects, six that matter.
+> **Resolved by deletion** (the panel is gone from the design, not repaired): the Layer 0
+> AMBER composite with `vetoes 0/4`, the exposure grid, and the `HALF SIZE` badge.
+> **Still owed**: box widths 69–71 chars against a 71-char border (defect 5), and six
+> states specified in prose with no rendered form (defect 6). Sheets 02, 04 and 05 carry
+> an on-screen banner because they still render deleted panels.
+>
+> **Defect 4 corrected at the cause.** §3.1 says sheets 01–04 name `tradesignals\`, an
+> archived read-only repo. `PROVENANCE.md` shows these mockups are `authored` — so this
+> is **not carried-in wrongness. This project wrote a spec naming another project's
+> path.** Paths updated to `D:\Dev\momentum\`.
+
 ## These are BLUEPRINTS. There is no web app.
 
 The files named `mockup-*.html` are DESIGN DRAWINGS of a PowerShell terminal

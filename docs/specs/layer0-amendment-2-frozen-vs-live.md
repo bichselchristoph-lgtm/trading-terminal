@@ -1,5 +1,13 @@
 # LAYER 0 — AMENDMENT 2: Frozen score, live rows
 
+> **STATUS** SUPERSEDED · **by** `docs/specs/SPEC.md` §5.1 · **date** 2026-08-10
+> Amendment 2 split Layer 0 into eleven rows frozen at 08:00 and three read live.
+> §5.1 subsequently removed Layer 0 from the terminal entirely; §12.1 preserves the
+> fourteen-row model verbatim as deferred, so this returns if the prose read proves
+> insufficient. **Its open question moved rather than closed**: whether a live row that
+> is also a hard veto can fire mid-session with positions open now belongs to the
+> scheduled task (`docs/specs/REGIME-PROMPT.md`), not the terminal. Do not delete.
+
 Supersedes nothing. Adds a split the original Layer 0 spec did not distinguish.
 Filed in the REPO (not only in Drive) because the governing Layer 0 documents
 living outside the tree is precisely what let this layer go unbuilt and

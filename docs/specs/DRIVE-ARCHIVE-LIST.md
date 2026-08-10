@@ -1,5 +1,9 @@
 # Google Drive — Redundant Documents
 
+> **STATUS** CURRENT · **date** 2026-08-10
+> The 32 recommended moves have not been made. H7 owns executing them, and with the
+> Drive sync removed on 2026-08-09 the work is manual. Read as instruction, not record.
+
 **Date** 2026-08-09 · **Scope** 3 folders, no subfolders · **Total inventoried** 123 files
 **Recommended archive** 32 · **Remaining** 91
 

@@ -1,5 +1,12 @@
 # momentum-harness — Use Guide
 
+> **STATUS** HISTORICAL · **date** 2026-08-10
+> Describes `momentum-harness` — its own title says so — including `signals/` and
+> `data/` trees that commit `7987376` flattened away, and it links `../README.md` as
+> "the working record", which is the README H3 finds describes a tree that does not
+> exist. None of it is true of this tree. Kept as the record of how the harness was
+> operated, never as setup instructions.
+
 An intraday momentum signal harness for swing/momentum trading (Minervini SEPA
 + Qullamaggie EP). It exists to answer one question honestly: **do the signals
 on my intraday checklist actually predict anything, and which ones?**

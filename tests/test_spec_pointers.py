@@ -2,8 +2,8 @@
 
 H9's defect: SPEC.md, BUILD-PLAN.md and REGIME-PROMPT.md existed only in Google
 Drive and in a Claude project. Discovered 2026-08-10 when a path named in
-SPEC.md §5.1 -- `claude/regime-snapshots/` -- was checked against the repo and
-found never to have existed. Nobody had looked.
+SPEC.md §5.1 -- the old `claude/`-rooted regime-snapshots directory -- was checked
+against the repo and found never to have existed. Nobody had looked.
 
 Why this is the expensive kind of missing: BUILD-PLAN.md §2a states the
 asymmetry -- Claude Code sees the repo, and sees only what a task file quotes of
@@ -30,6 +30,19 @@ CANONICAL_SPECS = [
     "docs/specs/REGIME-PROMPT.md",
 ]
 
+#: Three values, not four. `PROVENANCE.md` shows every docs/specs/ file
+#: `authored` here, so every supersession has a real decision behind it and
+#: every `by` resolves to a document in this project. An `INHERITED` status
+#: would have been a place to put files nobody had decided about.
+VALID_STATUSES = ("CURRENT", "SUPERSEDED", "HISTORICAL")
+
+STATUS_LINE = re.compile(r"\*\*STATUS\*\*\s+(\w+)")
+BY_LINE = re.compile(r"\*\*by\*\*\s+`([^`]+)`")
+
+
+def spec_docs() -> list[Path]:
+    return sorted((REPO / "docs" / "specs").rglob("*.md"))
+
 #: A line mentioning any of these is talking about something that is GONE or
 #: lives elsewhere, so its pointer is not expected to resolve.
 OBSOLETE_MARKERS = ("obsolete", "deleted", "archived", "do not use", "not yet supplied",
@@ -51,6 +64,54 @@ def test_canonical_specs_present(rel: str) -> None:
         "to the side that builds. See docs/specs/ in CLAUDE.md."
     )
     assert p.stat().st_size > 0, f"canonical spec is empty: {rel}"
+
+
+def test_every_spec_declares_status() -> None:
+    """Every `.md` under docs/specs/ says what it is, in its first 10 lines.
+
+    **This is the test that makes the convention survive.** The old repo held
+    current and superseded documents side by side with nothing declaring which
+    was which, so a reader who opened the wrong one got a confident, well-formed
+    answer to a question no longer being asked. A spec dropped in without a
+    header goes red, which is what stops the next person quietly redoing what
+    was just fixed.
+    """
+    missing, bad = [], []
+    for p in spec_docs():
+        rel = p.relative_to(REPO).as_posix()
+        head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:10])
+        m = STATUS_LINE.search(head)
+        if not m:
+            missing.append(rel)
+        elif m.group(1) not in VALID_STATUSES:
+            bad.append(f"{rel}: STATUS {m.group(1)!r} is not one of {VALID_STATUSES}")
+    assert not missing and not bad, (
+        ("these docs/specs files declare no STATUS in their first 10 lines:\n  "
+         + "\n  ".join(missing) if missing else "")
+        + ("\n" if missing and bad else "")
+        + ("\n  ".join(bad) if bad else "")
+        + "\n\nAdd a header as the first non-heading block, e.g.\n"
+          "  > **STATUS** CURRENT · **date** YYYY-MM-DD\n"
+          "  > **STATUS** SUPERSEDED · **by** `docs/specs/SPEC.md` §5.1 · **date** YYYY-MM-DD"
+    )
+
+
+def test_every_superseded_spec_names_a_resolving_by() -> None:
+    """`SUPERSEDED` requires `by`, and the `by` must resolve. A supersession
+    pointing at nothing is indistinguishable from an unexplained deletion."""
+    problems = []
+    for p in spec_docs():
+        rel = p.relative_to(REPO).as_posix()
+        head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:10])
+        m = STATUS_LINE.search(head)
+        if not m or m.group(1) != "SUPERSEDED":
+            continue
+        b = BY_LINE.search(head)
+        if not b:
+            problems.append(f"{rel}: SUPERSEDED with no **by**")
+        elif not (REPO / b.group(1)).exists():
+            problems.append(f"{rel}: **by** names `{b.group(1)}`, which does not exist")
+    assert not problems, "\n  ".join(["superseded specs with a broken `by`:"] + problems)
 
 
 def _looks_external(token: str) -> bool:
@@ -127,19 +188,6 @@ def test_the_extractor_finds_something() -> None:
     print(f"unclassifiable (wildcard) tokens: {unclassifiable}")
 
 
-def test_regime_prompt_is_v1_1_not_v1_0() -> None:
-    """H9 §1: v1.1 carries `PART E — the three outputs` and an `E0` subsection.
-    A copy saying "the two outputs" is v1.0 and must not be committed. Pinned
-    here so a later re-supply cannot silently downgrade it."""
-    p = REPO / "docs/specs/REGIME-PROMPT.md"
-    if not p.exists():
-        pytest.skip("REGIME-PROMPT.md not present; test_canonical_specs_present owns that")
-    text = p.read_text(encoding="utf-8")
-    assert "the two outputs" not in text.lower(), (
-        "REGIME-PROMPT.md says 'the two outputs' — that is v1.0, and H9 says to stop rather "
-        "than commit it."
-    )
-    assert "PART E" in text and "the three outputs" in text, (
-        "REGIME-PROMPT.md is missing the 'PART E — the three outputs' heading that identifies v1.1."
-    )
-    assert "E0" in text, "REGIME-PROMPT.md is missing the 'E0 — the chat body' subsection."
+# The REGIME-PROMPT version pin moved to tests/test_regime_prompt_invariants.py
+# under H10, with the floor raised to v1.2 and the PART E / E0 assertions carried
+# forward intact. Kept in one place so the two cannot drift apart.

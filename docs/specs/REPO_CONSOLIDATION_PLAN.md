@@ -1,5 +1,10 @@
 # REPO CONSOLIDATION PLAN — D:\dev (six repos to one)
 
+> **STATUS** HISTORICAL · **date** 2026-08-10
+> The plan was executed. Step 7 folded in `trading-scripts` and `orb_tools` at commit
+> `1e6c893`, and `20f1d6d` deleted the staged pair. It records what was done and is
+> never instruction — the tree it describes is now archived reference.
+
 > **STATUS BLOCK — added on ingestion 2026-08-07, not part of the original plan.**
 >
 > **Phase 0 is already satisfied and its premise was wrong.** `momentum-harness`
