@@ -1,0 +1,25 @@
+# Written fresh for D:\Dev\momentum (M001 §2). Not carried.
+#
+# NO INDEX URL. The old tree's working copy carried an extra-index-url line of
+# the form `https://<user>:<key>@host/simple`, holding a live Databento
+# credential. A dependency manifest is a place people paste setup commands into,
+# so tests/test_no_secrets.py scans this file by name and matches on Databento's
+# key shape (`db-` prefix) rather than on assignment syntax.
+#
+# Read every credential from the environment. Never from a file, never inline on
+# a command line -- a key on a command line persists into shell history and
+# session transcripts.
+
+# Floors sit at the VERIFIED MAJOR, not at the oldest version that might work.
+# `pandas>=2.0` admitted a major nobody had ever run the suite against.
+# Verified on: Python 3.12.7, pandas 3.0.3, numpy 2.5.1, pytest 9.1.1.
+pandas>=3.0
+numpy>=2.5
+pytest>=9.1
+
+# IBKR access is ib_async, ALWAYS. ib_insync is unmaintained; ib_async is the
+# maintained fork with the same API. Verified against 2.1.0 in tasks 008a/008b.
+ib_async>=2.1
+
+# PyYAML for config and the preregistration/adoption manifests.
+PyYAML>=6.0

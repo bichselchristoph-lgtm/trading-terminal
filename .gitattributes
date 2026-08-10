@@ -1,0 +1,17 @@
+# Authored text normalises to LF, as in every repo under D:\Dev.
+* text=auto eol=lf
+
+# EVIDENCE IS NEVER NORMALISED.
+#
+# Carried evidence is byte-identical by definition and verified by sha256 in
+# EVIDENCE-CARRY.md. Line-ending normalisation rewrites those bytes on checkout,
+# so without these lines a fresh clone would hash differently from the manifest
+# and tests/test_evidence_carry_intact.py would go red -- reporting tampering
+# where there was none, and training whoever sees it to ignore that test.
+#
+# It is also the subtler failure: normalisation is exactly the kind of
+# well-intentioned tidying M001 §4 forbids, applied automatically by a tool
+# rather than by a person.
+spend_ledger.jsonl      -text
+membership_evidence.json -text
+handoff/**              -text

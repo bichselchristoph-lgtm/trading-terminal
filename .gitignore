@@ -1,0 +1,50 @@
+# Written fresh for D:\Dev\momentum (M001 §2). Not carried from momentum-harness.
+#
+# EVERY RULE HERE IS ANCHORED with a leading slash unless it genuinely must match
+# at any depth. The old repo's rules were unanchored -- `*.jsonl`, `*.zst` and
+# `*.parquet` matched at any depth and would silently swallow a provenance
+# companion or a ledger, so a file looked committed right up until the day
+# someone went looking for it. That trap needed a negation block and a test to
+# undo. Anchoring is the fix that does not need undoing.
+
+# Claude Code config. NEVER tracked -- M001 §6: "Do not copy .claude/ in any
+# form", and the old tree's .claude/settings.local.json held a Databento key.
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Credentials never live in the tree - read them from the environment.
+# tests/test_no_secrets.py enforces this; these lines are the first defence.
+.env
+.env.*
+*.key
+*.pem
+secrets.yaml
+
+# Market data is large and licensed - never commit it. Anchored: a file named
+# `notes.zst` inside an evidence folder is not market data.
+/raw/
+/bars/
+/cache/
+/selection/
+*.dbn
+*.dbn.zst
+
+# Local append-only run state, carried as evidence but not tracked. The payloads
+# are large and regenerable-in-shape; the LEDGERS are not, and those are tracked
+# (see EVIDENCE-CARRY.md).
+/records/
+/records_truncated/
+
+# The adoption drop folder lives outside both repos (D:\Dev\_adopt\) and is
+# never committed. This line is belt-and-braces in case one is made in-tree.
+/_adopt/
+
+.DS_Store
+Thumbs.db
