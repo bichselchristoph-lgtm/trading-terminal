@@ -667,7 +667,7 @@ docs/regime-snapshots/YYYY-MM-DD.yaml   ← the same content, locked
 ```
 
 ```yaml
-schema_version: 1
+schema_version: 2
 session_date:   2026-08-10
 frozen_at:      2026-08-10T05:02:11-04:00   # written once; never updated
 macro_strip:
@@ -675,12 +675,32 @@ macro_strip:
   - {id: fx_carry,  value: "AUDJPY +0.31% · USDJPY +0.12%", as_of: "05:01", band: inside}
   - {id: commodities, value: "GC −0.4% · CL +3.2%", as_of: "05:01", band: outside}
   # ... nine rows
+layer_0:
+  ratification:   {row_12: null, row_13: null, row_14: null, pending: true,
+                   rows_available: 2, floor_fired: true,
+                   bands: {ratifies: "+2..+3", downgrade_one: "0..+1", forces_red: "<=-1"},
+                   bands_source: regime_read_template_2026-08,
+                   floor_source: prompt_decision_2026-08-10}
 layer_i:
   rows:      [...]            # nine rows, each with value, source, as_of, band
   state:     CONSTRUCTIVE     # computed here, on trial, NOT rendered by the terminal
   decisive_row: breadth
   health:    "8/9 fresh"
 ```
+
+**`schema_version` moved 1 → 2 on 2026-08-10**, when `REGIME-PROMPT.md` v1.2 added the
+**reduced-card floor**: if fewer than three of rows 12–14 are available, ratification is
+skipped entirely and the pre-open read stands. The `ratification` block above is what v1.2
+emits to record that. A v1 snapshot has none of those keys, so **without the bump a reader
+cannot tell a v1 snapshot from a v2 one where the floor did not fire** — the two are
+indistinguishable, and property 4 below is what makes the difference actionable. A bump with
+no recorded cause is one nobody can evaluate later, which is why this paragraph exists.
+
+**This example is not the full v2 shape.** It shows the keys named above and omits others v1.2
+emits — `layer_0`'s scoring fields, the whole `layer_1` block, `could_not_do`, and the
+per-row `score` / `source` / `state` fields on `macro_strip`. **Read `REGIME-PROMPT.md` PART
+E2 for the emitted shape**; a consumer written against this block alone would be written
+against a shape that was never produced.
 
 **Four properties, and each is load-bearing:**
 

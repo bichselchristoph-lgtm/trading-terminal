@@ -85,13 +85,28 @@ only. The tree is authoritative for everything else.** Drive is archive: the syn
 2026-08-09, so nothing on disk points at it and its copies cannot drift back in.
 
 **All four are now in the tree**, adopted 2026-08-10 under H9. `tests/test_spec_pointers.py`
-asserts the three canonical ones are present and non-empty, and pins `REGIME-PROMPT.md` at
-v1.1 so a later re-supply cannot silently downgrade it to v1.0.
+asserts the three canonical ones are present and non-empty.
+`tests/test_regime_prompt_invariants.py` pins `REGIME-PROMPT.md` at **v1.2 or higher** — the
+version pin moved there under H10 when v1.2 landed, so the two cannot drift apart.
 
 If any of these ever needs replacing, it comes from Christoph. **Do not reconstruct,
 paraphrase or regenerate one** — from memory, or from quotations in handoff files. A
 plausible reconstruction of a spec is worse than an absent one, because it will be read as
 the record.
+
+### A re-supplied document arrives pre-repair
+
+Specs are authored in the design session, outside this tree, by someone who cannot see it.
+**Every repair made here — a path substitution, a status header, a defect fix — is invisible
+to the author and is dropped by the next supply of that document.** The file arrives
+well-formed, the gate compares bytes and passes it, and the regression is visible only to
+whoever remembers making the edit.
+
+**A re-supplied document is re-repaired on landing. It is not authoritative over tree-side
+edits.** `docs/specs/RE-SUPPLY.md` lists the invariants; `tests/test_resupplied_docs_are_repaired.py`
+fails loudly and names re-supply as the likely cause. **Re-apply, do not re-author** — the
+document that arrived is the current content, and the invariant is a repair made to its
+predecessor.
 
 `docs/specs/` also holds `REPO_CONSOLIDATION_PLAN.md` (the definition of "step 7"),
 `USE_GUIDE.md`, `layer0-amendment-2-frozen-vs-live.md`, and `docs/specs/mockups/` — the five

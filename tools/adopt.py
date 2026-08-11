@@ -158,6 +158,19 @@ def check_3_name_collision(name: str, dest: Path, candidate: Path, prov: "Proven
                            as_name: str | None = None, supersede: bool = False) -> None:
     target = dest / (as_name or Path(name).name)
     if not target.exists():
+        # H11 §4 Q1: without this, --supersede against a path that was never
+        # adopted returns here as an ordinary create, and the `supersedes:` line
+        # is never checked -- a create path wearing a replace flag. A
+        # supersession with nothing to supersede is a first adoption, and should
+        # be run as one.
+        if supersede:
+            raise Refusal(
+                3,
+                f"--supersede was passed but {target.relative_to(REPO)} does not exist.\n"
+                f"       There is nothing to supersede. If this is a first adoption, run it\n"
+                f"       without the flag; if the path is wrong, fix it rather than creating\n"
+                f"       a file that claims to replace something.",
+            )
         return
     if sha256(target) == sha256(candidate):
         raise Refusal(
@@ -230,10 +243,32 @@ def mark_superseded(old_rel: str, new_name: str) -> None:
     of what was adopted, and deleting the old row would erase the fact that a
     different version was once in the tree."""
     text = LOG.read_text(encoding="utf-8")
+    rows = [l for l in text.splitlines() if l.startswith("| ") and f"`{old_rel}`" in l]
+    live = [l for l in rows if "SUPERSEDED" not in l]
+
+    # H11 §4 Q2: silently doing nothing is the failure mode. A supersession of a
+    # file that was never logged, or one already superseded, must not pass
+    # quietly -- a chain with a gap in it is unreadable, and the gap is invisible
+    # precisely because nothing complained when it opened.
+    if not rows:
+        raise Refusal(
+            3,
+            f"no ADOPTION-LOG row for `{old_rel}`.\n"
+            f"       The file exists in the tree but was never logged as adopted, so there is\n"
+            f"       no row to mark superseded. Resolve the missing row first.",
+        )
+    if not live:
+        raise Refusal(
+            3,
+            f"every ADOPTION-LOG row for `{old_rel}` is already marked SUPERSEDED.\n"
+            f"       Superseding an already-superseded row would leave a gap in the chain.",
+        )
+
     out = []
     for line in text.splitlines():
-        if line.startswith("| ") and f"`{old_rel}`" in line and "SUPERSEDED" not in line:
-            line = line.rstrip()[:-1].rstrip() + f" — **SUPERSEDED** {date.today().isoformat()} |"
+        if line in live:
+            line = (line.rstrip()[:-1].rstrip()
+                    + f" — **SUPERSEDED** {date.today().isoformat()} by the row above |")
         out.append(line)
     LOG.write_text("\n".join(out) + "\n", encoding="utf-8")
 
@@ -242,8 +277,14 @@ def append_log_row(name: str, dest: Path, prov: Provenance, tests: list[Path], b
                    landed: str | None = None) -> None:
     rel = (dest / (landed or Path(name).name)).relative_to(REPO).as_posix()
     test_col = ", ".join(t.relative_to(REPO).as_posix() for t in tests) or "n/a (not a code tree)"
+    # H11 §4 Q3: two rows are not a sequence unless one points at the other.
+    # Same path, same date, and only insertion order to tell them apart is not
+    # a reconstructable order once a third version lands.
+    reason = prov.reason
+    if prov.supersedes:
+        reason = f"**SUPERSEDES `{prov.supersedes}` (the marked row below).** {reason}"
     row = (f"| {date.today().isoformat()} | `{rel}` | `{prov.source}` | {prov.origin} | "
-           f"{prov.reason} | `{test_col}` | {by} |\n")
+           f"{reason} | `{test_col}` | {by} |\n")
     text = LOG.read_text(encoding="utf-8")
     marker = "| date | path in new tree | source path | origin | reason | test that covers it | adopted by |\n"
     sep = "|---|---|---|---|---|---|---|\n"

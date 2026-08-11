@@ -30,7 +30,14 @@ BARE_COUNT = "6 of 9"
 #: line marks it as the error being warned against. This is NOT a widened
 #: exclusion: a bare worked example still fails, which
 #: `test_the_bare_count_check_can_actually_fail` proves.
-ANTI_PATTERN_MARKERS = ("indistinguishable", "error", "must name", "bare")
+#:
+#: `~~` and "moot" were added under H11 when the normalised check surfaced a
+#: FOURTH occurrence the literal check had never seen: SPEC.md §3.1 defect 2,
+#: `~~... 02 scores `6/9` out of 11 ...~~ **Moot in the terminal.**` — struck
+#: through and recorded as resolved. That line catalogues the defect; it does not
+#: assert a count. Strikethrough in this document means "was true, now resolved",
+#: which is anti-pattern framing by construction.
+ANTI_PATTERN_MARKERS = ("indistinguishable", "error", "must name", "bare", "~~", "moot")
 
 
 def prompt_text() -> str:
@@ -103,12 +110,34 @@ def test_the_reduced_card_floor_is_marked_provisional() -> None:
     )
 
 
+#: Match the DIGIT PAIR, not a literal string. H10 closed `6 of 9` and H11
+#: found the spelling gap: `mockup-02` renders `6 / 9`, which the literal check
+#: sailed past. The figure has made three document hops already and was spelled
+#: differently on at least one of them, so the separator is not the invariant --
+#: the unexplained count is.
+SIX_NINE = re.compile(r"\b6\s*(?:/|of|\\)\s*9\b", re.I)
+
+
 def _bare_count_violations(text: str) -> list[str]:
+    """A count is a violation unless it is **quoted as a token**.
+
+    The word both documents use is *bare*, and backticks are what "bare" means
+    in markdown: `` `6/9` `` is the figure being named, `6 of 9 rows scored` is
+    the figure being asserted. This replaced a growing list of marker words —
+    H11's normalised check surfaced two further citations (SPEC.md §3.1 defect 2
+    and §12.1's revival note) and each would have needed another word added,
+    which is how an exclusion list quietly becomes a hiding place.
+
+    The marker words are kept as a secondary allowance for un-backticked prose,
+    but the backtick rule is the principled one and does the work.
+    """
     out = []
     for i, line in enumerate(text.splitlines(), 1):
-        if BARE_COUNT not in line:
+        m = SIX_NINE.search(line)
+        if not m:
             continue
-        if any(m in line.lower() for m in ANTI_PATTERN_MARKERS):
+        quoted = "`" in line[max(0, m.start() - 2):m.start()] and "`" in line[m.end():m.end() + 2]
+        if quoted or any(w in line.lower() for w in ANTI_PATTERN_MARKERS):
             continue
         out.append(f"line {i}: {line.strip()[:80]}")
     return out
@@ -140,13 +169,27 @@ def test_no_bare_six_of_nine_anywhere_in_specs() -> None:
     three hops. A fourth would most likely appear somewhere new.
     """
     violations = []
-    for p in sorted((REPO / "docs" / "specs").rglob("*.md")):
+    for p in sorted((REPO / "docs" / "specs").rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in (".md", ".html", ".yaml", ".yml"):
+            continue
+        rel = p.relative_to(REPO).as_posix()
+        # `docs/specs/mockups/` is exempt, and the exemption is load-bearing:
+        # mockup-02 renders `6 / 9` and H10/H11 both say not to repair it. The
+        # sheets are frozen historical artifacts carrying a HISTORICAL banner,
+        # not live specification. **This exemption is the only thing standing
+        # between that figure and a fourth hop**, so the mockup redraw inherits
+        # removing it as a named obligation.
+        if rel.startswith("docs/specs/mockups/"):
+            continue
         for line in _bare_count_violations(p.read_text(encoding="utf-8", errors="ignore")):
-            violations.append(f"{p.relative_to(REPO).as_posix()}  {line}")
+            violations.append(f"{rel}  {line}")
     assert not violations, (
-        "the bare figure `6 of 9` appears in docs/specs/:\n  " + "\n  ".join(violations)
-        + "\n\nIt is indistinguishable from the Amendment 1 §A1.5 error. A count must name its "
-          "exclusions."
+        "an unexplained 6/9 count appears in docs/specs/:\n  " + "\n  ".join(violations)
+        + "\n\n**A count that does not name its exclusions cannot be checked, whatever "
+          "separator it is\nspelled with.** `6 of 9`, `6 / 9` and `6/9` are the same defect: "
+          "each is legal if two of\nrows 1–11 are unavailable, and each is also exactly what a "
+          "reader gets by miscounting an\n11-row card as 9. Report counts as `N of M rows "
+          "scored` followed by an `unavailable:` line\nnaming every excluded row."
     )
 
 
@@ -155,6 +198,10 @@ def test_the_bare_count_check_can_actually_fail() -> None:
     example carrying the figure with no explanation must still be caught."""
     assert _bare_count_violations("pre-open total +4 · 6 of 9 rows scored")
     assert not _bare_count_violations("A bare `6 of 9` is indistinguishable from an error")
+    # H11 §3: every separator spelling, since the figure was spelled two ways
+    # across its three hops.
+    for spelling in ("6 / 9", "6/9", "6 of 9", "6  /  9", "6 OF 9"):
+        assert _bare_count_violations(f"scored {spelling} rows"), f"missed {spelling!r}"
 
 
 def test_the_denominator_block_names_its_exclusions() -> None:
