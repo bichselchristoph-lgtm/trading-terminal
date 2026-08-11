@@ -12,9 +12,9 @@
 
 ## 1. Working agreement
 
-**Roles.** Claude Code builds in `D:\Dev`. Christoph is the sole user acceptance tester. Chat (this surface) does design and review and **cannot see the repo** — everything it needs must be written to a file. That is the existing handoff convention in `momentum-harness/CLAUDE.md` and this plan uses it unchanged.
+**Roles.** Claude Code builds in **`D:\Dev\momentum`**. Christoph is the sole user acceptance tester. Chat (this surface) does design and review and **cannot see the repo** — everything it needs must be written to a file. The handoff convention is **`docs/specs/HANDOFF-PROTOCOL.md`**, which is the authority: five states, copy-and-keep, and `handoff/accepted/`. This plan points at it rather than restating it — a convention described in two places diverges.
 
-**Task files.** Each slice below becomes one `handoff/inbox/NNN-*.md`. Existing numbering runs to 007, so **this plan starts at 008**. On completion, Claude Code writes `handoff/done/NNN-*.md` that is *readable cold*: name the files, quote the numbers, say what surprised you. "Done as specified" is not a handoff.
+**Task files.** Each slice below becomes one `handoff/inbox/SNNN-*.md`. **Slices take the prefix `S`; handoff tasks keep bare numbers** — see the renumbering note in §2. On completion, Claude Code writes `handoff/done/SNNN-*.md` that is *readable cold*: name the files, quote the numbers, say what surprised you. "Done as specified" is not a handoff. See `docs/specs/HANDOFF-PROTOCOL.md` for the states and the copy-and-keep rule.
 
 **One slice at a time.** A slice is not done until Christoph has run its UAT script and said so. No slice starts while the previous one is un-accepted.
 
@@ -111,11 +111,11 @@ DEFERRED — no slice number, see §5
 
 Design happens here, in chat. Output is one `handoff/inbox/NNN-name.md`, written *for a session that cannot ask questions*: file paths, function signatures, config keys, the exact defect being fixed and where it is documented, and the three exit tests.
 
-**Getting it onto your machine.** If `D:\Dev\momentum-harness\handoff\inbox` is a connected folder, this session writes it there directly. Otherwise it is delivered here and you save it. **Either way the task file is the whole handoff — this session cannot see the repo, so anything not written down does not exist.**
+**Getting it onto your machine.** If `D:\Dev\momentum\handoff\inbox` is a connected folder, this session writes it there directly. Otherwise it is delivered here and you save it. **Either way the task file is the whole handoff — this session cannot see the repo, so anything not written down does not exist.**
 
 ### Step 2 — Claude Code builds
 
-You open Claude Code in `D:\Dev\momentum-harness` and say *"do inbox 008"*. It reads the task file, builds, runs the suite, and writes `handoff/done/008-name.md`.
+You open Claude Code in `D:\Dev\momentum` and say *"do inbox S008"*. It reads the task file, builds, runs the suite, and writes `handoff/done/S008-name.md`.
 
 **How many agents.** For most slices, **one session, no subagents.** The work is sequential and touches shared files, and parallel agents editing one module produce merge conflicts that cost more than the parallelism saves. **Fan out only where the work is genuinely independent**, which in this plan is three places:
 
@@ -155,7 +155,19 @@ You report what happened, this session reads the `done/` note, and writes the ne
 
 ---
 
-### 008 — Make `live/` testable
+> **ORDERING DECISION, 2026-08-11 — `S009` runs before `S008`.** Recorded because it
+> contradicts the standing rule that no slice starts while the previous one is un-accepted.
+>
+> `S008` makes `live/` testable: 16 imported files, zero collected behavioural tests, and
+> **an adoption decision nobody has made.** `S009` needs none of it. Deferring the first
+> visible panel behind an unmade decision about an imported tree is how Layer 0 stayed
+> unbuilt while fully specified.
+>
+> **`S008` is not cancelled and not descoped, only reordered.** Its four defects remain
+> owed: `condition_codes.yaml`, the session-defined-twice bug, the missing behavioural
+> tests, and `regime_pull.py`.
+
+### S008 — Make `live/` testable
 
 
 **Why first.** Three things converge here, and one slice clears all of them. `live/` has **zero collected behavioural tests** across 16 modules, and two consolidation steps already shipped a broken `live/` that stayed green. `live/regime/regime_pull.py` **raises `NameError` on the first call** — Layer 1 is not runnable and import coverage cannot see it. And `preregistration.yaml → tws_order_separation` names `live_has_behavioural_coverage: met: false` as the precondition blocking any future order-staging work. **One slice clears all three.**
@@ -180,7 +192,7 @@ You report what happened, this session reads the `done/` note, and writes the ne
 
 ---
 
-### 009 — The TUI frame, the refusal grammar, and a thin day record
+### S009 — The TUI frame, the refusal grammar, and a thin day record
 
 
 **Why.** Build the frame and the vocabulary once, before any panel has content to argue about. This is where the render becomes snapshot-testable — the property the whole plan leans on — and where the **four-colour grammar** stops being prose.
@@ -207,7 +219,7 @@ You report what happened, this session reads the `done/` note, and writes the ne
 
 ---
 
-### 010 — Attach a symbol, and the context block
+### S010 — Attach a symbol, and the context block
 
 **Why here.** This is the first slice that puts a real number on screen, and it is the one that makes 011 possible — sizing needs ADR, and ADR comes from here. It is also where the *no local database* decision proves itself: if this slice needs a cache, the decision was wrong.
 
@@ -243,7 +255,7 @@ You report what happened, this session reads the `done/` note, and writes the ne
 
 ---
 
-### 011 — Sizing, risk, and the two hard limits
+### S011 — Sizing, risk, and the two hard limits
 
 
 **Why.** Turns a chosen name into a number, and it is the panel you touch on **every** trade — including the fast path where you decided in TradingView and came here only to size and send. **This is the last core slice; after it the terminal is useful every morning.** **No order staging** — that is 016 and it is gated behind a written release.
@@ -282,7 +294,7 @@ Each requires an explicit promotion decision. None starts automatically.
 
 ---
 
-### 012 — The tape: playbook binding, the level machine, and the baseline-free components
+### S012 — The tape: playbook binding, the level machine, and the baseline-free components
 
 **Why it is core.** This is the thing you open the terminal for on the analytical path. It is also the **most-built and least-tested** part of the system — a working book reconstruction, capability-driven degradation and replay support all exist, and an audit found the cluster is watching the wrong level for four of six playbooks. So this slice is not "build the tape engine." It is **bind it to the playbook, ship only what needs no baseline, and make every gap render as a reason.**
 
@@ -314,7 +326,7 @@ Each requires an explicit promotion decision. None starts automatically.
 
 ---
 
-### 013 — Watchlist ingest, archive, and the ingest ledger
+### S013 — Watchlist ingest, archive, and the ingest ledger
 
 
 **Why.** `scanner_watchlists/` does not exist on disk, which means **no watchlist has ever successfully passed ingestion.** The door is built and tested; nothing has walked through it. And nothing downstream can be built until the day record exists, because every panel is a projection of one of its fields.
@@ -338,7 +350,7 @@ Each requires an explicit promotion decision. None starts automatically.
 
 ---
 
-### 014 — Ranked watchlist and grader vector
+### S014 — Ranked watchlist and grader vector
 
 
 **Why.** The panel you will actually look at every morning. Depends on 009 (records). The D10 regime cap has nothing to consume until 013, so it renders `ABSENT — regime not built` and no cap applies — stated on the panel, never silently permissive.
@@ -359,7 +371,7 @@ Each requires an explicit promotion decision. None starts automatically.
 
 ---
 
-### 015 — Execution pull, trade log, and review
+### S015 — Execution pull, trade log, and review
 
 
 **Why.** **The highest-leverage missing artifact in the system.** No trade log exists, so Layer 2, grader calibration, the similarity prior and the scoring loop are all blocked on this one thing. It also closes the loop the project description asks for.
@@ -386,7 +398,7 @@ Each requires an explicit promotion decision. None starts automatically.
 
 ---
 
-### 016 — The remaining tape components, and extended hours
+### S016 — The remaining tape components, and extended hours
 
 **Why here.** This is the surface the terminal exists for on a live morning, and it is the most-built part of the system — a working book reconstruction, capability-driven degradation and replay support all exist. It is also the **least-tested**, and an audit found it is watching the wrong level for four of six playbooks. So this slice is not "build the tape engine." It is: **bind it to the playbook, collapse 22 detectors to 11, and make every capability gap render as a reason.** Contracts in **SPEC §5b, §6b** and **ORDER-FLOW-EVIDENCE.md §4.5**.
 
@@ -428,7 +440,7 @@ One record per level per session, playbook-scoped: `tests[]` with prints-at-pric
 
 ---
 
-### 017 — Order staging
+### S017 — Order staging
 
 **Hard-gated.** `preregistration.yaml → tws_order_separation` requires `live_has_behavioural_coverage: met: true`, which 008 and 012 deliver — but the gate is released by a person in writing, not by a passing test. **Do not build this slice until Christoph releases it.**
 
@@ -446,7 +458,7 @@ The keystroke is measurement, not friction: §7b.4 deletes any rule overridden >
 
 ---
 
-### 018 — Databento replay harness
+### S018 — Databento replay harness
 
 **No subscription (`SPEC.md` §7.2, revised).** Per-byte pulls of **traded tickers only**: `tbbo` for each traded symbol-day after the close, MBO only for the specific symbol-days where a book-dependent component is on trial. At ~20 trades a month that is a few dozen symbol-days — a fraction of the $199/mo Standard plan, and it lands in **the only sample where a detector's hit rate is measurable**, because it is the only sample with both the tape and the outcome. Call `get_cost` before every pull and log the delta against delivered bytes; `harness/spend.py`'s reserve-then-close ledger already maps.
 
@@ -472,7 +484,7 @@ Historical `mbo` replay through `DBNStore.replay(callback)` into the same handle
 
 ---
 
-### 019 — First calibration pass
+### S019 — First calibration pass
 
 **Was the second half of v1.0's 019.** It never depended on Layer 0 and survives the deletion intact. Requires 100+ trades in the log and 60 sessions of Layer I logging. **Every result inherits 017's selection constraint — conditional on trades taken, never on setups available.**
 
@@ -482,7 +494,7 @@ This is the slice that adjudicates §12.2–12.5: grader letters, the Layer I st
 
 ---
 
-### 020 — `tws_order`: the CLOSE side and the short rules
+### S020 — `tws_order`: the CLOSE side and the short rules
 
 **Why it exists.** The Drive spec says **"four declared sides (side never inferred)."** `tws_order` implements three — `--side {buy,sell,short}` — and there is no `close`. `--cancel` cancels *orders*, which is a different operation from flattening a *position*.
 

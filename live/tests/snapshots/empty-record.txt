@@ -1,0 +1,39 @@
+### attached
+┌─ ATTACHED ──────────────────────────────────────────── not attached ┐
+  — (nothing attached)
+  1 of 1 · end
+
+### health
+┌─ HEALTH ──────────────────────────────────────── updates · none yet ┐
+  sources   — (no feed connected)
+  last seen — (nothing seen)
+  frames/ticks  — (no ticks received)
+  3 of 3 · end
+  ───────────────────────────────────────────────────────────────────
+  regime    [ NOT BUILT ] (no file for today)
+
+### risk
+┌─ RISK ───────────────────────────────────────────── not transmitted ┐
+  day P&L   — (no trades today)
+  open R    — (no positions)
+  2 of 2 · end
+  ───────────────────────────────────────────────────────────────────
+  daily limit  — (no account snapshot)
+
+### sizing
+┌─ SIZING ─────────────────────────────────────────── not transmitted ┐
+  1R        — (no account snapshot)
+  shares    — (no entry, no stop)
+  2 of 2 · end
+  ───────────────────────────────────────────────────────────────────
+  risk      — (no account snapshot)
+
+### tape
+┌─ TAPE ─────────────────────────────────────────────────── no source ┐
+  — (no tape subscription in this slice)
+  1 of 1 · end
+
+### watchlist
+┌─ WATCHLIST ──────────────────────────────────────── no ingest today ┐
+  — (no watchlist ingested today)
+  1 of 1 · end

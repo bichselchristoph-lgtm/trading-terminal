@@ -1,0 +1,26 @@
+# config/layout.yaml — committed and load-bearing (S009 §4f).
+#
+# One line per component. `slot` is an ORDINAL, not a boolean — it fixes the
+# order components appear in, and a bool here would collapse that to 0/1.
+#
+# `reason` is REQUIRED on any change. A component turned off without a recorded
+# reason is a decision nobody can review later.
+#
+# A hidden component STILL COMPUTES and still writes to the day record.
+# tests/test_layout_config.py asserts it. Otherwise only visible components
+# accumulate evidence and the inference is circular — tenet 7, display is not
+# storage.
+#
+# NO AUTO-REORDERING, EVER. A system that both measures your preference and
+# shapes it destroys the measurement.
+
+components:
+  # --- top row: what you are looking at -----------------------------------
+  - {id: watchlist,  slot: 1, visible: true,  reason: ""}
+  - {id: attached,   slot: 2, visible: true,  reason: ""}
+  - {id: tape,       slot: 3, visible: true,  reason: ""}
+
+  # --- bottom row: what constrains you -------------------------------------
+  - {id: sizing,     slot: 4, visible: true,  reason: ""}
+  - {id: risk,       slot: 5, visible: true,  reason: ""}
+  - {id: health,     slot: 6, visible: true,  reason: "permanently visible per S009 §4g"}

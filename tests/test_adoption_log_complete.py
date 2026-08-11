@@ -45,6 +45,41 @@ BOOTSTRAP_ALLOWLIST = {
     "tests/test_spec_pointers.py",
     "tests/test_regime_snapshot_path.py",
     "tests/test_regime_prompt_invariants.py",
+    "tests/test_resupplied_docs_are_repaired.py",
+    "tests/test_adopt_supersession.py",
+    # Authored here under H11, not supplied from outside. It is the one file
+    # in docs/specs/ that documents the tree rather than specifying the system.
+    "docs/specs/RE-SUPPLY.md",
+    "tests/test_handoff_state_declared.py",
+    # Authored here under task 012, not adopted from anywhere. tools/ is a code
+    # tree and deliberately has no native-prefix carve-out, so the gate demanded
+    # this entry -- correctly, and it surfaced on 013's full-suite run rather
+    # than 012's, which only ran the tool.
+    "tools/capture_tape.py",
+
+    # ---- S009: the first slice to author NEW CODE in this tree -------------
+    # The gate has three routes in: adoption, evidence carry, and this list.
+    # None of them is "code written fresh here for a slice", because M001 built
+    # the gate for a migration and every file until now either came from the
+    # predecessor or was scaffolding.
+    #
+    # These are natively authored, in a CODE TREE, which deliberately has no
+    # native-prefix carve-out — so they land here. **The allowlist is now doing
+    # two jobs**, and the second one will grow by roughly this many entries per
+    # slice. That is the "list that becomes a hiding place" this project keeps
+    # naming, and it needs a proper fourth route rather than more entries.
+    # Flagged in S009's done-note as a decision, not taken here.
+    "config/layout.yaml",
+    "live/__init__.py",
+    "live/tui/__init__.py",
+    "live/tui/grammar.py",
+    "live/tui/day_record.py",
+    "live/tui/layout.py",
+    "live/tui/app.py",
+    "live/tests/__init__.py",
+    "live/tests/test_tui_grammar.py",
+    "live/tests/test_tui_frame.py",
+    "live/tests/snapshots/empty-record.txt",
 }
 
 
@@ -91,7 +126,8 @@ def logged_paths(filename: str, column: int) -> set[str]:
 #: be adopted, not authored, and all thirteen carry ADOPTION-LOG rows -- so the
 #: carve-out was buying nothing and costing the gate its reach over a directory
 #: that now holds the system's most load-bearing documents.
-NATIVE_PREFIXES = ("handoff/", "docs/observations/", "docs/regime-snapshots/")
+NATIVE_PREFIXES = ("handoff/", "docs/observations/", "docs/regime-snapshots/",
+                   "christoph/")
 
 
 def is_native(path: str) -> bool:
