@@ -1,6 +1,6 @@
 # 014 — Commit the staged work before the capture
 
-**Status** WRITTEN · **Date** 2026-08-11 · **Type** version control
+**Status** DONE · **Date** 2026-08-11 · **Type** version control
 **Runs in** `D:\Dev\momentum`. No TWS, no network, no push. **Do this before 09:00 ET.** It is roughly five minutes and it must not delay the capture — if it is not finished by 08:55, **stop and start the capture; the commits can wait, the session cannot.**
 
 > Read this cold. The session that wrote it cannot answer questions.
