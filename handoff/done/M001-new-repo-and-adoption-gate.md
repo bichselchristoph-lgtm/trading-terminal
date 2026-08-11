@@ -10,6 +10,8 @@ new_tree: D:\Dev\momentum
 
 # M001 — New repo, adoption gate, evidence carry
 
+**Status** DONE
+
 **The tree exists, the gate works, the evidence is carried. Nothing was adopted, and that is
 the correct outcome rather than an unfinished one.**
 

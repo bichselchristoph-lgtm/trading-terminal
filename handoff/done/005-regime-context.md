@@ -9,6 +9,8 @@ built: nothing
 
 # 005 — Regime context, closed as SUPERSEDED
 
+**Status** DONE
+
 **Nothing was built. No code, no tests, no config.** 005 was `BLOCKED ON ONE ANSWER` from
 2026-08-09 and never unblocked; the answer arrived as a design decision that removed the
 thing it was blocking.

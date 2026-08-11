@@ -11,6 +11,8 @@ wrote: D:\Dev\momentum-harness\docs\PROVENANCE.md (untracked, deliberately)
 
 # H9a — origin inventory of `momentum-harness`
 
+**Status** DONE
+
 **There was no H9a task file.** Not in either inbox. M001 cites it four times — `H9a's
 table`, `H9a §3b`, and twice more — but the task itself was never written. This was built to
 the four questions M001 actually asks of it, plus the instruction given directly. **If a real

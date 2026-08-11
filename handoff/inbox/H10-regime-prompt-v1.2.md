@@ -1,6 +1,6 @@
 # H10 — `REGIME-PROMPT.md` v1.2, and commit what is staged
 
-**Status** OPEN · **Date** 2026-08-10 · **Type** spec + housekeeping
+**Status** DONE · **Date** 2026-08-10 · **Type** spec + housekeeping
 **Runs in** `D:\Dev\momentum`. Closes items 1 and 2 of H8's *Left open*.
 
 > Read this cold. The session that wrote it cannot answer questions.

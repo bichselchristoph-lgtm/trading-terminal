@@ -10,6 +10,8 @@ tree: D:\Dev\momentum
 
 # H9 — Commit the specs into the repo
 
+**Status** DONE
+
 **All four canonical documents are in the tree.** Thirteen files adopted through the gate,
 each with a provenance companion and an `ADOPTION-LOG.md` row. Tree is at **52 tracked
 files**.

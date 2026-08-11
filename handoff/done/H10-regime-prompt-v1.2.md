@@ -9,6 +9,8 @@ tree: D:\Dev\momentum
 
 # H10 — `REGIME-PROMPT.md` v1.2
 
+**Status** DONE
+
 ```
 BEFORE : 34 passed
 AFTER  : 47 passed
