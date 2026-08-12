@@ -54,12 +54,12 @@ including mid-drag — there was a panel on screen you could not make sense of.*
 
 **A · Shrinking below ~75 columns: did the refusal appear, with zero panels?**
 
-- [ ] yes
+- [x ] yes
 - [ ] no — panels still rendered
 
 **B · Growing back to 209 × 54: did the panels come back?**
 
-- [ ] yes
+- [ x] yes
 - [ ] no — the screen stayed refused
 
 **C · Did the refusal message show the size you were actually at?**
@@ -67,27 +67,27 @@ Shrink to two different narrow sizes and check the numbers change. **A message n
 you launched at rather than the size you are at is the defect this whole task is about, wearing
 a different hat.**
 
-- [ ] yes — the numbers tracked the window
+- [ x] yes — the numbers tracked the window
 - [ ] no — it showed: `________________`
 
 **D · At any point, including mid-drag, was there a panel you could not read?**
 
-- [ ] no
+- [ x] no
 - [ ] yes — describe it: `________________________________`
 
 **E · Row 9 now reads `[ NOT BUILT ] (deferred - not core, revisit later)`.**
 Rows 5 and 8 read `select` and `submit`. **Is that what you meant?**
 
-- [ ] yes
+- [x ] yes
 - [ ] no: `________________________________`
 
 **F · Anything unexpected.** Free text:
-
+the app exited silently mid-edit — no error, prompt returned. Worth adding before you retire it, because nothing tests that the launch command works. Every test drives the app in-process, so the one path a human uses is unverified.
 `________________________________________________`
 
 ---
 
-Signed `________________` Date/time `________________`
+Signed `__Christoph______________` Date/time `____August 12, 2026 6:30pm____________`
 
 *Once signed, copy this file to `christoph/done/`, verify it is byte-identical, then remove it
 from `christoph/open/`.*
