@@ -219,3 +219,139 @@ def test_every_row_cites_a_source() -> None:
     assert not thin, (
         f"rows whose `what produced it` cell is empty or near-empty: {thin}. A "
         "finding with no source cannot be checked, and will be read as fact.")
+
+
+# ---- 018 part 5: a retired UAT's findings must have a destination ---------
+#
+# The ledger has a trigger. A signed UAT sitting in christoph/done/ had none, so
+# a finding written into one reached work only because the design session
+# happened to be in the conversation -- three of 018's parts exist for exactly
+# that reason, and nothing would have caught their absence.
+#
+# THE STRUCTURAL SHAPE WAS NOT AVAILABLE. A `**Findings**` section authored into
+# each UAT is the better mechanism, and both 018's own Do-not list and CLAUDE.md
+# forbid this session writing to christoph/ -- a check demanding a section it
+# cannot add, to thirteen files it cannot edit, is red on arrival with no legal
+# route to green. So the register keys on the LEDGER, which this side owns.
+#
+# ITS LIMIT, stated rather than discovered: it cannot detect a finding the
+# reviewer overlooked. It forces someone to look and record that they looked.
+
+UAT_DIR = REPO / "christoph" / "done"
+
+REGISTER_ROW = re.compile(
+    r"^\|\s*`(?P<uat>[^`]+\.md)`\s*\|\s*\*{0,2}(?P<status>[A-Z][A-Z ]*[A-Z])\*{0,2}\s*\|"
+    r"(?P<rest>[^|]*)\|\s*(?P<review_by>[^|]*?)\s*\|\s*$", re.M)
+
+UAT_STATUSES = ("CITED", "NO FINDINGS", "NOT REVIEWED")
+
+
+def register() -> dict[str, dict]:
+    if not LEDGER.exists():
+        return {}
+    out = {}
+    for m in REGISTER_ROW.finditer(LEDGER.read_text(encoding="utf-8")):
+        out[m.group("uat")] = {"status": m.group("status").strip(),
+                               "note": m.group("rest").strip(),
+                               "review_by": m.group("review_by").strip(" *")}
+    return out
+
+
+def retired_uats() -> list[str]:
+    return sorted(p.name for p in UAT_DIR.glob("*.md")) if UAT_DIR.is_dir() else []
+
+
+def unaccounted(uats: list[str], reg: dict) -> list[str]:
+    """PURE, so Refusal B can be exercised without touching christoph/.
+
+    018 forbids writing to or removing from that folder, so the fixture for
+    'a retired UAT with a finding and no destination' is a synthetic name rather
+    than a real file. The function under test is the same one the real check
+    uses.
+    """
+    return [u for u in uats if u not in reg]
+
+
+def test_every_retired_uat_has_a_register_row() -> None:
+    """**The trigger.** A UAT retired into `christoph/done/` with no row here is
+    a finding with nowhere to land, and that is the failure 018 part 5 names."""
+    missing = unaccounted(retired_uats(), register())
+    assert not missing, (
+        "these retired UATs have no row in the UAT review register:\n  "
+        + "\n  ".join(missing)
+        + "\n\nA finding recorded in a retired UAT must land where something fails "
+          "if it is\nignored. Add a row to the register in "
+          "docs/observations/OBSERVATIONS.md:\n"
+          "  CITED        -- name the OBS ids or task numbers it produced\n"
+          "  NO FINDINGS  -- an assertion someone makes, with their name in git\n"
+          "  NOT REVIEWED -- a declared backlog, and it needs a review-by date\n"
+          "THIS SESSION MAY NOT WRITE TO christoph/. The row goes in the ledger.")
+
+
+def test_every_register_status_is_one_of_the_three() -> None:
+    wrong = [(u, r["status"]) for u, r in register().items()
+             if r["status"] not in UAT_STATUSES]
+    assert not wrong, f"register rows with a status outside {UAT_STATUSES}: {wrong}"
+
+
+def test_a_cited_row_names_where_the_finding_went() -> None:
+    """`CITED` is a claim that the findings were routed. A claim with no
+    destination is a status field used as an off switch -- the same rule as
+    PROMOTED needing a `resolution:`."""
+    ids = {r["id"] for r in rows()}
+    for uat, r in register().items():
+        if r["status"] != "CITED":
+            continue
+        named = set(re.findall(r"OBS-\d{3}", r["note"]))
+        assert named, f"{uat} is CITED but names no destination: {r['note']!r}"
+        unknown = named - ids
+        assert not unknown, (
+            f"{uat} cites ledger rows that do not exist: {sorted(unknown)}")
+
+
+def test_a_not_reviewed_row_is_not_overdue() -> None:
+    """**Red for being ignored, not for being unreviewed.** A declared backlog is
+    honest; a backlog past its own date is the thing this ledger exists to
+    stop."""
+    now = today()
+    overdue = []
+    for uat, r in register().items():
+        if r["status"] != "NOT REVIEWED":
+            continue
+        d = parse_review_by(r["review_by"])
+        assert d is not None, (
+            f"{uat} is NOT REVIEWED with a missing or malformed review-by "
+            f"({r['review_by']!r}). Unknown is never read as answered.")
+        if d < now:
+            overdue.append(f"{uat}  review-by {r['review_by']}  ({(now - d).days} days ago)")
+    assert not overdue, (
+        "these retired UATs have been unreviewed past their own date:\n  "
+        + "\n  ".join(overdue)
+        + "\n\nRead them and set CITED or NO FINDINGS, or move the date "
+          "deliberately.")
+
+
+def test_refusal_b_a_retired_uat_with_no_destination_is_red() -> None:
+    """**Refusal B, exercised on synthetic input.**
+
+    `018` forbids writing to or removing from `christoph/`, so the fixture is a
+    UAT name rather than a UAT file. **The function is the one the real check
+    calls**, so this is not a parallel implementation that could drift.
+    """
+    reg = register()
+    fake = "099-a-uat-whose-findings-went-nowhere.md"
+    missing = unaccounted(retired_uats() + [fake], reg)
+    assert fake in missing, "a retired UAT with no register row was not caught"
+    # And the message names it, which is what makes the red actionable.
+    assert fake in "\n  ".join(missing)
+    # The real folder is unchanged and still fully accounted for.
+    assert not unaccounted(retired_uats(), reg)
+
+
+def test_the_register_covers_the_uat_that_produced_this_mechanism() -> None:
+    """`009` is why part 5 exists. Its three findings became 018 parts 2-4, and
+    before this register nothing would have noticed if they had not."""
+    reg = register()
+    nine = [u for u in reg if u.startswith("009-")]
+    assert nine, "009 is not in the register"
+    assert reg[nine[0]]["status"] == "CITED"

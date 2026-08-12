@@ -57,11 +57,89 @@ precision — nothing here justifies claiming row 7 needs attention sooner than 
 | **OBS-010** | 2026-08-11 | OBSERVATION | **`condition_codes.yaml` needs rewriting, not deleting** — its banner asserts ITCH provenance it does not have | `handoff/done/013c-*.md` | Identifying the vocabulary's actual source. **Deleting it would lose the fact that something once claimed ITCH provenance**, which is the finding | OPEN | 2026-11-12 |
 | **OBS-011** | 2026-08-11 | OBSERVATION | **The separation guard misclassifies `OMCL 2024-08-01` and `ITCI 2025-01-10`.** Latent until the identification window widens past 15 s | `handoff/done/013c-*.md` | Widening the window in a test and confirming both flip. **Latent is not fixed** — it is a defect with a trigger nobody has pulled yet | OPEN | 2026-11-12 |
 | **OBS-012** | 2026-08-11 | OBSERVATION | **`git ls-files` reads the index and reports staged files as present.** `git cat-file -e HEAD:<path>` is the check that answers *"committed"* | `handoff/done/013b-*.md` | Nothing — this is settled fact about git. **It stays OPEN because the tree has not been audited for the wrong check.** `tests/test_no_secrets.py::test_claude_config_is_not_tracked` uses `git ls-files` today | OPEN | 2026-11-12 |
+| **OBS-014** | 2026-08-12 | OBSERVATION | **The too-small guard was evaluated once, at launch.** Launched below the per-tile minimum it refused correctly; shrunk after launch it never fired, and panels truncated to `WATCHLIS...` and `(no wat...` instead | UAT `christoph/done/009-s009a-read-the-screen-at-working-width.md`, answers B and C | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
+| **OBS-015** | 2026-08-12 | OBSERVATION | **Pipeline rows 5 and 8 rendered with an empty name column.** Both were declared `name: "[HUMAN]"` while the value cell already said *your decision*, so the name read as a gap rather than a stage | UAT `christoph/done/009-s009a-read-the-screen-at-working-width.md`, answer D | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
+| **OBS-016** | 2026-08-12 | OBSERVATION | **`manage` rendered `[ NOT BUILT ] (slice not assigned)` after it had been ruled deferred.** *Nobody decided* and *decided to postpone* carry different weight, and the screen was making the weaker one | `018` part 4, from Christoph's ruling of 2026-08-12. **The underlying gap OBS-006 records is unchanged** | **SETTLED for the rendering.** OBS-006 stays OPEN | PROMOTED | 2026-11-12 |
 | **OBS-013** | 2026-08-12 | ~~READING~~ → OBSERVATION | **At 209 columns each top-row tile gets ~67, below the `BOX_WIDTH` of 71 the snapshots were taken at** | Design session 2026-08-12, **as a reading**. **Measured and confirmed by `S009a` the same day** | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
 
 ---
 
+## The UAT review register — 018 part 5
+
+**The gap this closes.** This ledger has a trigger that goes red. **A signed UAT sitting in
+`christoph/done/` has none.** A finding written into a retired UAT reaches work only because
+the design session happened to be in the conversation — **three of `018`'s parts exist for
+exactly that reason, and nothing would have caught their absence.**
+
+**The shape chosen: the register keys on the LEDGER, not on the UAT.** Every file in
+`christoph/done/` must appear here with a status. `tests/test_observations_ledger.py` goes red
+on a retired UAT with no row at all, and `NOT REVIEWED` rows carry a `review-by` and go red
+when overdue, exactly like an observation.
+
+**Why not the structural shape** — a `**Findings**` section authored into each UAT. `018`'s own
+*Do not* list forbids writing to `christoph/`, and so does `CLAUDE.md`. **A check requiring a
+section this session cannot add, to thirteen files it cannot edit, would be red on arrival with
+no legal route to green.** It is the better shape and it is not available to this side of the
+channel — if the design session authors `**Findings**` sections into future UATs, this register
+becomes the weaker of two mechanisms and should give way to it.
+
+**Its limit, stated rather than discovered.** **It cannot detect a finding the reviewer
+overlooked.** It forces someone to look and to record that they looked; it does not verify the
+quality of the look, and a reviewer who marks everything `NO FINDINGS` passes it. What it does
+catch — and what actually happened with `009` — is a UAT retired with findings that were never
+routed anywhere, which now goes red instead of staying silent.
+
+| uat | status | destination / note | review-by |
+|---|---|---|---|
+| `009-s009a-read-the-screen-at-working-width.md` | **CITED** | OBS-014, OBS-015, OBS-016 | — |
+| `001-ibkr-totalview-api-entitlement.md` | NOT REVIEWED | — | 2026-09-12 |
+| `002-handoff-protocol-rule-4-uat.md` | NOT REVIEWED | — | 2026-09-12 |
+| `003-s009-read-the-empty-screen.md` | NOT REVIEWED | — | 2026-09-12 |
+| `004-m001-count-the-tree.md` | NOT REVIEWED | — | 2026-09-12 |
+| `005-012a-depth-book-comparison.md` | NOT REVIEWED | — | 2026-09-12 |
+| `006-h8-snapshot-path-fills.md` | NOT REVIEWED | — | 2026-09-12 |
+| `007-h10-regime-prompt-v12.md` | NOT REVIEWED | — | 2026-09-12 |
+| `008-h11-supersession-review.md` | NOT REVIEWED | — | 2026-09-12 |
+| `010-016-read-verify-cold.md` | NOT REVIEWED | — | 2026-09-12 |
+| `012-uat-first-five-minutes.md` | NOT REVIEWED | — | 2026-09-12 |
+| `012-uat-first-five-minutes_1.md` | NOT REVIEWED | **NOT A DUPLICATE** of the row above — different sha256, 821 bytes smaller. Two versions of one signed pre-registration sit in `christoph/done/` and **nothing declares which is authoritative** | 2026-09-12 |
+| `012b-uat-basis-correction.md` | NOT REVIEWED | — | 2026-09-12 |
+
+**Why twelve rows say `NOT REVIEWED` rather than `NO FINDINGS`.** Judging whether a retired UAT
+contains an actionable finding is a reading, and it is the design session's reading to make.
+**Asserting *no findings* on twelve files this session did not author, did not run, and cannot
+ask about would be exactly the vacuous pass `018` warns against** — a green check that
+establishes nothing. They are recorded as a declared backlog with a date, which is the
+instrument this ledger already uses for everything it cannot settle yet.
+
+**`review-by` is 2026-09-12, one month** — shorter than the observations' three, because this
+is a reading task blocked on nothing. It can be done in an afternoon by whoever is next in the
+conversation.
+
+---
+
 ## Resolutions
+
+**OBS-014 · PROMOTED.**
+`resolution:` Became `018` part 2. The per-tile check now re-evaluates on every resize via
+`live/tui/app.py`'s `Frame.on_resize`, switching **in both directions**, and the refusal message
+is recomputed rather than reused. Pinned by
+`test_shrinking_after_launch_refuses_and_growing_back_restores` and
+`test_the_refusal_message_reflects_the_current_size_not_the_launch_size`.
+
+**OBS-015 · PROMOTED.**
+`resolution:` Became `018` part 3. Rows 5 and 8 are named `select` and `submit` in
+`config/layout.yaml`; `human: true` and the value cell are unchanged, so the distinction between
+*a stage the system does not perform* and *one it has not performed yet* is intact. Pinned by
+`test_every_pipeline_row_has_a_name`.
+
+**OBS-016 · PROMOTED.**
+`resolution:` Became `018` part 4. `manage` carries `deferred: "not core, revisit later"` and
+renders `[ NOT BUILT ] (deferred - not core, revisit later)`. **No new badge word was invented**
+— `[ DEFERRED ]` is not in `SPEC.md` §4's vocabulary and `grammar.py` states that adding one is
+a spec change, so the ruling lives in the reason. **`slice not assigned` remains reachable** for
+a stage declaring no claim at all, and `BUILD-PLAN.md` still contains no slice building position
+management, which is OBS-006 and stays OPEN.
 
 **OBS-013 · PROMOTED.**
 `resolution:` Carried into the ledger as an unverified reading, and it had already been
