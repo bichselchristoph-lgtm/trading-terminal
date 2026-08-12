@@ -55,13 +55,22 @@ stages:
                                                    # and must never become a NOT BUILT panel.
   - {slot: 3,  name: indicators, slice: S010}      # "Attach a symbol, and the context block"
   - {slot: 4,  name: rank,       slice: S014}      # "Ranked watchlist and grader vector"
-  - {slot: 5,  name: "[HUMAN]",  human: true}      # after rank, before size — the selection
+  - {slot: 5,  name: select,     human: true}      # after rank, before size — choosing what to trade
   - {slot: 6,  name: size,       slice: S011}      # "Sizing, risk, and the two hard limits"
   - {slot: 7,  name: stage,      slice: S017}      # "Order staging" — HARD-GATED, released by a person
-  - {slot: 8,  name: "[HUMAN]",  human: true}      # after stage, before manage — the submit in TWS
-  - {slot: 9,  name: manage}                       # NO SLICE IN THE PLAN BUILDS THIS. Not an omission in
-                                                   # this file — a gap in BUILD-PLAN.md, reported in
-                                                   # handoff/done/S009a. Renders as unassigned.
+  - {slot: 8,  name: submit,     human: true}      # after stage, before manage — deciding whether to send
+  - {slot: 9,  name: manage,     deferred: "not core, revisit later"}
+                                                   # Ruled by Christoph 2026-08-12. The DATE lives here
+                                                   # rather than on screen: at the 67-column working
+                                                   # width the row truncates, and a ruling whose date is
+                                                   # cut in half is worse than one that says where to
+                                                   # look. This file is the record.
+                                                   # 018 part 4. BUILD-PLAN.md STILL CONTAINS NO SLICE
+                                                   # BUILDING POSITION MANAGEMENT — that remains true and
+                                                   # is OBS-006 in the ledger. `deferred` records that the
+                                                   # gap was RULED ON, not that it was filled. The
+                                                   # `slice not assigned` state stays reachable for a
+                                                   # genuine gap: any stage declaring no claim at all.
   - {slot: 10, name: reconcile,  slice: S015}      # "Execution pull, trade log, and review"
   - {slot: 11, name: journal,    slice: S015}      # same slice title
   - {slot: 12, name: archive,    slice: S013}      # same slice title

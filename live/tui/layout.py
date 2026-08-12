@@ -40,6 +40,11 @@ class Stage:
     * `slice`    — a slice will build it; the badge names it.
     * `human`    — not a slice and never will be. A stage the system does not
                    perform must not render as one it has not performed yet.
+    * `deferred` — **ruled on, and postponed.** 018 part 4: *"nobody decided"*
+                   and *"decided to postpone"* carry different weight, and the
+                   screen was making the weaker one. The value is the ruling
+                   itself, so the row carries who decided what rather than a
+                   flag somebody has to look up.
     * `renders`  — produced outside the terminal and pointed at from a panel.
                    **`regime` is the only one, and it is not a stage that is
                    coming**: `SPEC.md` §3.2 removes every regime layer from the
@@ -55,18 +60,20 @@ class Stage:
     built_by: str = ""
     slice: str = ""
     human: bool = False
+    deferred: str = ""
     renders: str = ""
 
     def __post_init__(self) -> None:
         if isinstance(self.slot, bool) or not isinstance(self.slot, int):
             raise ValueError(f"{self.name}: slot must be an ordinal int, got {self.slot!r}")
-        claims = [bool(self.built_by), bool(self.slice), self.human, bool(self.renders)]
+        claims = [bool(self.built_by), bool(self.slice), self.human,
+                  bool(self.deferred), bool(self.renders)]
         if sum(claims) > 1:
             raise ValueError(
                 f"{self.name}: a stage makes at most ONE claim about its state, got "
                 f"built_by={self.built_by!r} slice={self.slice!r} human={self.human} "
-                f"renders={self.renders!r}. Two claims render as one badge and the "
-                f"other is silently lost.")
+                f"deferred={self.deferred!r} renders={self.renders!r}. Two claims "
+                f"render as one badge and the other is silently lost.")
 
 
 @dataclass

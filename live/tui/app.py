@@ -386,6 +386,17 @@ def pipeline_panel(layout: Layout) -> Panel:
             # read like `manage`, which IS missing a slice. "Correctly" carries
             # that distinction; without it the two absences look identical.
             cell = "your decision - correctly not a slice"
+        elif s.deferred:
+            # 018 part 4. **Ruled on and postponed is not the same as nobody
+            # decided**, and the screen was making the weaker claim.
+            #
+            # NO NEW BADGE WORD. `[ DEFERRED ]` is not in SPEC.md §4's
+            # vocabulary, and grammar.py states that a new one is a spec change
+            # rather than a code change. So the badge stays `[ NOT BUILT ]` --
+            # which is true, the machinery does not exist -- and the ruling goes
+            # in the reason, where the difference from `slice not assigned` is
+            # carried by words rather than by an invented token.
+            cell = Cell.not_built(reason=f"deferred - {s.deferred}").render()
         elif s.built_by:
             cell = f"built - {s.built_by}"
             built += 1
@@ -395,6 +406,19 @@ def pipeline_panel(layout: Layout) -> Panel:
         rows.append(f"  {s.slot:>2} {s.name:<11} {cell}")
     return Panel("PIPELINE", f"{built} of {len(stages)} built", rows,
                  viewport=len(stages) or 1)
+
+
+class Frame(Vertical):
+    """Holds either the refusal or the tiles, and **re-decides on every resize.**
+
+    The handler lives here rather than on the app because Textual dispatches
+    `Resize` to widgets, not to `App` — putting it on the app looks right, runs
+    never, and leaves the guard exactly as launch-only as the one 018 part 2 is
+    fixing. Found by the resize test failing with `NoMatches` on `#too-small`.
+    """
+
+    async def on_resize(self) -> None:
+        await self.app._apply_fit()
 
 
 class MomentumApp(App):
@@ -452,19 +476,54 @@ class MomentumApp(App):
         return need_cols, need_rows, worst
 
     def compose(self) -> ComposeResult:
+        """An empty frame. **The decision is NOT taken here** — 018 part 2.
+
+        `compose()` runs ONCE, at startup. S009a's guard lived here, so it was
+        correct at launch and never again: shrink the window afterwards and the
+        panels truncated to `WATCHLIS...` instead of refusing. **A rule that
+        holds only at launch is not the rule**, and truncation at 24 columns is
+        technically honest and functionally unreadable — a panel you cannot read
+        is not a degraded panel, it is a different one.
+
+        So the frame is empty and `_apply_fit` fills it, on mount and on every
+        resize.
+        """
+        yield Frame(id="frame")
+
+    async def on_mount(self) -> None:
+        await self._apply_fit()
+
+    async def _apply_fit(self) -> None:
+        """Switch between the refusal and the panels, **in both directions.**
+
+        A one-way transition would be worse than what it replaces: a terminal
+        that refuses once and never comes back is a terminal you restart, and
+        restarting to recover from a resize teaches you not to resize.
+
+        **The message is RECOMPUTED on every call, never reused.** A refusal
+        naming the launch size while the window is now a different size is a
+        well-formed value answering a different question — the defect this
+        project is named for, rendered in the widget whose job is to prevent it.
+        """
+        cols, height = self.size.width or 0, self.size.height or 0
+        if not (cols and height):
+            return
         rows = self.tile_rows()
         need_cols, need_rows, worst = self.required(rows)
-        cols, height = self.size.width or 0, self.size.height or 0
-        if cols and height and (cols < need_cols or height < need_rows):
+        frame = self.query_one("#frame", Frame)
+
+        if cols < need_cols or height < need_rows:
             # §4e/§5 — a STATED refusal and ZERO panels, never a clipped one.
-            yield Static(
-                too_small_message(cols, height, need_cols, need_rows, worst),
-                id="too-small")
+            msg = too_small_message(cols, height, need_cols, need_rows, worst)
+            existing = self.query("#too-small")
+            if existing:
+                existing.first(Static).update(msg)   # recomputed, not reused
+                return
+            await frame.remove_children()
+            await frame.mount(Static(msg, id="too-small"))
             return
-        with Vertical():
-            for tiles in rows:
-                if not tiles:
-                    continue
-                with Horizontal(classes="row"):
-                    for w in tiles:
-                        yield w
+
+        if self.query("#too-small") or not self.query(Panel):
+            await frame.remove_children()
+            await frame.mount(*[Horizontal(*tiles, classes="row")
+                                for tiles in rows if tiles])

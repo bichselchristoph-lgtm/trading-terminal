@@ -21,6 +21,7 @@ and every canonical snapshot is taken at.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 
 import pytest
@@ -278,8 +279,13 @@ def test_not_built_names_the_slice_that_will_fill_it() -> None:
 # ---- part 3 — the twelve stages -------------------------------------------
 
 
-TWELVE = ["ingest", "regime", "indicators", "rank", "[HUMAN]", "size",
-          "stage", "[HUMAN]", "manage", "reconcile", "journal", "archive"]
+#: 018 part 3 renamed the two human rows. They were both `[HUMAN]`, which the
+#: value cell already said, so the name column rendered as a gap rather than a
+#: stage -- UAT 009 answer D. `select` is after rank and before size; `submit`
+#: is after stage and before manage. Both are real stage names, and NEITHER
+#: implies a slice, which the value cell continues to make explicit.
+TWELVE = ["ingest", "regime", "indicators", "rank", "select", "size",
+          "stage", "submit", "manage", "reconcile", "journal", "archive"]
 
 
 def test_all_twelve_stages_are_declared_in_order() -> None:
@@ -303,18 +309,46 @@ def test_regime_is_not_a_not_built_panel() -> None:
 
 
 def test_a_human_step_does_not_render_as_an_unbuilt_one() -> None:
-    """`[HUMAN]` is not a slice and never will be. A stage the system does not
-    perform must not render as one it has not performed yet — and it must not
-    read like `manage`, which genuinely has no slice."""
+    """A human step is not a slice and never will be. A stage the system does
+    not perform must not render as one it has not performed yet.
+
+    **018 part 3 renamed these from `[HUMAN]` to `select` and `submit`**, so the
+    test now keys on the value cell rather than the name — which is the right
+    place anyway: the claim is about the STATE, not the label.
+    """
     body = pipeline_panel(Layout.load()).body(BOX_WIDTH)
-    human = [l for l in body.splitlines() if "[HUMAN]" in l]
+    human = [l for l in body.splitlines() if "your decision" in l]
     assert len(human) == 2, "both human steps must render"
     for row in human:
-        assert "NOT BUILT" not in row
-    manage = next(l for l in body.splitlines() if " manage " in l)
-    assert "slice not assigned" in manage, (
-        "manage has no slice in BUILD-PLAN.md; inventing one would be the defect")
-    assert manage != human[0]
+        assert "NOT BUILT" not in row, (
+            "a human step rendered as an unbuilt one. `human: true` is not a "
+            "slice that has not arrived; it is work the system never does.")
+
+
+def test_every_pipeline_row_has_a_name() -> None:
+    """**018 part 3.** Rows 5 and 8 rendered with an EMPTY name column.
+
+    Both were declared `name: "[HUMAN]"` while the value cell already said
+    *your decision*, so the name read as a gap rather than as a stage — UAT 009
+    answer D, and plainly visible in the screenshot before anyone looked for it.
+
+    The check is that every row has a name AND that the name is not a value: a
+    cell starting with `[` or `(` is a badge or a reason that has drifted into
+    the wrong column.
+    """
+    body = pipeline_panel(Layout.load()).body(BOX_WIDTH)
+    # A stage row is `<n> <name> <value>`. The `12 of 12 · end` summary line has
+    # the same leading shape, so it is excluded by its NAME COLUMN being the
+    # literal `of` — excluded by what it IS, not by its index, because an index
+    # would silently start skipping a real row if one moved.
+    matched = [re.match(r"^\s+(\d+)\s+(\S+)", l) for l in body.splitlines()]
+    rows = [(m.group(1), m.group(2), m.string) for m in matched
+            if m and m.group(2) != "of"]
+    assert len(rows) == 12, (
+        f"expected 12 stage rows, got {len(rows)}: {[r[1] for r in rows]}")
+    for slot, name, line in rows:
+        assert not name.startswith(("[", "(")), (
+            f"row {slot}'s name column holds a value, not a name: {line!r}")
 
 
 def test_a_stage_makes_at_most_one_claim_about_its_state() -> None:
@@ -383,3 +417,119 @@ def test_snapshot_at_each_pinned_width(size) -> None:
     assert current == snap.read_text(encoding="utf-8"), (
         f"the render at tile width {tile_w} changed. If intended, delete "
         f"{snap.name} and re-run — after reading the diff.")
+
+
+# ---- 018 part 2: the guard is re-evaluated on every resize ----------------
+
+
+def _refusal_text(app) -> str:
+    """The refusal widget's current text, read back from the widget itself.
+
+    Textual 8 removed `Static.renderable`, so this goes through the render
+    pipeline rather than an attribute that no longer exists.
+    """
+    from rich.text import Text
+    w = app.query_one("#too-small")
+    return Text.from_markup(str(w.render())).plain if hasattr(w, "render") else ""
+
+
+def test_shrinking_after_launch_refuses_and_growing_back_restores() -> None:
+    """**Refusal A, and the whole of 018 part 2.**
+
+    S009a's guard ran in `compose()`, which fires ONCE. Launched too small it
+    refused correctly; **shrunk after launch it never fired**, and the panels
+    truncated to `WATCHLIS...` and `(no wat...` instead.
+
+    Christoph's ruling, 2026-08-12: **the terminal refuses.** The rule is *never
+    a silently clipped panel*, and a rule that holds only at launch is not the
+    rule.
+
+    **Both directions.** A one-way transition would be worse than the behaviour
+    it replaces: a terminal that refuses once and never recovers is one you
+    restart, and restarting to recover from a resize teaches you not to resize.
+    """
+    async def go():
+        a = app()
+        async with a.run_test(size=(209, 54)) as pilot:
+            await pilot.pause()
+            assert list(a.query(Panel)), "no panels at the working width"
+            assert not list(a.query("#too-small"))
+
+            # --- shrink below the per-tile minimum, AFTER launch -------------
+            await pilot.resize_terminal(*BELOW_MINIMUM)
+            await pilot.pause()
+            assert list(a.query("#too-small")), (
+                "shrinking after launch did not fire the guard — this is exactly "
+                "what shipped broken")
+            assert not list(a.query(Panel)), (
+                "a panel survived into a window below the minimum: the silently "
+                "clipped case §4e forbids")
+
+            # --- grow back above it -----------------------------------------
+            await pilot.resize_terminal(209, 54)
+            await pilot.pause()
+            assert list(a.query(Panel)), (
+                "growing back above the minimum did not restore the panels — a "
+                "one-way refusal is worse than no refusal")
+            assert not list(a.query("#too-small"))
+    asyncio.run(go())
+
+
+def test_the_refusal_message_reflects_the_current_size_not_the_launch_size() -> None:
+    """A refusal naming the size the window USED to be is a well-formed value
+    answering a different question — the defect this project is named for,
+    rendered by the widget whose job is to prevent it."""
+    async def go():
+        a = app()
+        async with a.run_test(size=(209, 54)) as pilot:
+            await pilot.pause()
+            await pilot.resize_terminal(74, 24)
+            await pilot.pause()
+            first = _refusal_text(a)
+            assert "74x24" in first, f"message does not name the current size: {first!r}"
+            assert "209" not in first, f"message still names the launch size: {first!r}"
+
+            # Shrink again WHILE already refusing. The message must move.
+            await pilot.resize_terminal(50, 20)
+            await pilot.pause()
+            second = _refusal_text(a)
+            assert "50x20" in second, f"message did not recompute: {second!r}"
+            assert "74x24" not in second, (
+                f"stale message reused from the previous refusal: {second!r}")
+    asyncio.run(go())
+
+
+def test_refusal_c_slice_not_assigned_stays_reachable_and_differs_from_deferred() -> None:
+    """**Refusal C.** 018 part 4 introduced `deferred` for a stage that has been
+    RULED ON. **It must not replace `slice not assigned`**, which means nobody
+    has decided — a genuine gap.
+
+    *Nobody decided* and *decided to postpone* carry different weight, and the
+    screen was making the weaker claim for `manage`. Collapsing them the other
+    way would lose the distinction entirely.
+
+    **No colour is involved anywhere.** The distinction is carried by the reason
+    text, and deliberately NOT by a new badge word: `[ DEFERRED ]` is not in
+    `SPEC.md` §4's vocabulary, and `grammar.py` records that adding one is a spec
+    change rather than a code change. Stated as a limit in the done-note — the
+    shapes are the same, the words are not.
+    """
+    unassigned = Cell.not_built(reason="slice not assigned").render()
+    deferred = Cell.not_built(reason="deferred - not core, revisit later").render()
+
+    assert "slice not assigned" in unassigned
+    assert "deferred" in deferred
+    assert unassigned != deferred
+    assert "deferred" not in unassigned, (
+        "the unassigned state absorbed the deferred wording — a genuine gap "
+        "would then read as a decision somebody made")
+    # Reachable from a real Stage that declares NO claim at all.
+    from live.tui.app import pipeline_panel
+    from live.tui.layout import Layout as _L
+    gap = Stage(slot=99, name="orphan")
+    assert not (gap.slice or gap.built_by or gap.human or gap.deferred or gap.renders)
+
+    # And the shipped layout still renders the deferred one, not the gap one.
+    body = pipeline_panel(_L.load()).body(BOX_WIDTH)
+    manage = next(l for l in body.splitlines() if " manage " in l)
+    assert "deferred" in manage and "slice not assigned" not in manage
