@@ -24,3 +24,44 @@ components:
   - {id: sizing,     slot: 4, visible: true,  reason: ""}
   - {id: risk,       slot: 5, visible: true,  reason: ""}
   - {id: health,     slot: 6, visible: true,  reason: "permanently visible per S009 §4g"}
+
+  # --- third row: what exists and what is coming ---------------------------
+  - {id: pipeline,   slot: 7, visible: true,  reason: "S009a part 3 — a stage absent from this file did not render at all, so 'not built yet' and 'not in the design' were the same picture"}
+
+# ---------------------------------------------------------------------------
+# stages — the twelve, declared. S009a part 3.
+#
+# EVERY stage is listed, built or not. That is the point: before this file
+# carried them, a component absent from `components:` above did not render, so a
+# stage that exists in SPEC.md and not in code was indistinguishable from a
+# stage that does not exist. Christoph had to ask whether there should be an
+# indicator section — that question IS the defect.
+#
+# It is the Layer 0 failure inverted. Layer 0 rendered as built when it was not;
+# this rendered as nothing when it was merely not yet.
+#
+# Exactly ONE of built_by / slice / human / renders per stage; the loader
+# refuses two, because the second would be silently lost behind the first.
+#
+# ATTRIBUTION IS FROM docs/specs/BUILD-PLAN.md §3–4 AND NOWHERE ELSE. Where the
+# plan names the stage in a slice title it is quoted below; where it does not,
+# the stage carries no slice and renders `[ NOT BUILT ] (slice not assigned)`.
+# An invented slice number would be the exact defect this project keeps finding
+# — a plausible value that is read later as a record.
+stages:
+  - {slot: 1,  name: ingest,     slice: S013}      # "Watchlist ingest, archive, and the ingest ledger"
+  - {slot: 2,  name: regime,     renders: HEALTH}  # SPEC.md §3.2 — produced OUTSIDE the terminal by the
+                                                   # scheduled Claude task. NOT a stage that is coming,
+                                                   # and must never become a NOT BUILT panel.
+  - {slot: 3,  name: indicators, slice: S010}      # "Attach a symbol, and the context block"
+  - {slot: 4,  name: rank,       slice: S014}      # "Ranked watchlist and grader vector"
+  - {slot: 5,  name: "[HUMAN]",  human: true}      # after rank, before size — the selection
+  - {slot: 6,  name: size,       slice: S011}      # "Sizing, risk, and the two hard limits"
+  - {slot: 7,  name: stage,      slice: S017}      # "Order staging" — HARD-GATED, released by a person
+  - {slot: 8,  name: "[HUMAN]",  human: true}      # after stage, before manage — the submit in TWS
+  - {slot: 9,  name: manage}                       # NO SLICE IN THE PLAN BUILDS THIS. Not an omission in
+                                                   # this file — a gap in BUILD-PLAN.md, reported in
+                                                   # handoff/done/S009a. Renders as unassigned.
+  - {slot: 10, name: reconcile,  slice: S015}      # "Execution pull, trade log, and review"
+  - {slot: 11, name: journal,    slice: S015}      # same slice title
+  - {slot: 12, name: archive,    slice: S013}      # same slice title

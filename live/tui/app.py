@@ -1,4 +1,4 @@
-"""The TUI frame — S009 §4b, §4d, §4e, §4g, §4h.
+"""The TUI frame — S009 §4b, §4d, §4e, §4g, §4h; S009a parts 1 and 3.
 
 **Tiled, not switchable.** Watchlist, attached symbol and tape across the top;
 sizing, risk and health along the bottom. Nothing hidden, nothing switched.
@@ -22,24 +22,61 @@ Colour, and what it may never say (§4h):
   exist in this module.
 * **Status is encoded by position and typography, never colour alone**, so it
   survives 16-colour degradation over SSH.
+
+----
+
+**S009a — the panel is measured against the space it is actually given.**
+
+S009 shipped at 99 passed / 0 failed and broke on the machine Christoph trades
+on. One root cause produced all three defects: **nothing compared the panel to
+its tile.**
+`BOX_WIDTH` was compared against nothing, the caption was appended after the
+border was sized, and the too-small guard measured the *window* while the thing
+that overflows is the *tile*.
+
+So the invariant is now stated once and enforced everywhere below it:
+
+    Every width-dependent thing is computed from the width the tile actually
+    received. Nothing renders at a width it was not measured against.
+
+`BOX_WIDTH` survives as **the width the panel is designed at and every snapshot
+is taken at** — not the width it renders at. `Panel.body(width, height)` takes
+both dimensions; `on_resize` feeds it the real ones. The minimum is **derived
+from each panel's own content** (`Panel.min_width`/`min_height`) rather than
+chosen, because a fixed 60×16 is exactly what let a 1920 window split three ways
+pass a check while every tile was far under what it needed.
 """
 from __future__ import annotations
 
 import os
+import re
 import sys
 import unicodedata
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from .day_record import DayRecord, empty_record
 from .grammar import Cell
 from .layout import Layout
 
-#: §4d — a fixed box width. The mockups were 69–71 chars against a 71-char
-#: border: invisible in HTML, visibly broken in a console.
+#: §4d — the width the panel is DESIGNED at, and the width every snapshot is
+#: taken at. **Not the width it renders at.** The mockups were 69–71 chars
+#: against a 71-char border: invisible in HTML, visibly broken in a console.
 BOX_WIDTH = 71
+
+#: `padding: 0 1` in the CSS below costs each tile two columns. It is named here
+#: because the too-small guard has to subtract it — S009's guard did not, which
+#: is half of why a border two columns too wide wrapped instead of refusing.
+TILE_PADDING = 2
+
+#: How much of the caption must survive for a panel to be worth rendering at
+#: all. §4d: *a live panel with no update stamp is the `[ STALE ]` anti-state* —
+#: so the floor is the shortest provenance that still says something, plus the
+#: ellipsis that renders the loss. Below this the panel refuses rather than
+#: rendering a stamp nobody can read.
+PROVENANCE_STUB = 6
 
 
 def display_width(s: str) -> int:
@@ -79,15 +116,60 @@ def ascii_safe() -> bool:
     return False
 
 
-def too_small_message(cols: int, rows: int, min_cols: int, min_rows: int) -> str:
+def fit(s: str, width: int) -> str:
+    """Truncate to `width` **rendering the loss**, never silently.
+
+    S009a 1a: *"truncate or drop by a declared rule that renders the loss, never
+    by silent overflow."* Silent overflow is what shipped — the terminal wrapped
+    the surplus onto the next line, which turns one provenance stamp into two
+    lines of debris and reads as a rendering fault rather than as a panel that
+    was given too little room.
+
+    The ellipsis is part of the budget, so the result is never wider than
+    `width`. That matters more than it looks: this function is the last thing
+    every line passes through, and it is what makes *"nothing renders at a width
+    it was not measured against"* true rather than intended.
+    """
+    if display_width(s) <= width:
+        return s
+    ell = "..." if ascii_safe() else "…"
+    if width <= display_width(ell):
+        return ell[:max(width, 0)]
+    keep, out = width - display_width(ell), ""
+    for ch in s:
+        if display_width(out) + display_width(ch) > keep:
+            break
+        out += ch
+    return out + ell
+
+
+def _label(row: str) -> str:
+    """The naming half of a pinned row — everything before its value.
+
+    Split on the first run of **two or more** spaces, which is how every pinned
+    row in this module separates its label from its cell. **Derived from the row
+    itself**, so a panel's minimum width is a property of its own content rather
+    than a number somebody picked; that is the whole difference between this and
+    the `60×16` it replaces.
+    """
+    return re.split(r"\s{2,}", row.strip(), maxsplit=1)[0]
+
+
+def too_small_message(cols: int, rows: int, min_cols: int, min_rows: int,
+                      per_tile: str = "") -> str:
     """§4e/§5 — a STATED refusal, never a silently clipped panel.
 
     It narrows to exactly ONE meaning: the pinned rows do not fit. Not "the
     layout is awkward", which is a different statement and would make the
     message useless for deciding anything.
+
+    `per_tile` carries **which tile ran out and by how much**, because the
+    window figure alone was what made S009's guard useless — a 1920 window
+    satisfies any window minimum while each of its three tiles is starved.
     """
-    return (f"window too small - the pinned rows do not fit "
+    base = (f"window too small - the pinned rows do not fit "
             f"({cols}x{rows}, need {min_cols}x{min_rows})")
+    return f"{base}  [{per_tile}]" if per_tile else base
 
 
 def box_top(title: str, provenance: str, width: int = BOX_WIDTH) -> str:
@@ -96,12 +178,28 @@ def box_top(title: str, provenance: str, width: int = BOX_WIDTH) -> str:
     Source, as-of time, sample window, or safety state. **A live panel with no
     update stamp is the `[ STALE ]` anti-state**, so `provenance` is not
     optional — callers pass a refusal string when they have nothing.
+
+    **The caption gives way; the title never does** (S009a 1a). The title is what
+    identifies which tile you are looking at, and a panel you cannot name is
+    worse than a panel whose as-of time is abbreviated — you can still ask what
+    the stamp said, but not which panel asked it. So the provenance truncates
+    from its right with a visible ellipsis, and the final `fit` guarantees the
+    line is exactly `width` even in the degenerate case where the title alone
+    overruns.
     """
     h, tl, tr = ("-", "+", "+") if ascii_safe() else ("─", "┌", "┐")
     left = f"{tl}{h} {title} "
+    if width - display_width(left) - display_width(f" {provenance} {tr}") < 1:
+        # Budget: one rule character, two spaces and the corner all survive, so
+        # the caption gets `width - left - 4`. Anything larger leaves the line a
+        # column over and the FINAL fit eats the corner instead of the caption
+        # — a double truncation that renders `not atta……` with no `┐`, which is
+        # the caption giving way twice and the border giving way once.
+        provenance = fit(provenance, max(width - display_width(left) - 4, 1))
     right = f" {provenance} {tr}"
     pad = width - display_width(left) - display_width(right)
-    return left + (h * max(pad, 1)) + right
+    line = left + (h * max(pad, 1)) + right
+    return line if display_width(line) <= width else fit(line, width)
 
 
 class Panel(Static):
@@ -111,6 +209,12 @@ class Panel(Static):
     A limit breach at row 19 of a 12-row viewport is indistinguishable from no
     breach — the sixth instance in this project of a correct warning nobody was
     instructed to read.
+
+    **S009a: the tile's real width and height are the inputs.** `viewport` is
+    now a fallback for the pure/snapshot path only; when a height is supplied it
+    is measured, so a panel given eight lines shows what fits in eight and says
+    how many it could not show, rather than being clipped by the layout with no
+    trace. That is the same rule as §4e applied to the dimension nobody checked.
     """
 
     def __init__(self, title: str, provenance: str, rows: list[str],
@@ -120,24 +224,77 @@ class Panel(Static):
         self.rows = rows
         self.pinned = pinned or []
         self.viewport = viewport
-        super().__init__(self._body())
+        super().__init__(self.body())
 
-    def _body(self) -> str:
-        out = [box_top(self.title_text, self.provenance)]
-        shown = self.rows[: self.viewport]
-        out += shown
+    # ---- what this panel needs, derived from what it holds -----------------
+
+    def chrome(self) -> int:
+        """Lines this panel spends on anything that is not a scrolling row."""
+        return (1                                      # top border
+                + (1 if self.rows else 0)              # the `N of M` line
+                + ((1 + len(self.pinned)) if self.pinned else 0))
+
+    def min_width(self) -> int:
+        """**Derived, never fixed.** Two things may not give way.
+
+        The **title plus a provenance stub**, because §4d makes an unstamped
+        panel the `[ STALE ]` anti-state — a border with no legible caption is
+        not a narrower panel, it is a different and worse one.
+
+        Every **pinned row's label**, because §4e's pinned band exists so a
+        failed rule survives scrolling. A pinned row truncated past its label is
+        a failed rule that renders as punctuation.
+        """
+        # +4 is `box_top`'s own budget: one rule character, two spaces, one
+        # corner. It must match, or the derived minimum admits a width at which
+        # the caption is cut below its stub.
+        frame = display_width(f"+- {self.title_text} ") + PROVENANCE_STUB + 4
+        pinned = max((display_width("  " + _label(p)) + 1 for p in self.pinned),
+                     default=0)
+        return max(frame, pinned)
+
+    def min_height(self) -> int:
+        """Chrome plus one scrolling row. Below this there is nothing to read —
+        `N of M · +K more` on its own is a panel reporting that it is a panel."""
+        return self.chrome() + (1 if self.rows else 0)
+
+    # ---- rendering ---------------------------------------------------------
+
+    def body(self, width: int = BOX_WIDTH, height: int | None = None) -> str:
+        rule = "-" if ascii_safe() else "─"
+        out = [box_top(self.title_text, self.provenance, width)]
+        viewport = self.viewport if height is None else max(1, height - self.chrome())
+        shown = self.rows[:viewport]
+        out += [fit(r, width) for r in shown]
         hidden = len(self.rows) - len(shown)
         if hidden > 0:
             # Both halves of §4e: the count in the caption AND the edge marker.
-            out.append(f"  {len(shown)} of {len(self.rows)} · +{hidden} more ↓")
+            out.append(fit(f"  {len(shown)} of {len(self.rows)} · +{hidden} more ↓", width))
         elif self.rows:
-            out.append(f"  {len(self.rows)} of {len(self.rows)} · end")
+            out.append(fit(f"  {len(self.rows)} of {len(self.rows)} · end", width))
         if self.pinned:
             # §4e — sticky band. Risk rows, limit rows, failed rules and active
             # refusals survive scrolling; without this the pinning rule is prose.
-            out.append("  " + ("-" if ascii_safe() else "─") * (BOX_WIDTH - 4))
-            out += [f"  {p}" for p in self.pinned]
+            out.append("  " + rule * max(width - 4, 1))
+            out += [fit(f"  {p}", width) for p in self.pinned]
         return "\n".join(out)
+
+    def _body(self) -> str:
+        """The design-width render. Every snapshot and border test is taken
+        here, so `BOX_WIDTH` keeps meaning exactly what it meant."""
+        return self.body()
+
+    def on_resize(self) -> None:
+        """The whole of S009a 1a and 1b, in three lines.
+
+        `content_size` excludes `padding`, so this is the space the text really
+        has. Falling back to `size` keeps the panel rendering if a future style
+        change removes the padding.
+        """
+        w = self.content_size.width or self.size.width
+        h = self.content_size.height or self.size.height
+        if w:
+            self.update(self.body(w, h or None))
 
 
 def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
@@ -188,7 +345,56 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         pinned=[f"regime    {Cell.not_built().render()}"
                 if not record.regime_snapshot.ref
                 else f"regime    {record.regime_snapshot.ref}"])
+
+    p["pipeline"] = pipeline_panel(layout)
     return p
+
+
+def pipeline_panel(layout: Layout) -> Panel:
+    """S009a part 3 — the absence that had to be asked about.
+
+    Christoph asked whether there should be an indicator section. There should,
+    and **nothing on screen said so.** A stage absent from `config/layout.yaml`
+    did not render at all, so *"this stage is not built yet"* and *"this stage
+    does not exist in the design"* were the same picture. Same shape as
+    *"nothing more here"* versus *"more below"*, and it is the Layer 0 failure
+    inverted: Layer 0 rendered as built when it was not; this rendered as
+    nothing when it was merely not yet.
+
+    So all twelve stages render, and an unbuilt one **names the slice that will
+    fill it**. The empty screen becomes a build progress report.
+
+    **`NOT BUILT` and a data-absent refusal are structurally different, without
+    colour** (Refusal C): a badge in brackets, `[ NOT BUILT · S010 ]`, against an
+    em-dash and a parenthesised reason, `— (no account snapshot)`. One says the
+    machinery does not exist; the other says the machinery exists and the input
+    is missing. Collapsing those would be the defect this task is fixing.
+    """
+    stages = layout.stages
+    rows, built = [], 0
+    for s in stages:
+        if s.renders:
+            # `regime` is NOT a stage that is coming — SPEC.md §3.2 removes every
+            # regime layer from the terminal, and it is produced by the scheduled
+            # Claude task. The health panel's pointer is correct and must not
+            # become a NOT BUILT panel; this row points at it instead.
+            cell = f"{'->' if ascii_safe() else '→'} {s.renders} panel"
+            built += 1
+        elif s.human:
+            # Not a slice and never will be. A stage the system does not perform
+            # must not render as one it has not performed yet — and it must not
+            # read like `manage`, which IS missing a slice. "Correctly" carries
+            # that distinction; without it the two absences look identical.
+            cell = "your decision - correctly not a slice"
+        elif s.built_by:
+            cell = f"built - {s.built_by}"
+            built += 1
+        else:
+            cell = Cell.not_built(reason="" if s.slice else "slice not assigned",
+                                  slice_id=s.slice).render()
+        rows.append(f"  {s.slot:>2} {s.name:<11} {cell}")
+    return Panel("PIPELINE", f"{built} of {len(stages)} built", rows,
+                 viewport=len(stages) or 1)
 
 
 class MomentumApp(App):
@@ -201,32 +407,64 @@ class MomentumApp(App):
     """
     BINDINGS = [("ctrl+tab", "focus_next", "Next panel")]
 
-    #: §4e — `window too small` narrows to mean ONLY that the pinned rows do
-    #: not fit. Not "the layout is awkward" — that is a different statement.
-    MIN_COLS, MIN_ROWS = 60, 16
-
     def __init__(self, record: DayRecord | None = None, layout: Layout | None = None):
         self.record = record if record is not None else empty_record()
         self.layout_cfg = layout or Layout.load()
         super().__init__()
 
-    def compose(self) -> ComposeResult:
-        cols, rows = self.size.width or 0, self.size.height or 0
-        if cols and rows and (cols < self.MIN_COLS or rows < self.MIN_ROWS):
-            # §4e/§5 — a STATED refusal, never a silently clipped panel. And it
-            # narrows to one meaning: the pinned rows do not fit.
-            yield Static(
-                too_small_message(cols, rows, self.MIN_COLS, self.MIN_ROWS),
-                id="too-small")
-            return
+    def tile_rows(self) -> list[list[Panel]]:
+        """The tiling, as rows of tiles. One place, so the too-small guard and
+        `compose` cannot disagree about what is on screen — S009's guard
+        measured a shape the renderer did not use."""
         panels = render_panels(self.record, self.layout_cfg)
         visible = [c.id for c in self.layout_cfg.visible_only]
-        top = [panels[i] for i in ("watchlist", "attached", "tape") if i in visible]
-        bottom = [panels[i] for i in ("sizing", "risk", "health") if i in visible]
+        rows = [("watchlist", "attached", "tape"),
+                ("sizing", "risk", "health"),
+                ("pipeline",)]
+        return [[panels[i] for i in r if i in visible and i in panels] for r in rows]
+
+    @staticmethod
+    def required(rows: list[list[Panel]]) -> tuple[int, int, str]:
+        """**The per-tile check, and the real bug S009a found.**
+
+        S009 compared the *window* against a fixed `60×16`. A 1920 window split
+        three ways satisfies that while each tile has far less than one panel
+        needs, so the guard could not fire at the size that actually broke — and
+        what rendered was the silently clipped panel the rule forbids.
+
+        This measures **each tile against what its own panel needs**, which makes
+        it resolution-independent: the answer is the same whether the columns
+        came from a 1920 screen at one font or a 3440 screen at another.
+        """
+        need_cols = need_rows = 0
+        worst = ""
+        for tiles in rows:
+            if not tiles:
+                continue
+            widest = max(t.min_width() for t in tiles)
+            cols = len(tiles) * (widest + TILE_PADDING)
+            if cols > need_cols:
+                need_cols = cols
+                name = next(t.title_text for t in tiles if t.min_width() == widest)
+                worst = (f"{len(tiles)} tiles x {widest} cols for {name}"
+                         f" + {TILE_PADDING} padding")
+            need_rows += max(t.min_height() for t in tiles)
+        return need_cols, need_rows, worst
+
+    def compose(self) -> ComposeResult:
+        rows = self.tile_rows()
+        need_cols, need_rows, worst = self.required(rows)
+        cols, height = self.size.width or 0, self.size.height or 0
+        if cols and height and (cols < need_cols or height < need_rows):
+            # §4e/§5 — a STATED refusal and ZERO panels, never a clipped one.
+            yield Static(
+                too_small_message(cols, height, need_cols, need_rows, worst),
+                id="too-small")
+            return
         with Vertical():
-            with Horizontal(classes="row"):
-                for w in top:
-                    yield w
-            with Horizontal(classes="row"):
-                for w in bottom:
-                    yield w
+            for tiles in rows:
+                if not tiles:
+                    continue
+                with Horizontal(classes="row"):
+                    for w in tiles:
+                        yield w

@@ -125,8 +125,23 @@ class Cell:
                    confidence=Confidence.REFUSED, reason=reason)
 
     @classmethod
-    def not_built(cls, reason: str = "no file for today") -> "Cell":
-        return cls(text=f"[ {NOT_BUILT} ]", presence=Presence.ABSENT,
+    def not_built(cls, reason: str = "no file for today", slice_id: str = "") -> "Cell":
+        """`slice_id` names **the slice that will fill this** (S009a part 3).
+
+        `[ NOT BUILT ]` alone cannot distinguish *not yet* from *not ever*, and
+        that ambiguity is what made Christoph ask whether there should be an
+        indicator section — the stage was in the spec, absent from the config,
+        and therefore invisible. Carrying the slice turns the badge from an
+        apology into a schedule.
+
+        The badge shape is deliberate and is what keeps this distinguishable
+        from a data-absent refusal **without colour** (§4.1): this renders
+        `[ NOT BUILT · S010 ]`, a bracketed badge; `Cell.absent` renders
+        `— (reason)`, an em-dash and a parenthesis. *The machinery does not
+        exist* against *the machinery exists and the input is missing.*
+        """
+        badge = f"[ {NOT_BUILT} · {slice_id} ]" if slice_id else f"[ {NOT_BUILT} ]"
+        return cls(text=badge, presence=Presence.ABSENT,
                    confidence=Confidence.REFUSED, reason=reason)
 
     @classmethod

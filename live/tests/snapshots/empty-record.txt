@@ -12,6 +12,22 @@
   ───────────────────────────────────────────────────────────────────
   regime    [ NOT BUILT ] (no file for today)
 
+### pipeline
+┌─ PIPELINE ─────────────────────────────────────────── 1 of 12 built ┐
+   1 ingest      [ NOT BUILT · S013 ]
+   2 regime      → HEALTH panel
+   3 indicators  [ NOT BUILT · S010 ]
+   4 rank        [ NOT BUILT · S014 ]
+   5 [HUMAN]     your decision - correctly not a slice
+   6 size        [ NOT BUILT · S011 ]
+   7 stage       [ NOT BUILT · S017 ]
+   8 [HUMAN]     your decision - correctly not a slice
+   9 manage      [ NOT BUILT ] (slice not assigned)
+  10 reconcile   [ NOT BUILT · S015 ]
+  11 journal     [ NOT BUILT · S015 ]
+  12 archive     [ NOT BUILT · S013 ]
+  12 of 12 · end
+
 ### risk
 ┌─ RISK ───────────────────────────────────────────── not transmitted ┐
   day P&L   — (no trades today)
