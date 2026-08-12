@@ -60,6 +60,7 @@ precision — nothing here justifies claiming row 7 needs attention sooner than 
 | **OBS-014** | 2026-08-12 | OBSERVATION | **The too-small guard was evaluated once, at launch.** Launched below the per-tile minimum it refused correctly; shrunk after launch it never fired, and panels truncated to `WATCHLIS...` and `(no wat...` instead | UAT `christoph/done/009-s009a-read-the-screen-at-working-width.md`, answers B and C | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
 | **OBS-015** | 2026-08-12 | OBSERVATION | **Pipeline rows 5 and 8 rendered with an empty name column.** Both were declared `name: "[HUMAN]"` while the value cell already said *your decision*, so the name read as a gap rather than a stage | UAT `christoph/done/009-s009a-read-the-screen-at-working-width.md`, answer D | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
 | **OBS-016** | 2026-08-12 | OBSERVATION | **`manage` rendered `[ NOT BUILT ] (slice not assigned)` after it had been ruled deferred.** *Nobody decided* and *decided to postpone* carry different weight, and the screen was making the weaker one | `018` part 4, from Christoph's ruling of 2026-08-12. **The underlying gap OBS-006 records is unchanged** | **SETTLED for the rendering.** OBS-006 stays OPEN | PROMOTED | 2026-11-12 |
+| **OBS-017** | 2026-08-12 | OBSERVATION | **The captured ARCA depth arrays are NOT price-ordered — 99.9 % of bid arrays and 99.7 % of ask arrays, measured over 20,000 snapshots.** The array index is the DOM row position, preserved exactly; nothing sorts or normalises. **The book is fully reconstructable.** What is missing is self-description: no `position` key, no schema note, so `bids[0]` reads as the best bid and is wrong almost always | `018` part 1, from `tools/capture_tape.py:231-242` and `records/tape/QQQ-2026-08-12-depth.jsonl`. Confirms `S009a`'s live probe, whose cause was recorded as unestablished | **The diagnosis is settled.** What is open is the DECISION: a `position` key for future captures, a documented schema covering the 4,324,111 records already held, or neither. Christoph's call | OPEN | 2026-11-12 |
 | **OBS-013** | 2026-08-12 | ~~READING~~ → OBSERVATION | **At 209 columns each top-row tile gets ~67, below the `BOX_WIDTH` of 71 the snapshots were taken at** | Design session 2026-08-12, **as a reading**. **Measured and confirmed by `S009a` the same day** | **SETTLED.** See resolution | PROMOTED | 2026-11-12 |
 
 ---
@@ -92,6 +93,7 @@ routed anywhere, which now goes red instead of staying silent.
 | uat | status | destination / note | review-by |
 |---|---|---|---|
 | `009-s009a-read-the-screen-at-working-width.md` | **CITED** | OBS-014, OBS-015, OBS-016 | — |
+| `011-018-shrink-it-grow-it-back.md` | NOT REVIEWED | **The register's first live catch.** Retired by Christoph after this mechanism existed, and the test went red naming it — which is exactly what `018` part 5 was built to do | 2026-09-12 |
 | `001-ibkr-totalview-api-entitlement.md` | NOT REVIEWED | — | 2026-09-12 |
 | `002-handoff-protocol-rule-4-uat.md` | NOT REVIEWED | — | 2026-09-12 |
 | `003-s009-read-the-empty-screen.md` | NOT REVIEWED | — | 2026-09-12 |
@@ -102,7 +104,7 @@ routed anywhere, which now goes red instead of staying silent.
 | `008-h11-supersession-review.md` | NOT REVIEWED | — | 2026-09-12 |
 | `010-016-read-verify-cold.md` | NOT REVIEWED | — | 2026-09-12 |
 | `012-uat-first-five-minutes.md` | NOT REVIEWED | — | 2026-09-12 |
-| `012-uat-first-five-minutes_1.md` | NOT REVIEWED | **NOT A DUPLICATE** of the row above — different sha256, 821 bytes smaller. Two versions of one signed pre-registration sit in `christoph/done/` and **nothing declares which is authoritative** | 2026-09-12 |
+| `012-uat-first-five-minutes_1.md` | NO FINDINGS | **REMOVED by Christoph, 2026-08-12.** It was not a duplicate — different sha256, 821 bytes smaller — and `018` reported two versions of one signed pre-registration with nothing declaring which was authoritative. **He resolved it, which only he could.** The row stays so the ambiguity's existence is not lost with the file | — |
 | `012b-uat-basis-correction.md` | NOT REVIEWED | — | 2026-09-12 |
 
 **Why twelve rows say `NOT REVIEWED` rather than `NO FINDINGS`.** Judging whether a retired UAT

@@ -47,7 +47,7 @@ EASTERN = ZoneInfo("America/New_York")
 #: resolved by changing its status, never by removal. **If this number is ever
 #: lowered to make the suite green, that is the failure this test exists to
 #: prevent, performed deliberately.**
-SEEDED_ROWS = 13
+SEEDED_ROWS = 17
 
 #: A data row: `| **OBS-001** | 2026-08-11 | KIND | ... |`. Positional — the id
 #: must be in the FIRST cell, so a row discussed in prose is not a row.
