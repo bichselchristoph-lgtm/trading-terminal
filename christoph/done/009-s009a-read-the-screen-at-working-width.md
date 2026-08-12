@@ -77,22 +77,22 @@ truncation renders — but it cannot say which slice fills which stage. **This d
 
 **A · At 209 × 54, did any line wrap or overrun?**
 
-- [ ] no — nothing wrapped
+- [x ] no — nothing wrapped
 - [ ] yes — and here is which panel: `________________`
 
 **B · Below ~75 columns, did you get one message and zero panels?**
 
 - [ ] yes
-- [ ] no — panels still rendered
+- [ x] no — panels still rendered
 
 **C · Was every refusal understandable without asking what it meant?**
 If not, **name the exact string**, because a refusal nobody can read is worse than a blank:
-
+refusal only appears if console is below ~75 colums. Resizing at a later point does not work.
 `________________________________________________`
 
 **D · Did the PIPELINE panel answer the indicator-section question by itself?**
 
-- [ ] yes
+- [ x] yes with some feature names missing. 
 - [ ] no
 
 **E · Anything on screen you did not expect.** Free text — this is the part most likely to find
@@ -102,7 +102,7 @@ something nobody thought to test:
 
 ---
 
-Signed `________________` Date/time `________________`
+Signed `_Christoph_______________` Date/time `_____August 12, 2026 2:23pm___________`
 
 *Once signed, copy this file to `christoph/done/`, verify it is byte-identical, then remove it
 from `christoph/open/`.*
