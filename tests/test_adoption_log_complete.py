@@ -101,6 +101,23 @@ BOOTSTRAP_ALLOWLIST = {
     # Repo root, not a code tree. The root has no native-prefix carve-out and
     # must not get one -- it is where a stray copied file would be least visible.
     "verify.ps1",                                          # 016 part 1
+
+    # ---- S010: core/ is born, and the count is now 21 ----------------------
+    # S009 predicted ~11 allowlist entries per slice. 015/S009a/016 added seven;
+    # S010 adds eight and creates a whole tree. **The prediction is holding and
+    # the list is now doing its second job more than its first.**
+    #
+    # OBS-008 in the ledger, with a review-by date. A fourth route into the tree
+    # -- "authored here for a slice" -- is still a design decision nobody has
+    # taken, and S010 is not the task that takes it.
+    "core/__init__.py",
+    "core/indicators/__init__.py",
+    "core/indicators/context.py",
+    "core/tests/__init__.py",
+    "core/tests/test_core_imports_nothing_first_party.py",
+    "live/attach/__init__.py",
+    "live/attach/attach.py",
+    "live/tests/test_attach.py",
 }
 
 
