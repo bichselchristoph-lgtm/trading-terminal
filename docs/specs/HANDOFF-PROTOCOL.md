@@ -1,11 +1,12 @@
 # HANDOFF-PROTOCOL
 
-> **STATUS** CURRENT · **date** 2026-08-11
+> **STATUS** CURRENT · **version** v1.1 · **date** 2026-08-12
 
 **Status** CURRENT
+**Version** v1.1
 **Origin** authored
-**Date** 2026-08-11
-**Supersedes** nothing — first statement of a convention that was previously implicit
+**Date** 2026-08-12
+**Supersedes** v1.0 (2026-08-11) — same document, amended in place. **One substantive change:** copy-and-keep is now scoped. It was written as a universal rule and is not one.
 
 ---
 
@@ -73,9 +74,41 @@ The design session cannot see the repo, cannot see the inbox, and cannot see whe
 
 **A known limit, stated rather than left to be discovered.** `HANDED OFF` and `RUNNING` are **indistinguishable on disk**. A task file sitting in `handoff/inbox/` with no artifact beside it looks identical whether nobody has opened it or a session is mid-execution. No test can separate them, which is why the state is Christoph's to report and not the repo's to infer.
 
-### Where the files live — copy-and-keep
+### Where the files live — copy-and-keep, and where it does not apply
 
-**Nothing is ever moved.** A done-note is **created** at `handoff/done/NNN-*.md` as a new file; the task file stays in `handoff/inbox/`. Both copies coexist for every completed task, permanently, by design.
+**Copy-and-keep governs `handoff/` because `handoff/` is addressed.** `Do inbox 012` is a path resolved by name; a file that moves out from under that name breaks a reference that another party is holding. That — not durability in the abstract — is what the rule protects.
+
+**Nothing in `handoff/` is ever moved.** A done-note is **created** at `handoff/done/NNN-*.md` as a new file; the task file stays in `handoff/inbox/`. Both copies coexist for every completed task, permanently, by design.
+
+#### `christoph/` is a queue, and a queue that never empties is not one
+
+**Ruled, 2026-08-12.** Nothing addresses a path into `christoph/open/`. Claude Code is handed the path when it needs a file; nothing resolves one by name. The folder's whole function is to answer *what do I still have to do* — and it can only answer that if completed items leave it.
+
+So `christoph/` uses **copy-verify-retire**, in that order:
+
+1. **Copy** `christoph/open/NNN-*.md` → `christoph/done/NNN-*.md`.
+2. **Verify** the copy exists and is byte-identical.
+3. **Then** remove the original from `christoph/open/`.
+
+**This is not a move, and the distinction is not pedantry.** A move is one artifact changing location: interrupt it halfway and there is nothing. Copy-verify-retire never has fewer than one durable copy at any instant. The rule was defending the record, and the record is never at risk here.
+
+**Christoph performs all three steps.** No Claude writes to, or removes from, either `christoph/` folder.
+
+**What must not be inferred from this.** This is a property of `christoph/`, not a general permission. **Done-notes, task files and acceptance records are never retired**, and this ruling is not a precedent for touching them. If a future case looks similar, the test is *is anything addressing this path by name* — if yes, copy-and-keep.
+
+**A one-off repair is also not a move.** On 2026-08-12 `012-uat-first-five-minutes.md` was relocated into `christoph/open/` because it had been written into the wrong tree. Correcting a file that was misplaced at birth is a repair of an authoring error, not a state transition, and sets no precedent either way.
+
+#### The tests this owes
+
+Three assertions, to be built as part of the next task file rather than as their own:
+
+1. **For every file in `christoph/done/`, no same-named file remains in `christoph/open/`.** Catches a retire that stopped after step 1.
+2. **Every UAT named in a done-note's exit table resolves in `christoph/open/` *or* `christoph/done/`.** `test_uat_has_a_file.py` globs one folder today; the first retire would break it while the convention was working correctly. **This is the assertion that fires first.**
+3. **A file's state header and its folder agree.** Two independent ways to read one state must never disagree silently.
+
+#### One field name, not two
+
+**The header key is `**Status**` everywhere** — task files, done-notes, and `christoph/` items alike. `012-uat-first-five-minutes.md` was written with `**State**`, and two names for one field is exactly the recurring defect this project names most: a test written against one silently skips every file carrying the other. **The five-state vocabulary binds the `**Status**` line in `christoph/` files as it does in `handoff/`;** `OPEN` is outside it and is not a state.
 
 This was established from git history on 2026-08-11: **no file has ever been moved from `inbox/` to `done/`** — `git log --diff-filter=R -M -- handoff/` returns nothing across the repository's whole history. The convention had been operating unwritten, and `CLAUDE.md:133` was the only line in the repo that said a completed task produces a file in `handoff/done/` at all. **A done-note is a file at `handoff/done/NNN-*.md`**, and this document — the adopted authority on handoffs — now says so.
 
@@ -145,3 +178,18 @@ Nothing is backfilled into it. No past task has an acceptance record, and invent
 The design session authored four acceptance records; Christoph discarded them and copied the four done-notes instead. **The copy rule is what the four files in `handoff/accepted/` actually are** — verified byte-identical to their `handoff/done/` counterparts on 2026-08-11.
 
 **The untested half remains untested, and this document says so plainly.** Whether the design session actually waits for a gate is not machine-checkable. It is checkable by Christoph, which is why the gates are asked out loud rather than assumed.
+
+---
+
+## Version history
+
+**Every change to this document increments the version and adds a row. A version is never reused and never decremented.** The version line is the thing a test can pin; a date is not, because two edits land on one date and the second is then invisible.
+
+| Version | Date | Change |
+|---|---|---|
+| **v1.1** | 2026-08-12 | **Copy-and-keep scoped.** `handoff/` is copy-and-keep because it is addressed by name; `christoph/` is copy-verify-retire because it is a queue. Adds the three tests this owes, the `**Status**`-not-`**State**` ruling, and the note that the `012` UAT relocation was a birth defect rather than a precedent. Everything else byte-identical to v1.0. |
+| **v1.0** | 2026-08-11 | First statement of a convention that was previously implicit. Five states, one gate per file, shared judgment, copy-and-keep, the evidence exemption, and `handoff/accepted/` as a copy rather than an authored record. |
+
+**v1.0 was not numbered when it was written.** The number is applied here retrospectively to the 2026-08-11 content, which is a declaration made now, not a fact recovered from the file. Git history is the authority on what that content actually was.
+
+**A version pin belongs in a test**, mirroring `tests/test_regime_prompt_invariants.py`, which pins `REGIME-PROMPT.md` at v1.2 or higher. Without it the version is prose, and a convention that lives in prose depends on someone remembering. **That test does not exist yet** and is owed by the next task file.

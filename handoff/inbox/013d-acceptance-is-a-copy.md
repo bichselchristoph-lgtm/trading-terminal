@@ -1,6 +1,6 @@
 # 013d — Correct §2e: acceptance is a copy, not an authored document
 
-**Status** DONE · **Date** 2026-08-11 · **Type** one-line spec correction
+**Status** WRITTEN · **Date** 2026-08-11 · **Type** one-line spec correction
 **Runs in** `D:\Dev\momentum`. No TWS, no network, nothing under `records/`. **Safe alongside the capture and alongside `S009`** — it touches one file neither of them opens.
 
 > Read this cold. The session that wrote it cannot answer questions.

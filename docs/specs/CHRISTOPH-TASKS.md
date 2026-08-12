@@ -62,6 +62,33 @@ Christoph can save files but does not author them. So:
 
 **The result must reach disk.** An outcome that lives only in conversation is lost at the end of the session — the same failure as a done-note that never leaves chat, which happened three times on 2026-08-11 alone.
 
+### A UAT is not a UAT until the file exists
+
+**A UAT named in a done-note's exit-test table does not exist until there is a file in `christoph/open/` declaring it.** `tests/test_uat_has_a_file.py` enforces this.
+
+**Why, and it is the seventh instance of the same failure.** `S009`'s exit table said *"UAT — yours. Run it with no data and read the empty screen. Write the record to `christoph/`."* **Nothing wrote it.** Claude Code correctly never writes to `christoph/`, and the design session had no trigger — so the UAT was a line inside a done-note Christoph had already read, in a folder he does not open again. It surfaced only because he asked where his UAT was.
+
+That is the pattern that left Layer 0 fully specified and never built: a correct instruction sitting where nobody was directed to look. **Naming a UAT in an exit table is not delivering one.**
+
+### The header convention the test depends on
+
+**Every file in `christoph/` declares the task it belongs to, in its first ten lines:**
+
+```
+**Slice** `S009`
+```
+```
+**Task** `012`
+```
+
+`tests/test_uat_has_a_file.py` reads that line to match a done-note to its UAT, and searches **both** `open/` and `done/` — an answered UAT is still a satisfied one. **A convention a test depends on must be written where an author will look**, which is here rather than only in the test.
+
+### Not every task owes one
+
+**`UAT | … | None` is a valid declaration and passes.** Plenty of work is entirely machine-checkable and needs nothing from Christoph.
+
+**A rule that fires on tasks with nothing to check trains people to ignore it** — which would cost more than the rule saves. Declare `None` and move on.
+
 ---
 
 ## Storage
