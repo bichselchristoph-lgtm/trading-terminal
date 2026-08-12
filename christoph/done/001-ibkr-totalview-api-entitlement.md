@@ -3,6 +3,8 @@
 **Status** WRITTEN · **Type** EXTERNAL · **Date** 2026-08-11
 **Blocking** nothing. Matters only if QQQ's primary book is wanted for a later capture.
 
+
+**RESOLUTION** Subscribed to IBKR NASDAQ TotalView-OpenView EDS Subscription to allow API request to deep books.
 ---
 
 ## The question to put to IBKR
