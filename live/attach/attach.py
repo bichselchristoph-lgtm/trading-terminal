@@ -160,7 +160,10 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
         try:
             r.tape = md.open_tick_stream(r.contract)
         except Exception as exc:                   # noqa: BLE001
-            r.tape = f"absent - {type(exc).__name__}"
+            # The MESSAGE, not the class name. The first live run rendered
+            # `absent - RuntimeError`, which says nothing a reader can act on;
+            # the exception already carried "no tape components in core".
+            r.tape = f"absent - {_reason(exc)}"
 
     # ---- step 5: the playbook ---------------------------------------------
     try:

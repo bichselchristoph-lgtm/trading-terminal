@@ -118,6 +118,7 @@ BOOTSTRAP_ALLOWLIST = {
     "live/attach/__init__.py",
     "live/attach/attach.py",
     "live/tests/test_attach.py",
+    "live/attach/ibkr.py",                                 # S010 part 6
 }
 
 
