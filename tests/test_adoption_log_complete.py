@@ -80,6 +80,27 @@ BOOTSTRAP_ALLOWLIST = {
     "live/tests/test_tui_grammar.py",
     "live/tests/test_tui_frame.py",
     "live/tests/snapshots/empty-record.txt",
+
+    # ---- 015, S009a and 016: the growth rate S009 predicted ----------------
+    # The block above said this list's second job "will grow by roughly this
+    # many entries per slice". **Seven more, across three tasks.** That
+    # prediction is now measured rather than expected.
+    #
+    # It is recorded as OBS-008 in docs/observations/OBSERVATIONS.md with a
+    # review-by date, which is the point of the ledger 016 built: acting on the
+    # finding no longer depends on somebody rereading S009's done-note.
+    #
+    # STILL NOT FIXED HERE. A fourth route into the tree is a design decision,
+    # and 016 is not the task that takes it.
+    "tests/test_uat_has_a_file.py",                        # 015
+    "live/tests/test_tui_measured_against_its_tile.py",    # S009a
+    "live/tests/snapshots/tile-80x24.txt",                 # S009a - the floor
+    "live/tests/snapshots/tile-209x54.txt",                # S009a - the working width
+    "live/tests/snapshots/tile-240x70.txt",                # S009a - the ceiling
+    "tests/test_observations_ledger.py",                   # 016 part 5c
+    # Repo root, not a code tree. The root has no native-prefix carve-out and
+    # must not get one -- it is where a stray copied file would be least visible.
+    "verify.ps1",                                          # 016 part 1
 }
 
 
