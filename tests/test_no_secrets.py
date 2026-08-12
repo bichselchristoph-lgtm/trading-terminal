@@ -24,7 +24,21 @@ REPO = Path(__file__).resolve().parents[1]
 
 #: Directories that hold no authored text. `.claude/` is NOT among them --
 #: excluding it is what let the last key sit unreported.
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules"}
+#:
+#: `records` and `records_truncated` hold CAPTURED MARKET DATA, never authored
+#: text. **The predecessor's version skipped both; that was dropped when this
+#: test was rewritten for this tree under M001, and the defect was invisible
+#: until something large landed there.** Once `012`'s QQQ capture filled
+#: `records/tape/` with 1.8 GB of depth JSONL, the credential scan read every
+#: byte of it on every run and the suite went from 1.4 s to ~128 s.
+#:
+#: **This narrows WHERE, never WHAT.** `records/` is gitignored and never
+#: committed, so scanning it for committed secrets answers a question nobody
+#: asked. The suffix list is untouched, there is no size cap and no sampling --
+#: a size cap would silently stop scanning a large file that IS tracked, which
+#: is the failure this test exists to catch.
+SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules",
+             "records", "records_truncated"}
 
 #: Extensions worth reading as text.
 TEXT_SUFFIXES = {
@@ -133,6 +147,33 @@ def test_the_scan_actually_reaches_dependency_manifests() -> None:
         "requirements.txt was not scanned. That is the exact blind spot this test was "
         "rewritten to close -- a green run without it is meaningless."
     )
+
+
+def test_the_records_skip_narrows_where_and_not_what() -> None:
+    """016 part 2 -- the skip must not become a hiding place.
+
+    `records/` is excluded because it holds captured market data and is
+    gitignored, so a committed secret cannot be there. **The suffix list must
+    stay untouched and no size cap may appear**: a cap would silently stop
+    scanning a large file that IS tracked, which is the failure mode this test
+    exists to catch, and it would look identical to a clean run.
+    """
+    assert ".jsonl" in TEXT_SUFFIXES, (
+        "the .jsonl suffix was dropped. The fix for the runtime was to narrow "
+        "WHERE the scan looks, not WHAT it reads -- a tracked .jsonl anywhere "
+        "else in the tree must still be scanned.")
+    # Checked against the SCANNING FUNCTION, not against this file. An earlier
+    # version searched the whole module and failed on its own list of banned
+    # words -- the same self-reference trap as the `6 of 9` check and the legacy
+    # path check. The rule is positional: look only where a cap could actually
+    # be applied.
+    import inspect
+    scan = inspect.getsource(candidate_files) + inspect.getsource(rel)
+    for banned in ("st_size", "MAX_BYTES", "islice", "read_text(encoding=\"utf-8\")[:"):
+        assert banned not in scan, (
+            f"a size cap or sample ({banned!r}) appeared in the file walk. A cap "
+            "silently stops scanning a large TRACKED file and looks identical to "
+            "a clean run.")
 
 
 def test_the_key_pattern_matches_a_real_key_shape() -> None:
