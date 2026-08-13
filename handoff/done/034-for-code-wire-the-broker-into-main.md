@@ -430,8 +430,20 @@ app still launches and `HEALTH` says so.
 
 ## 9. Export
 
-Run after the final commit. **Syncing this note does not close it** — `REVIEWED` needs
-your reading, and `DONE` needs both parties.
+**`export-handoff.ps1` ran after the commit**, recording HEAD
+`e3a84d2d1e1cda15bb8d9bc50ee54f56331f6fa2`, **working tree clean**:
+
+```
+D:\claude-googledrive-sync\momentum-code-handoff: 102 files (3 copied, 99 unchanged)
+D:\claude-googledrive-sync\momentum-christoph-done: 15 files (0 copied, 15 unchanged)
+```
+
+**Pushed to `origin`** (`trading-terminal`), `d7c2416..e3a84d2`. This note itself is the
+one file the export could not carry at that HEAD — it names the HEAD it was exported at,
+which cannot exist until it is committed. It goes out with the next export.
+
+**Syncing this note does not close it** — `REVIEWED` needs your reading, and `DONE` needs
+both parties.
 
 **Paste this note to chat.** On 2026-08-11 four correct done-notes were written and none
 reached the design session, and nothing in the repo can detect that.
