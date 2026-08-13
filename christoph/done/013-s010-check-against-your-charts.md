@@ -112,11 +112,25 @@ It should read something like `VWAP 47.31 (bar-derived · 18.4M sh · 42 min · 
 
 **G · Anything that looked plausible and turned out to be wrong.** This is the answer worth most:
 
-`________________________________________________`
+
+Can't attach. It isn't there.
+
+live/tui/app.py imports day_record, grammar and layout — it never imports live.attach. It has one key binding (Ctrl+Tab, focus), zero action_ methods and no command provider. The ATTACHED panel only renders record.attached; nothing in the running app can put a symbol into it.
+
+The module-level docstring says "Ctrl+P is the palette for the long tail" — that mechanism doesn't exist in the code. Ctrl+P opens Textual's built-in palette with theme and quit in it.
+
+This is 029 one level up. attach() exists, works, and has 18 KB of tests; the TUI has no path to it. Green suite, unreachable feature — the third time this shape has shipped.
+
+So the 013 UAT is unperformable, not failing. Record it that way in the file: you cannot check a context block against your charts because you cannot produce one.
+
+terminal did not start after running C:\venvs\trading\Scripts\python.exe -m live.tui.app___________________
+It returned to prompt ___PS D:\Dev\momentum> C:\venvs\trading\Scripts\python.exe -m live.tui.app
+PS D:\Dev\momentum> C:\venvs\trading\Scripts\python.exe -m live.tui.app
+PS D:\Dev\momentum>______________`
 
 ---
 
-Signed `________________` Date/time `________________`
+Signed `____Christoph____________` Date/time `__August 13, 2026______________`
 
 *Once signed, copy this file to `christoph/done/`, verify it is byte-identical, then remove it
 from `christoph/open/`.*

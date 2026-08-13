@@ -40,6 +40,8 @@ configured**, so this is the only place the account size enters by hand.
 **What I need:** your NLV to the nearest thousand, or the percentage directly if you would
 rather not state the balance. Either settles it.
 
+The percentage is 0.02%. 
+
 ---
 
 ## 2. Confirm the two loss limits against your own history
@@ -53,18 +55,25 @@ dollars.** At roughly $500 of risk per trade:
 - **$2,000/day is four losing trades.**
 - **$5,000/month is ten** — and **two and a half full stop-out days.**
 
+change daily_loss_usd to 1000. Approx. two loosing trades.
+
 **So the monthly limit binds well before any slow bleed reaches it.** Two bad days and part
 of a third ends the month. That may be exactly the discipline you want; it is not the
 relationship most people picture when they write those two numbers down.
+
+reduced daily_loss_usd to half. 
 
 **Both rows therefore render headroom in losses as well as dollars** — `5.4 of 10 losses
 left` rather than only `−$2,690`, because the second reads as a lot of room and the first
 reads as what it is.
 
+yes
+
 **What I need:** either *"confirmed"*, or replacement numbers. **If you have your own trade
 history to pick from, use it** — these two are exempted from the no-unfounded-numbers rule
 only because the alternative is no limit at all, and that exemption is worth spending as
 little as possible.
+change daily_loss_usd to 1000. Approx. two loosing trades.
 
 ---
 
@@ -74,6 +83,8 @@ little as possible.
 held to 16:05. It closes all three of 008b's open deviations in one run and answers the one
 question none of them could separately: **whether the ~5 s update cadence survives five
 concurrent streams on one account, or whether 5.002 s was a single-stream artifact.**
+
+done
 
 **That number decides whether `keep_up_to_date` stays the default for a five-symbol console.**
 It blocks nothing today — `cum_refresh_s: 120` is a working fallback — but it should be
