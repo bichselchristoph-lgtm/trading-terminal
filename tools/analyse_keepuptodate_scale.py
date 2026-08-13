@@ -143,6 +143,41 @@ def grid_adherence(gaps: list[float]) -> dict:
     }
 
 
+# A stream that has said nothing for this long has stopped, not gone quiet. The
+# widest legitimate gap measured anywhere in this run was 59.999 s, in pre-market
+# on the quietest symbol, so 180 s is three times the worst observed silence and
+# still an order of magnitude below the 42.75-minute death it has to catch.
+DEAD_STREAM_AFTER_S = 180.0
+
+
+def liveness(last_update_et: str | None, finished_et: str | None) -> dict:
+    """Was the stream still DELIVERING at the end, as distinct from the socket
+    still being CONNECTED?
+
+    These are not the same question and this run is why the distinction is
+    written down. At 15:22:19 the HMDS farm blipped, TWS answered all five
+    subscriptions with error 10182 'Failed to request live updates
+    (disconnected)', the farm recovered 3 seconds later -- and no stream ever
+    resumed. The API socket stayed up the whole time, `ib.isConnected()` kept
+    returning True, and the probe's own summary reported `survived_window: True`
+    while forty-three minutes of the session went unrecorded.
+
+    008b's note warned about exactly this shape of mistake in its own
+    instrumentation. Trusting the connection flag here would have filed
+    'survived six hours' for a run that stopped delivering at 15:22.
+    """
+    if not last_update_et or not finished_et:
+        return {"last_update_et": last_update_et, "silent_tail_s": None,
+                "delivering_at_end": None}
+    tail = (datetime.fromisoformat(finished_et)
+            - datetime.fromisoformat(last_update_et)).total_seconds()
+    return {
+        "last_update_et": last_update_et,
+        "silent_tail_s": round(tail, 1),
+        "delivering_at_end": tail < DEAD_STREAM_AFTER_S,
+    }
+
+
 def bucket_of(t: dtime) -> str | None:
     for name, lo, hi in BUCKETS:
         if lo <= t < hi:
@@ -227,6 +262,8 @@ def analyse_symbol(symbol: str, recs: list[dict]) -> dict:
     last_earliest = updates[-1].get("earliest") if updates else None
     return {
         "symbol": symbol,
+        "first_update_et": updates[0]["wall_et"] if updates else None,
+        "last_update_et": updates[-1]["wall_et"] if updates else None,
         "accepted": bool(initial and initial.get("accepted")),
         "rejected": rejected,
         "truncated_lines": truncated,
@@ -296,6 +333,29 @@ def main(argv: list[str] | None = None) -> int:
     if heartbeats:
         print(f"heartbeats: {len(heartbeats)}, last {heartbeats[-1]['wall_et']}")
     print(f"drops={len(drops)} reconnects={len(reconnects)} api_error_records={len(api_errors)}")
+
+    finished_et = run_summary.get("finished_et") if run_summary else None
+    print("\n-- was each stream still DELIVERING at the end? " + "-" * 29)
+    print("   connected is not the same question as delivering, and this run separates them")
+    dead = []
+    for r in results:
+        lv = liveness(r["last_update_et"], finished_et)
+        r["liveness"] = lv
+        if lv["silent_tail_s"] is None:
+            print(f"  {r['symbol']:<6} unknown -- no finished_et, the run has not ended")
+            continue
+        verdict = "DELIVERING" if lv["delivering_at_end"] else "*** DEAD ***"
+        print(f"  {r['symbol']:<6} {verdict:<12} last update {lv['last_update_et'][11:23]}, "
+              f"then silent {lv['silent_tail_s']:.1f}s ({lv['silent_tail_s'] / 60:.1f} min)")
+        if not lv["delivering_at_end"]:
+            dead.append(r["symbol"])
+    if dead and run_summary:
+        print(f"\n  !! {len(dead)}/{len(results)} streams STOPPED DELIVERING before the run ended: "
+              f"{', '.join(dead)}")
+        print(f"  !! and the run summary says survived_window={run_summary['survived_window']}, "
+              f"still_connected_at_end={run_summary['still_connected_at_end']}.")
+        print("  !! The socket survived. The data did not. Do not quote the connection flag "
+              "as evidence the stream worked.")
 
     print("\n-- acceptance and 04:00 anchor " + "-" * 46)
     for r in results:

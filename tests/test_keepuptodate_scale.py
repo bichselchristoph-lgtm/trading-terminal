@@ -30,8 +30,8 @@ from tools.probe_keepuptodate_scale import (  # noqa: E402
     ProbeError, parse_until, snapshot,
 )
 from tools.analyse_keepuptodate_scale import (  # noqa: E402
-    BASELINE_008B_MEDIAN_S, BUCKETS, analyse_symbol, bucket_of, grid_adherence,
-    load, p95, pearson, spearman, stats,
+    BASELINE_008B_MEDIAN_S, BUCKETS, DEAD_STREAM_AFTER_S, analyse_symbol,
+    bucket_of, grid_adherence, liveness, load, p95, pearson, spearman, stats,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -323,6 +323,43 @@ def test_worst_rth_silence_is_none_when_nothing_traded_in_session():
     """None, not 0.0 -- zero would read as 'measured, and it was never dark'."""
     recs = [r for r in _records() if r["kind"] != "update" or "09:13" in r["wall_et"]]
     assert analyse_symbol("TEST", recs)["worst_rth_silence"] is None
+
+
+def test_a_connected_socket_is_not_a_delivering_stream():
+    """The finding this run turned on, pinned so it cannot be softened later.
+
+    At 15:22:15 every stream stopped delivering; the run ran to 16:05:00 with the
+    socket up and reported survived_window=True. 42.75 minutes of a session that
+    cannot be re-recorded went unmeasured while the connection flag said fine."""
+    lv = liveness("2026-08-13T15:22:15-04:00", "2026-08-13T16:05:00-04:00")
+    assert lv["silent_tail_s"] == 2565.0
+    assert lv["delivering_at_end"] is False
+
+
+def test_a_stream_still_beating_at_the_end_reads_as_delivering():
+    lv = liveness("2026-08-13T16:04:57-04:00", "2026-08-13T16:05:00-04:00")
+    assert lv["silent_tail_s"] == 3.0
+    assert lv["delivering_at_end"] is True
+
+
+def test_dead_stream_threshold_clears_the_worst_legitimate_silence():
+    """59.999 s was the widest real gap measured -- pre-market, quietest symbol.
+    The threshold must sit above it or a quiet pre-open stream reads as dead."""
+    assert DEAD_STREAM_AFTER_S > 60.0
+    assert liveness("2026-08-13T09:19:00-04:00",
+                    "2026-08-13T09:20:00-04:00")["delivering_at_end"] is True
+
+
+def test_liveness_is_unknown_not_alive_when_the_run_has_not_ended():
+    """None, not True. An unfinished run must not report its streams healthy."""
+    lv = liveness("2026-08-13T15:22:15-04:00", None)
+    assert lv["delivering_at_end"] is None and lv["silent_tail_s"] is None
+
+
+def test_last_update_is_carried_out_of_the_events(tmp_path):
+    r = analyse_symbol("TEST", _records())
+    assert r["first_update_et"] == "2026-08-13T09:13:02-04:00"
+    assert r["last_update_et"] == "2026-08-13T09:32:03-04:00"
 
 
 def test_classifications_and_anchor_are_reported():
