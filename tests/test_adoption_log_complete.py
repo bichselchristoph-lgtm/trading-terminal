@@ -119,6 +119,18 @@ BOOTSTRAP_ALLOWLIST = {
     "live/attach/attach.py",
     "live/tests/test_attach.py",
     "live/attach/ibkr.py",                                 # S010 part 6
+
+    # ---- 020: two more, and the count is now 23 ----------------------------
+    # Both authored here. `export-handoff.ps1` is at the repo root, which has no
+    # native-prefix carve-out and must not get one -- the root is where a stray
+    # copied file would be least visible. `verify.ps1` landed the same way under
+    # 016 and is four entries above.
+    #
+    # OBS-008 in the ledger still stands: a fourth route in -- "authored here for
+    # a slice" -- is a design decision nobody has taken, and 020 is not the task
+    # that takes it.
+    "export-handoff.ps1",                                  # 020 part 2
+    "tests/test_export_scope_is_derived.py",               # 020 part 2
 }
 
 

@@ -1,4 +1,8 @@
-# verify.ps1 — four facts about this tree, and no opinion about them.
+# verify.ps1 — five facts about this tree, and no opinion about them.
+#
+# Four became five under 020 part 3, which added the export freshness check.
+# The count is in the name of the thing, so it is maintained rather than left
+# saying "four" while printing five.
 #
 # 016 part 1. Christoph cannot verify what he carries. A done-note is
 # machine-to-machine communication passing through a human who can see that it
@@ -10,7 +14,7 @@
 # confirmed.
 #
 # THIS SCRIPT DOES NOT INTERPRET. No "all good", no green/red, no
-# exit-code-as-verdict. Four sections of raw fact, and the reading belongs to
+# exit-code-as-verdict. Five sections of raw fact, and the reading belongs to
 # the design session. Its whole value is that it does not have an opinion — a
 # script that says "PASS" is one more claim to verify, not a way of verifying
 # claims.
@@ -116,6 +120,113 @@ if (-not (Test-Path $python)) {
     Remove-Item $tmp -ErrorAction SilentlyContinue
 }
 
+# --- 5. export freshness ----------------------------------------------------
+Section 5 'EXPORT — what each Drive mirror says, beside what this tree says'
+
+# 020 part 3. SYNC FAILURE IS SILENT. A stale file in the mirror looks identical
+# to a current one, and the design session would read it and believe it — the
+# same shape as the stale RUNNING the export exists to end. Trading one silent
+# failure for another is no gain.
+#
+# NO VERDICT, consistent with the rest of this script. The manifest's HEAD and
+# the live HEAD are printed beside each other; whether they should match is the
+# design session's reading, not this script's.
+#
+# The destinations are PARSED OUT OF export-handoff.ps1 rather than restated
+# here. A second copy of the table would drift, and the drift would be invisible.
+# The script is never dot-sourced — running it would perform an export, and
+# verify.ps1 never modifies anything.
+
+$exportScript = Join-Path $repo 'export-handoff.ps1'
+if (-not (Test-Path $exportScript)) {
+    Write-Host "CANNOT COMPUTE: export-handoff.ps1 not found at $exportScript"
+} else {
+    $src = Get-Content $exportScript -Raw
+    # SINGLE-QUOTED here-strings, deliberately. In a double-quoted PowerShell
+    # string `$repo` expands — backslash is not an escape character here — so
+    # `\$repo` in a pattern silently becomes `\D:\Dev\momentum` and matches
+    # nothing. Caught on the first run of this section.
+    $rowRe = [regex]@'
+@\{\s*Src\s*=\s*Join-Path\s+\$repo\s+'([^']+)'\s*;\s*Dst\s*=\s*Join-Path\s+\$driveRoot\s+'([^']+)'\s*;\s*Recurse\s*=\s*\$(true|false)
+'@
+    $rootRe = [regex]@'
+\$driveRoot\s*=\s*'([^']+)'
+'@
+
+    $rootM = $rootRe.Match($src)
+    $rows  = $rowRe.Matches($src)
+
+    if (-not $rootM.Success -or $rows.Count -eq 0) {
+        Write-Host 'CANNOT COMPUTE: could not parse $driveRoot / $exports out of export-handoff.ps1.'
+        Write-Host '  The table was reformatted or removed. This section is now checking nothing.'
+    } else {
+        $driveRoot = $rootM.Groups[1].Value
+        Write-Host "  drive root  $driveRoot$(if (Test-Path $driveRoot) { '' } else { '   (NOT PRESENT on this machine)' })"
+        Write-Host "  live HEAD   $head"
+        $seenHeads = @{}
+
+        foreach ($m in $rows) {
+            $srcDir  = Join-Path $repo ($m.Groups[1].Value)
+            $dstDir  = Join-Path $driveRoot ($m.Groups[2].Value)
+            $recurse = $m.Groups[3].Value -eq 'true'
+            $leaf    = Split-Path $dstDir -Leaf
+            $man     = Join-Path $dstDir "MANIFEST-$leaf.md"
+
+            Write-Host ''
+            Write-Host "  [$leaf]"
+            Write-Host "    source            $srcDir"
+
+            # Live count of the source, computed here and not taken from anything
+            # the export wrote. Same .md rule the export applies.
+            if (Test-Path $srcDir) {
+                $liveCount = @(Get-ChildItem -LiteralPath $srcDir -File -Recurse:$recurse |
+                               Where-Object { $_.Extension -eq '.md' }).Count
+                Write-Host "    live files        $liveCount"
+            } else {
+                Write-Host '    live files        CANNOT COMPUTE: source folder missing'
+            }
+
+            # "If a manifest is missing, say so and continue."
+            if (-not (Test-Path $man)) {
+                Write-Host "    manifest          MISSING — no MANIFEST-$leaf.md in $dstDir"
+                Write-Host '                      (the export has not run against this destination,'
+                Write-Host '                       or the mirror is not present on this machine)'
+                continue
+            }
+
+            $mtext = Get-Content $man -Raw
+            $mHead  = ([regex]'(?m)^\*\*HEAD\*\*\s+(.+?)\s*$').Match($mtext)
+            $mStamp = ([regex]'(?m)^\*\*exported\*\*\s+(.+?)\s*$').Match($mtext)
+            $mCount = ([regex]'(?m)^\*\*files\*\*\s+(\d+)').Match($mtext)
+            $mTree  = ([regex]'(?m)^\*\*working tree\*\*\s+(.+?)\s*$').Match($mtext)
+
+            Write-Host ("    manifest HEAD     " + $(if ($mHead.Success)  { $mHead.Groups[1].Value }  else { 'CANNOT COMPUTE: no **HEAD** line' }))
+            Write-Host ("    exported at       " + $(if ($mStamp.Success) { $mStamp.Groups[1].Value } else { 'CANNOT COMPUTE: no **exported** line' }))
+            Write-Host ("    manifest files    " + $(if ($mCount.Success) { $mCount.Groups[1].Value } else { 'CANNOT COMPUTE: no **files** line' }))
+            Write-Host ("    tree at export    " + $(if ($mTree.Success)  { $mTree.Groups[1].Value }  else { 'CANNOT COMPUTE: no **working tree** line' }))
+
+            if ($mHead.Success) { $seenHeads[$leaf] = $mHead.Groups[1].Value }
+        }
+
+        # "If the two manifests disagree with each other, print both rather than
+        # picking one." This is the drift the one-script decision exists to
+        # prevent: both mirrors must reflect the same HEAD, and a well-formed
+        # value answering a different question would otherwise be invisible.
+        $distinct = @($seenHeads.Values | Sort-Object -Unique)
+        Write-Host ''
+        if ($seenHeads.Count -lt 2) {
+            Write-Host "  manifests read: $($seenHeads.Count) of $($rows.Count). No cross-manifest comparison possible."
+        } elseif ($distinct.Count -eq 1) {
+            Write-Host "  both manifests carry the same HEAD: $($distinct[0])"
+        } else {
+            Write-Host '  THE MANIFESTS CARRY DIFFERENT HEADs. Both are printed; neither is preferred:'
+            foreach ($k in ($seenHeads.Keys | Sort-Object)) {
+                Write-Host "    $k -> $($seenHeads[$k])"
+            }
+        }
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Write-Host ''
@@ -135,5 +246,5 @@ if ($null -ne $suiteSeconds) {
     }
 }
 Write-Host ''
-Write-Host 'verify.ps1 states four facts and draws no conclusion from them.'
+Write-Host 'verify.ps1 states five facts and draws no conclusion from them.'
 Write-Host 'The reading belongs to the design session.'

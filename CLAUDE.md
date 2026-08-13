@@ -1,6 +1,6 @@
 # CLAUDE.md — momentum
 
-> **version** v1.4 · **date** 2026-08-12 · **supersedes** v1.3 (2026-08-12)
+> **version** v1.5 · **date** 2026-08-13 · **supersedes** v1.4 (2026-08-12)
 
 Guidance for Claude Code working in `D:\Dev\momentum`.
 
@@ -184,6 +184,50 @@ A **question** is not a task you would rather not do. It is a fork where the ans
 what gets built and the choice is not yours to make. If you can pick a defensible option and
 say why, that is a choice — make it, record it, move on.
 
+### The Drive export — one-way, additive, and not a substitute for judgment
+
+`export-handoff.ps1` copies `.md` files out to two Drive-mirrored folders, so the design
+session can read them without Christoph pasting anything:
+
+| Source (this tree) | Destination (Drive-mirrored) |
+|---|---|
+| `handoff/` (recursive) | `D:\claude-googledrive-sync\momentum-code-handoff\` |
+| `christoph/done/` (flat) | `D:\claude-googledrive-sync\momentum-christoph-done\` |
+
+**One-way. It copies new and changed files and deletes nothing, anywhere, ever.** Nothing is
+ever read back: **nothing enters this tree except through the adoption gate**, and a mirror
+that is also an input is how a superseded copy walks back in wearing the shape of current
+work. `tests/test_export_scope_is_derived.py` asserts no Drive path is tracked by git.
+
+**The repository is never mirrored.** Drive watches `D:\claude-googledrive-sync`, outside every
+repo. An earlier setup pointed Drive at `handoff/` *inside* the working tree, where a sync
+conflict creates a duplicate named something like "012 (1).md" inside `handoff/done/` — which
+`git status` then reports as new work. (**That name is deliberately not written as a path
+here**: `tests/test_spec_pointers.py` resolves every backticked repo-relative token in this
+file, and it correctly failed on the illustration when it was. A hypothetical file must not be
+spelled like a real one.)
+
+**`docs/specs/`, `records/` and `christoph/open/` are never exported.** The scope is
+**structural, not a forbidden-list**: those folders are absent because they are not named as
+sources, and the test derives what may appear in each destination *from the source itself*. A
+forbidden-list grows into a hiding place — every folder nobody thought of is implicitly
+permitted.
+
+**`christoph/open/` is excluded and this must not be "fixed" later**, because the obvious
+improvement is to add it: that folder answers *what is still outstanding* **by being empty**,
+and an additive export cannot represent empty — a retired item would sit in the mirror forever
+saying the opposite, convincingly. Putting it in Drive needs a mirroring export that deletes,
+which is a separate decision.
+
+**Run it at the end of every task, after the commit**, and **state in the done-note whether it
+ran and what `HEAD` it recorded.** No watcher, no scheduled job, no filesystem hook: a missed
+export is visible in `verify.ps1` section 5; a background process that fails quietly is not.
+
+**Syncing a done-note does not close it.** This is the natural misreading of the whole
+mechanism. Christoph still holds the five states; `REVIEWED` still needs the verification
+output and `DONE` still needs both parties. **An export removes a transport failure. It does
+not remove a judgment.**
+
 ## Observations — findings that outlive the task that found them
 
 **Carried forward from `momentum-harness/CLAUDE.md` on 2026-08-12 under 016 §5a.** The
@@ -277,6 +321,7 @@ decision before it runs, and that decision is Christoph's.
 
 | Version | Date | Change |
 |---|---|---|
+| **v1.5** | 2026-08-13 | **The Drive export** (020). `export-handoff.ps1` carries `handoff/` and `christoph/done/` one-way to two Drive-mirrored folders, ending the class of failure where four correct done-notes were written on 2026-08-11 and none reached the design session. Records both destinations, the one-way direction, and that **the repository itself is never mirrored**. States **why `christoph/open/` is excluded** — it answers by being empty, and an additive export cannot represent empty — because the obvious "improvement" is to add it. Carries the sentence that is the natural misreading of the whole task: **syncing a done-note does not close it.** `verify.ps1` gains section 5, so a stale mirror is visible rather than silent. |
 | **v1.4** | 2026-08-12 | **The retention position becomes a decision** (016 §6). `records/tape/` is kept indefinitely until Christoph says otherwise, with its reason: the 2026-08-11 QQQ session is unrepeatable and is Row 14's basis. v1.1 said *"no retention rule exists yet"*, which reads as a gap someone might helpfully close. **States explicitly that no policy for FUTURE captures is decided**, so the rule is not read as "keep everything forever". |
 | **v1.3** | 2026-08-12 | **The observations convention, carried forward from the archive** (016 §5a). `momentum-harness/CLAUDE.md` held a complete version of it **beneath a banner saying nothing below is current guidance** — so the machinery for handling this project's recurring failure was itself an instance of it. Adds the three exit routes, the `OBSERVATIONS.md` ledger and its schema, the observation-versus-reading distinction, and the rule that **rows are added at done-note review**. The archive was read, not modified. |
 | **v1.2** | 2026-08-12 | **A broken pointer fix, and nothing else.** Line 159 named `done` with a trailing slash and no parent — prose shorthand for `christoph/done/`, which `tests/test_spec_pointers.py` correctly read as an unresolvable repo-relative token. **Introduced by the v1.1 re-supply; not a content change.** Recorded as its own version because the rule has no size threshold: **a version that skips small fixes stops being a reliable identity for the file.** The rest of the file is byte-identical to v1.1. Checked for other bare-folder shorthand — a subfolder named without its parent, such as `open`, `accepted`, `inbox` or `questions` — and this was the only instance. **Written without trailing slashes deliberately: with them, this very row would have introduced five new unresolvable pointers**, which it did on the first attempt. |
