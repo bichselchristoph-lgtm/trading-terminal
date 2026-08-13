@@ -191,6 +191,30 @@ BOOTSTRAP_ALLOWLIST = {
     # allowlist is where a file's arrival is accounted for, and "arrived from the
     # other terminal" is exactly the provenance this gate exists to make visible.
     "live/tests/test_attach_is_reachable_by_key.py",       # 032
+
+    # ---- 024: six more, and the count is now 40 ----------------------------
+    # **The first tracked files under `.claude/` in this tree's history.** M001
+    # §6 says "do not copy .claude/ in any form" and the predecessor's
+    # .claude/settings.local.json held a live Databento key -- so the .gitignore
+    # exception is four markdown files wide and nothing else, fenced by
+    # test_claude_dir_stays_ignored.py and seen red against a planted
+    # .claude/agents/settings.local.json.
+    #
+    # The roster has to be COMMITTED or it does not exist: an agent definition
+    # that is not in the repository is absent from every clone, and a restriction
+    # nobody has is not a restriction. That is the whole reason the exception was
+    # opened rather than the roster kept local.
+    #
+    # OBS-008 again: six more allowlist entries, and this task is not a slice at
+    # all -- it is infrastructure. **The second job this list is doing has now
+    # outgrown the first by a wide margin**, and a fourth route into the tree is
+    # still a design decision nobody has taken.
+    ".claude/agents/architect.md",                         # 024
+    ".claude/agents/implementer.md",                       # 024
+    ".claude/agents/reviewer.md",                          # 024
+    ".claude/agents/test-author.md",                       # 024
+    "tests/test_subagent_roster.py",                       # 024
+    "tests/test_claude_dir_stays_ignored.py",              # 024
 }
 
 

@@ -7,9 +7,41 @@
 # someone went looking for it. That trap needed a negation block and a test to
 # undo. Anchoring is the fix that does not need undoing.
 
-# Claude Code config. NEVER tracked -- M001 §6: "Do not copy .claude/ in any
-# form", and the old tree's .claude/settings.local.json held a Databento key.
-.claude/
+# Claude Code config. ONE EXCEPTION, and it is as narrow as git allows.
+#
+# M001 §6 says "Do not copy .claude/ in any form", and the old tree's
+# .claude/settings.local.json held a live Databento key. THAT RULE STANDS for
+# everything below except four .md files.
+#
+# 024 puts the subagent roster in `.claude/agents/` because CLAUDE CODE READS
+# AGENT DEFINITIONS FROM THAT PATH AND NOWHERE ELSE -- the location is forced by
+# the tool, not chosen. The roster's whole point is that a reviewer with no Edit
+# tool cannot edit, and a restriction that is not committed is a restriction the
+# next clone does not have.
+#
+#   .claude/*             ignore everything at the top level...
+#   !.claude/agents/      ...except the agents DIRECTORY, so git descends into it
+#   .claude/agents/*      ignore everything inside it...
+#   !.claude/agents/*.md  ...except the definitions themselves
+#
+# THE DIRECTORY FORM `.claude/` WOULD HAVE MADE THIS IMPOSSIBLE, and that is why
+# it is gone: git does not descend into an ignored directory, so no negation
+# inside one can rescue anything.
+#
+# NOTHING ELSE BECOMES TRACKABLE. Not settings.json, not settings.local.json,
+# not a .json at any depth, not a subdirectory under agents/, not worktrees/.
+# The final rule is belt-and-braces and is LAST DELIBERATELY -- later rules win
+# in git, so a future edit that widens the exception still cannot admit a JSON
+# config without deleting a line that says why it exists.
+#
+# tests/test_claude_dir_stays_ignored.py asserts every one of these with
+# `git check-ignore`, and was seen RED against a planted
+# .claude/agents/settings.local.json before it was accepted.
+.claude/*
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/*.md
+.claude/**/*.json
 
 # Python
 __pycache__/
