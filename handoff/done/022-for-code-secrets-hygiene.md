@@ -202,14 +202,48 @@ through a redacting `sed` before it was read.
 
 ---
 
+## An adversarial review round, and it found the same defect one layer out
+
+**A reviewer agent was run against the rewritten test before this note was finished**, and it
+found six defects. **Five were real and are fixed.** The one that matters:
+
+**The adjacent branch could pass vacuously and nothing asserted otherwise.** The in-tree side has
+`test_the_scan_actually_reaches_dependency_manifests`, which goes red if `requirements.txt` was
+never read. The adjacent side had no equivalent — **delete `D:\Dev\.claude` and all 18 tests
+still passed while only a header line changed.** That is *green because it never looked*, which
+is the exact failure 022 exists to end, reproduced in the fix for it. And
+`test_the_walk_actually_reads_a_claude_settings_file` did not close it: it calls
+`candidate_files(tmp_path)` directly, so it proves the walk and the regex and never exercises the
+routing that decides whether a hit reaches the adjacent test.
+
+Fixed with `test_the_adjacent_branch_is_not_silently_empty`, which forbids the *combination* —
+a root that exists and nothing read from it — and skips loudly when no adjacent surface exists,
+since an empty branch is then the truth. **Demonstrated both ways**: renaming `D:\Dev\.claude`
+away produces `19 passed, 1 skipped` with the reason printed under `-rs`, not a silent pass.
+
+| # | Defect | Fix |
+|---|---|---|
+| **F2** | Adjacent branch vacuous, no teeth. Also `existing_roots` gated on `is_dir()`, so **`.claude.json` — a real Claude Code config that can hold credentials — was outside a test named "adjacent surfaces"** | `test_the_adjacent_branch_is_not_silently_empty`; `ADJACENT_LEAVES = (".claude", ".claude.json", ".mcp.json")`; roots may now be files |
+| **F1** | `test_the_parent_directory_claude_is_a_candidate_root` fails on a `~/momentum` layout, where `REPO.parent` **is** home — the declared blind spot. It asserted a guarantee the derivation only provides at ≥2 levels below home | Conditioned: on that layout it asserts the **blind spot** instead, so neither branch is silent |
+| **F3** | The `ast` literal guard is evadable — `Path("D:") / "Dev" / ".claude"` has no separator in any single literal and passes all six assertions while `REPO.parents` still appears | Added `test_every_root_is_derived_from_an_ancestor`, which checks what the function **returns**: every root is `REPO` or a named leaf directly inside an ancestor. Cannot be evaded by source formatting |
+| **F4** | One banned size-cap token was **dead** — `read_text(encoding="utf-8")[:` can never match, because the call is `read_text(encoding="utf-8", errors="ignore")`. The cap someone would actually write, `read_text(...)[:65536]`, **matched none of the four** and would land unguarded in the very function the widening was introduced to protect | Replaced with the regex `read_text\([^)]*\)\s*\[` |
+| **F6** | `existing_roots` deduped roots against each other, not for containment. A junction from `<parent>/.claude` into the repo left both roots alive, so every hit was reported **twice** — the second with the adjacent remedy *"this file is in no repository"* for a committed file | Roots resolving inside `REPO` are dropped |
+| minor | Self-skip keyed on `path.name`, so **any** file named `test_no_secrets.py` in any scanned root was exempt. Identifier test had no in-tree/adjacent split | `SELF` resolved-path comparison; identifier hits marked `(ADJACENT - in no repository)` |
+
+**F5 was assessed and not acted on**: the reviewer noted the header re-imports the module, so
+every candidate file is read twice per session (measured 0.2 s + 0.06 s here). Real, and the same
+multiplier that once turned 1.4 s into 128 s — but `records/` is skipped and the suite runs in
+3.7 s. **Recorded here rather than optimised**, because 022 is not a performance task.
+
 ## The suite
 
 | When | Result |
 |---|---|
 | Before 022 | **190 passed, 1 failed** (020's UAT gate) |
-| After 022 | **197 passed, 2 failed** |
+| After 022, before review | **197 passed, 2 failed** |
+| **After the review round** | **199 passed, 2 failed** |
 
-Seven net new tests. **Neither failure is 022's code**, and neither is fixable from this side:
+Nine net new tests. **Neither failure is 022's code**, and neither is fixable from this side:
 
 1. **`test_uat_has_a_file`** — 020's, unchanged. Needs `christoph/open/NNN-020-*.md` from chat.
 2. **`test_handoff_state_declared`** — **new, and not caused by this task.** Four task files

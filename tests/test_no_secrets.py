@@ -37,6 +37,12 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
+#: The RESOLVED path of this file, not its bare name. Keyed on `path.name` the
+#: self-skip matched *any* file called `test_no_secrets.py` in *any* scanned
+#: root -- including a copy sitting in an adjacent `.claude` or a drop folder,
+#: which would then be exempt from the scan for having the right filename.
+SELF = Path(__file__).resolve()
+
 #: Directories that hold no authored text. `.claude/` is NOT among them --
 #: excluding it is what let the last key sit unreported.
 #:
@@ -96,6 +102,14 @@ IDENTIFIER_PATTERNS = [
 ]
 
 
+#: Adjacent credential surfaces, by leaf name. **Two of these are FILES, not
+#: directories**, and that distinction cost a real gap: the first version of
+#: `existing_roots` gated on `is_dir()`, so `.claude.json` -- a real Claude Code
+#: config location that can hold credentials -- was outside the scan while the
+#: test was named "adjacent surfaces". The scope was one directory name.
+ADJACENT_LEAVES = (".claude", ".claude.json", ".mcp.json")
+
+
 def candidate_roots() -> list[tuple[str, Path]]:
     """Every root this scan is SUPPOSED to cover, whether present or not.
 
@@ -122,26 +136,46 @@ def candidate_roots() -> list[tuple[str, Path]]:
         if ancestor.resolve() == home:
             continue
         label = ancestor.name or ancestor.anchor.replace("\\", "").replace("/", "")
-        roots.append((f"{label or 'root'}/.claude", ancestor / ".claude"))
+        for leaf in ADJACENT_LEAVES:
+            roots.append((f"{label or 'root'}/{leaf}", ancestor / leaf))
     return roots
 
 
 def existing_roots() -> list[tuple[str, Path]]:
-    """The subset actually present here, deduped by `resolve()` so a junction
-    pointing into the tree cannot produce a doubled report."""
+    """The subset actually present here.
+
+    Two filters, and the second is the one that was wrong first time:
+
+    1. **Deduped by `resolve()`** so the same surface reached by two names is
+       read once.
+    2. **Dropped if it resolves INSIDE the repo.** The original only compared
+       roots to each other, which does not catch a junction — if
+       `<parent>/.claude` points at `<REPO>/.claude`, its `resolve()` is not
+       equal to any other root, so both survived and every hit was reported
+       twice: once in-tree and once to the adjacent test, **whose remedy text
+       says "this file is in no repository"** for a file that is committed.
+    """
+    repo = REPO.resolve()
     out, seen = [], set()
     for label, path in candidate_roots():
-        if not path.is_dir():
+        if not path.exists():
             continue
         key = path.resolve()
         if key in seen:
             continue
+        if key != repo and repo in key.parents:
+            continue  # already covered by the repo walk; see docstring
         seen.add(key)
         out.append((label, path))
     return out
 
 
 def candidate_files(root: Path) -> list[Path]:
+    # A root may be a FILE (`.claude.json`), not only a directory. Returned
+    # unconditionally in that case: it was named as a credential surface, so
+    # filtering it by suffix here would silently drop the thing we came for.
+    if root.is_file():
+        return [root]
     out = []
     for p in root.rglob("*"):
         if not p.is_file():
@@ -191,7 +225,7 @@ def coverage_report() -> list[str]:
     present = {p.resolve() for _l, p in existing_roots()}
     lines = ["credential scan roots:"]
     for label, path in candidate_roots():
-        if path.is_dir() and path.resolve() in present:
+        if path.exists() and path.resolve() in present:
             n = len(candidate_files(path))
             lines.append(f"  PRESENT  {label:<24} {path}  ({n} files read)")
         else:
@@ -207,7 +241,7 @@ def coverage_report() -> list[str]:
 def test_no_credentials_in_the_tree(label: str, pattern: re.Pattern) -> None:
     hits = []
     for path, text in ALL_TEXT:
-        if path.name == Path(__file__).name:
+        if path.resolve() == SELF:
             continue  # this file contains the patterns themselves
         if not in_repo(path):
             continue  # adjacent surfaces have their own test and their own remedy
@@ -235,7 +269,7 @@ def test_no_credentials_on_adjacent_surfaces(label: str, pattern: re.Pattern) ->
     """
     hits = []
     for path, text in ALL_TEXT:
-        if path.name == Path(__file__).name or in_repo(path):
+        if path.resolve() == SELF or in_repo(path):
             continue
         for m in pattern.finditer(text):
             line = text[: m.start()].count("\n") + 1
@@ -253,8 +287,13 @@ def test_no_credentials_on_adjacent_surfaces(label: str, pattern: re.Pattern) ->
 
 @pytest.mark.parametrize("label,pattern", IDENTIFIER_PATTERNS, ids=[l for l, _ in IDENTIFIER_PATTERNS])
 def test_no_account_identifiers(label: str, pattern: re.Pattern) -> None:
-    hits = [rel(p) for p, t in ALL_TEXT
-            if p.name != Path(__file__).name and pattern.search(t)]
+    # Marked in-tree vs adjacent, because the two need different remedies and
+    # this test reports both. The credential patterns split into two separate
+    # test functions; a single identifier pattern carries the distinction in the
+    # hit string instead, rather than adding a fourth near-identical test.
+    hits = [f"{rel(p)}{'' if in_repo(p) else '  (ADJACENT - in no repository)'}"
+            for p, t in ALL_TEXT
+            if p.resolve() != SELF and pattern.search(t)]
     assert not hits, (
         f"{label} present in {hits}. Even without the key this identifies the account "
         "in batch-download URLs, so rotating the key does not retire it."
@@ -305,11 +344,25 @@ def test_the_records_skip_narrows_where_and_not_what() -> None:
     # the guard looks has widened.
     scan = "".join(inspect.getsource(f) for f in
                    (candidate_roots, existing_roots, candidate_files, read_texts, rel))
-    for banned in ("st_size", "MAX_BYTES", "islice", "read_text(encoding=\"utf-8\")[:"):
+    for banned in ("st_size", "MAX_BYTES", "islice"):
         assert banned not in scan, (
             f"a size cap or sample ({banned!r}) appeared in the file walk. A cap "
             "silently stops scanning a large TRACKED file and looks identical to "
             "a clean run.")
+
+    # THE FOURTH TOKEN WAS DEAD. It read `read_text(encoding="utf-8")[:` and
+    # could never match: `read_texts` calls `read_text(encoding="utf-8",
+    # errors="ignore")`, so the literal never appears -- while the cap somebody
+    # would actually write, `read_text(..., errors="ignore")[:65536]`, matched
+    # none of the four and landed unguarded in the exact function the widening
+    # was introduced to protect. A pattern, not a literal, because the argument
+    # list is what varies.
+    sliced = re.search(r"read_text\([^)]*\)\s*\[", scan)
+    assert not sliced, (
+        f"a slice was applied to a read_text call in the file walk: "
+        f"{sliced.group(0)!r}. That is a size cap in the form that evades a "
+        "literal token list -- it silently stops scanning a large TRACKED file "
+        "and looks identical to a clean run.")
 
 
 def test_the_key_pattern_matches_a_real_key_shape() -> None:
@@ -360,9 +413,24 @@ def test_the_parent_directory_claude_is_a_candidate_root() -> None:
     labels = [label for label, _ in candidate_roots()]
     paths = [p for _, p in candidate_roots()]
     assert ("repo", REPO) == (labels[0], paths[0])
-    assert REPO.parent / ".claude" in paths, (
-        f"{REPO.parent / '.claude'} is not a candidate root. A live key sat there "
-        "on 2026-08-13 while this suite was green, because rglob cannot leave REPO.")
+
+    # CONDITIONED, because the derivation genuinely cannot deliver this when the
+    # repo is a DIRECT CHILD of the user home: there `REPO.parent` IS home, and
+    # home is the declared blind spot. Asserting it unconditionally would fail on
+    # a `~/momentum` layout for reasons having nothing to do with a key -- and
+    # would assert a guarantee the code only provides when the repo sits two or
+    # more levels below home. **The blind spot is asserted instead of the
+    # coverage**, so neither branch is silent.
+    if REPO.parent.resolve() == Path.home().resolve():
+        assert REPO.parent / ".claude" not in paths, (
+            "the repo is a direct child of the user home, so its only adjacent "
+            "surface is ~/.claude -- the documented blind spot (OBS-020). It must "
+            "not appear as a root here, and this layout is NOT covered.")
+    else:
+        assert REPO.parent / ".claude" in paths, (
+            f"{REPO.parent / '.claude'} is not a candidate root. A live key sat there "
+            "on 2026-08-13 while this suite was green, because rglob cannot leave REPO.")
+
     assert Path.home() / ".claude" not in paths, (
         "the user-level ~/.claude became a scan root. It is gigabytes of session "
         "transcripts holding arbitrary pasted text -- the shape patterns fire on "
@@ -392,6 +460,60 @@ def test_the_walk_actually_reads_a_claude_settings_file(tmp_path: Path) -> None:
 
     _, pattern = CREDENTIAL_PATTERNS[0]
     assert pattern.search(planted.read_text(encoding="utf-8"))
+
+
+def test_every_root_is_derived_from_an_ancestor() -> None:
+    """The BEHAVIOURAL derivation check, and the reason there are two.
+
+    `test_the_root_list_is_derived_and_not_enumerated` reads the source, and a
+    source check is evadable: `Path("D:") / "Dev" / ".claude"` contains no path
+    separator in any single literal and slips past every banned token while
+    `REPO.parents` still appears elsewhere in the function. **This one cannot be
+    evaded, because it checks what the function RETURNS**: every root is either
+    `REPO` itself or a named leaf sitting directly in an ancestor of `REPO`.
+    """
+    ancestors = set(REPO.parents)
+    for label, path in candidate_roots():
+        if path == REPO:
+            continue
+        assert path.parent in ancestors, (
+            f"root {label} -> {path} is not adjacent to any ancestor of {REPO}. "
+            "Roots are derived from REPO.parents; a root from anywhere else is "
+            "an enumerated path and works on exactly one machine.")
+        assert path.name in ADJACENT_LEAVES, (
+            f"root {label} -> {path} has a leaf name outside ADJACENT_LEAVES.")
+
+
+def test_the_adjacent_branch_is_not_silently_empty() -> None:
+    """**The teeth the adjacent scan was missing**, and its absence was the same
+    defect one layer out.
+
+    The in-tree side has `test_the_scan_actually_reaches_dependency_manifests`,
+    which fails if `requirements.txt` was never read. The adjacent side had no
+    equivalent: delete `<parent>/.claude` and all tests still passed while only a
+    header line changed. *Green because it never looked* is exactly what this
+    file exists to end, so it must not be reachable for the branch that was
+    added to end it.
+
+    The assertion is conditional on a root existing, because on a machine with no
+    adjacent surface an empty branch is the truth. **What it forbids is the
+    combination: a root that exists, and nothing read from it.**
+    """
+    adjacent_roots = [(l, p) for l, p in existing_roots() if p.resolve() != REPO.resolve()]
+    routed = [p for p, _t in ALL_TEXT if not in_repo(p)]
+
+    if not adjacent_roots:
+        assert not routed, (
+            f"no adjacent root exists, yet {len(routed)} out-of-repo files were "
+            "routed to the adjacent test. The routing and the root list disagree.")
+        pytest.skip("no adjacent credential surface on this machine "
+                    "-- the report header states this on every run")
+
+    assert routed, (
+        f"adjacent roots exist ({[l for l, _ in adjacent_roots]}) but ZERO files "
+        "reached the adjacent test. It is passing vacuously: a key in any of them "
+        "would not be reported. Check existing_roots(), read_texts() and in_repo()."
+    )
 
 
 def test_dot_claude_is_not_skipped() -> None:
