@@ -1,6 +1,6 @@
 # CLAUDE.md — momentum
 
-> **version** v1.5 · **date** 2026-08-13 · **supersedes** v1.4 (2026-08-12)
+> **version** v1.6 · **date** 2026-08-13 · **supersedes** v1.5 (2026-08-13)
 
 Guidance for Claude Code working in `D:\Dev\momentum`.
 
@@ -59,6 +59,33 @@ question, and it will later be read as a record of what happened.
 bootstrap allowlist appears in `ADOPTION-LOG.md` or `EVIDENCE-CARRY.md`.** A file that
 arrives by any other route goes red. Without it the gate is prose, and a convention that
 lives in prose depends on someone remembering.
+
+## The remote, and the push habit
+
+**Push at the end of every session. A commit is local; only a push survives the disk.**
+
+**The active tree's remote is `origin` →
+`https://github.com/bichselchristoph-lgtm/trading-terminal.git`.** It was created empty and
+private on 2026-08-13 under 017, and until that day **nothing in this tree had ever been
+pushed** — the adoption gate, the protocol, the TUI, every done-note, all on one disk since
+2026-08-10.
+
+**`momentum` on GitHub is the ARCHIVED tree** — it maps to `D:\Dev\momentum-harness`, renamed
+there before this tree existed. **It is never pushed to.** That naming collision is the whole
+reason a new repository was created rather than the old name reused. **Do not touch, rename,
+remove or re-point any remote on `momentum-harness`.**
+
+> **The repository is named `trading-terminal`, not `momentum-terminal`.** 017 proposed the
+> latter and Christoph created the former. **The name in this file is the one that exists**;
+> if you find `momentum-terminal` written anywhere, it is a proposal that was not taken up.
+
+**This supersedes the position in `D:\Dev\CLAUDE.md` v1.1**, which says the remote is unsettled
+and the active repo must not be pushed. That was true when written and is false from
+2026-08-13. **If both statements are still readable, this one is current** — and the parent file
+needs the same correction, because a document that says two things is worse than one that says
+the wrong thing.
+
+**Never force-push, and never push to the archive.**
 
 ## Running things
 
@@ -321,6 +348,7 @@ decision before it runs, and that decision is Christoph's.
 
 | Version | Date | Change |
 |---|---|---|
+| **v1.6** | 2026-08-13 | **The active tree gets a remote** (017). Records `origin` as `trading-terminal` and the habit that follows from it: **push at the end of every session, because a commit is local and only a push survives the disk.** Names the archive explicitly — **`momentum` on GitHub is `momentum-harness` and is never pushed to** — since that collision is why a new repository exists rather than the old name reused. **Flags that `D:\Dev\CLAUDE.md` v1.1 still says the opposite** and must be corrected, rather than leaving a reader to guess which of two statements is current. Notes that the repository is `trading-terminal` and **not the `momentum-terminal` that 017 proposed**, so the unused name is not mistaken for the real one. |
 | **v1.5** | 2026-08-13 | **The Drive export** (020). `export-handoff.ps1` carries `handoff/` and `christoph/done/` one-way to two Drive-mirrored folders, ending the class of failure where four correct done-notes were written on 2026-08-11 and none reached the design session. Records both destinations, the one-way direction, and that **the repository itself is never mirrored**. States **why `christoph/open/` is excluded** — it answers by being empty, and an additive export cannot represent empty — because the obvious "improvement" is to add it. Carries the sentence that is the natural misreading of the whole task: **syncing a done-note does not close it.** `verify.ps1` gains section 5, so a stale mirror is visible rather than silent. |
 | **v1.4** | 2026-08-12 | **The retention position becomes a decision** (016 §6). `records/tape/` is kept indefinitely until Christoph says otherwise, with its reason: the 2026-08-11 QQQ session is unrepeatable and is Row 14's basis. v1.1 said *"no retention rule exists yet"*, which reads as a gap someone might helpfully close. **States explicitly that no policy for FUTURE captures is decided**, so the rule is not read as "keep everything forever". |
 | **v1.3** | 2026-08-12 | **The observations convention, carried forward from the archive** (016 §5a). `momentum-harness/CLAUDE.md` held a complete version of it **beneath a banner saying nothing below is current guidance** — so the machinery for handling this project's recurring failure was itself an instance of it. Adds the three exit routes, the `OBSERVATIONS.md` ledger and its schema, the observation-versus-reading distinction, and the rule that **rows are added at done-note review**. The archive was read, not modified. |
