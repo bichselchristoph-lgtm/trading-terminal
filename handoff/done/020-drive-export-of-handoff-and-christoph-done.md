@@ -221,7 +221,7 @@ after each.**
 | `424d085` | Record Christoph's open item, unmodified | — |
 | `7b48316` | A done-note reaching the design session becomes a mechanism, not a favour | **77 files (1 copied, 76 unchanged) / 13 files (0 copied, 13 unchanged). Working tree clean.** |
 | `065d3cc` | The done-note records the export that could not have carried it | superseded by the run below |
-| *final* | This note, with the UAT gate recorded | see the line under this table |
+| *final* | This note, with the UAT gate recorded | **77 / 13, working tree clean.** Its own hash is not written here — see the paragraph below for why that is unavoidable rather than an omission |
 
 `handoff/` went 76 → 77 because this note is the only new `.md` in it — 020's *task* file was
 already on disk, untracked, during the first export and was already counted.
