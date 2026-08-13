@@ -171,7 +171,21 @@ the gate and these sit outside the new section:
 3. **Nothing reports on `verify.ps1`.** Unchanged by this task and recorded in the protocol.
    `test_verify_ps1_still_modifies_nothing_else` is the nearest thing, and it checks the script's
    *text*, not its behaviour.
-4. **I did not add the version-pin test `HANDOFF-PROTOCOL.md` says it is owed.** Its own version
+4. **`git add -A` swept in a file that is not mine, and the gate caught it.**
+   `tools/probe_keepuptodate_scale.py` — 406 lines, task **021**'s investigation script — was
+   authored into the tree at **15:10:58**, three minutes before 023 committed, and the blanket add
+   took it along. **023's commit message says nothing about it, which made that commit a false
+   record of what happened.**
+
+   `test_every_tracked_file_is_accounted_for` went red immediately: `tools/` is a code tree with
+   no native-prefix carve-out, so the file needs a provenance row and a **behavioural** test, and
+   import-smoke does not count. **That is 021's to provide.**
+
+   Un-tracked in a follow-up commit. **The file is untouched on disk and stays there.** The
+   lesson is about the blanket add, not the file: **the tree can change under a long task**, and
+   `git add -A` commits whatever arrived meanwhile.
+
+5. **I did not add the version-pin test `HANDOFF-PROTOCOL.md` says it is owed.** Its own version
    history states *"a version pin belongs in a test … that test does not exist yet and is owed by
    the next task file."* **023 is a task file that touched this document and did not add it**, so
    the debt is now one task older. It is not in 023's scope and I am naming it rather than
