@@ -26,6 +26,28 @@ neither. Two changes, both deliberate:
    **This makes the suite stop being a pure property of the tree**, deliberately.
    `git checkout` can no longer make it green. The way to green on an adjacent
    hit is to rotate the key and remove it from a file no repo owns.
+
+024 added the fourth, and it is the first time this test has had to cover a
+`.claude/` path that is **tracked**:
+
+4. **`.claude/agents/` is now committed** — the subagent roster, four `.md`
+   files, at a path Claude Code forces. Every previous rule here was written
+   about a `.claude/` that could never be in the repository, so *"the fix is do
+   not commit this"* was never the right remedy for a `.claude/` hit and now
+   sometimes is.
+
+   **The walk already reached it** — `.claude` is deliberately absent from
+   `SKIP_DIRS` and `.md` is in `TEXT_SUFFIXES` — so nothing had to be widened.
+   **What was missing is teeth**, and this file has been caught by that exact
+   gap before: `test_dot_claude_is_not_skipped` exists because the docstring's
+   claim to scan `.claude/` was **vacuous**, this repo having had no `.claude/`
+   directory at all. It is no longer vacuous, and
+   `test_the_walk_reaches_a_planted_key_in_the_roster` is what makes that
+   checkable rather than asserted.
+
+   **`test_claude_config_is_not_tracked` is narrowed, not deleted** — see its
+   docstring. It went red the moment the roster was committed, which is the guard
+   working, and the wrong response to that red was to remove it.
 """
 from __future__ import annotations
 
@@ -300,12 +322,93 @@ def test_no_account_identifiers(label: str, pattern: re.Pattern) -> None:
     )
 
 
-def test_claude_config_is_not_tracked() -> None:
-    """`.claude/` must never be committed -- M001 §6. The predecessor's held a key."""
+def test_no_claude_config_file_is_tracked() -> None:
+    """**No `.json` under `.claude/` is committed, at any depth.** M001 §6.
+
+    **This test used to assert that `.claude/` was empty of tracked files, and
+    that assertion was correct until 024.** The subagent roster is now committed
+    at `.claude/agents/*.md` — a path Claude Code forces — so the old form went
+    red on four markdown files that hold no credential and never could.
+
+    **It is narrowed rather than deleted, and the distinction is the whole
+    point.** What M001 §6 is actually protecting is the *config* surface: the
+    predecessor's `.claude/settings.local.json` held a live Databento key, and
+    JSON under `.claude/` is where a key sits. A markdown agent definition is a
+    different kind of file, and it is scanned for keys like everything else by
+    the tests above.
+
+    **This is deliberately NOT the same assertion as
+    `tests/test_claude_dir_stays_ignored.py::test_only_the_roster_is_tracked_under_claude`**,
+    which owns the scope rule — *only `agents/*.md` may be tracked*. This one
+    owns the credential rule — *no config file is tracked* — and would still fire
+    if the scope rule were relaxed to admit some new non-JSON config format that
+    somebody then wrote a key into. Two rules, two files, stated so neither is
+    read as a duplicate of the other and quietly removed.
+    """
     import subprocess
-    tracked = subprocess.run(["git", "ls-files", ".claude"], cwd=REPO,
-                             capture_output=True, text=True, check=True).stdout.strip()
-    assert not tracked, f".claude/ is tracked: {tracked.splitlines()}. It must never be committed."
+    tracked = subprocess.run(["git", "ls-files", "--", ".claude"], cwd=REPO,
+                             capture_output=True, text=True, check=True).stdout.split()
+    configs = [p for p in tracked if p.lower().endswith((".json", ".yaml", ".yml", ".env"))]
+    assert not configs, (
+        f"config files are tracked under .claude/: {configs}\n\n"
+        "That is the shape that held a live Databento key in the predecessor tree. "
+        ".gitignore\ndoes not untrack a file already in the index -- use `git rm "
+        "--cached`, and if it ever\nheld a credential, rotate it: it is in the "
+        "history and on the remote.")
+
+
+def test_the_walk_reaches_a_planted_key_in_the_roster(tmp_path: Path) -> None:
+    """**Teeth for the newly-tracked path.** 024.
+
+    `.claude/agents/` is the first `.claude/` location whose contents get
+    committed and pushed, so a key pasted into an agent definition would leave
+    the machine. The walk reaches it today because `.claude` is not in
+    `SKIP_DIRS` and `.md` is in `TEXT_SUFFIXES` — **but nothing asserted that**,
+    and this file's own history is the argument for why that matters:
+    `test_dot_claude_is_not_skipped` had to be written because the module
+    docstring's claim to cover `.claude/` was true-sounding and untested.
+
+    Mirrors `test_the_walk_actually_reads_a_claude_settings_file`. The key is
+    synthetic and assembled from fragments so this file does not contain the
+    shape it searches for.
+    """
+    agents = tmp_path / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    planted = agents / "reviewer.md"
+    planted.write_text(
+        "---\nname: reviewer\ntools: Read\n---\nRun it with DATABENTO_API_KEY="
+        + "db-" + "Y" * 24 + "\n", encoding="utf-8")
+
+    reached = candidate_files(tmp_path)
+    assert planted in reached, (
+        f"the walk did not reach {planted}. `.md` is in TEXT_SUFFIXES and no "
+        "SKIP_DIRS entry covers `.claude`, so if this fails the roster is a "
+        "committed, pushed directory that the credential scan does not read.")
+
+    _, pattern = CREDENTIAL_PATTERNS[0]
+    assert pattern.search(planted.read_text(encoding="utf-8"))
+
+
+def test_the_real_roster_is_actually_scanned() -> None:
+    """The non-vacuous half. The test above proves the walk *can* reach an agent
+    definition in a temp directory; this proves it *did* reach the ones in this
+    repo, which is the claim that matters.
+
+    **Conditional on the roster existing**, because on a checkout made before 024
+    it does not — and asserting coverage of an absent directory would be the
+    vacuous-claim failure again, inverted.
+    """
+    roster = REPO / ".claude" / "agents"
+    if not roster.is_dir():
+        pytest.skip("no .claude/agents/ in this checkout -- the roster is 024's")
+    scanned = {p.resolve() for p, _ in ALL_TEXT}
+    definitions = {p.resolve() for p in roster.glob("*.md")}
+    assert definitions, f"{roster} exists but holds no .md definitions"
+    missed = sorted(str(p) for p in definitions - scanned)
+    assert not missed, (
+        f"these committed agent definitions were NOT read by the credential "
+        f"scan: {missed}\nThey are tracked and pushed, so a key in one leaves the "
+        "machine.")
 
 
 def test_the_scan_actually_reaches_dependency_manifests() -> None:
