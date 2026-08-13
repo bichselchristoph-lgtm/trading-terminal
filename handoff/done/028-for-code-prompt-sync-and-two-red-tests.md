@@ -180,11 +180,41 @@ own Part 3 is an argument against adding those casually.
 | When | Result |
 |---|---|
 | Before `028` | **236 passed, 2 failed** |
-| After `028` | **236 passed, 2 failed** |
+| After `028` | **273 passed, 2 failed, 1 warning** |
 
-**No new tests and no code changed** — `028` is a correction task. The two failures are the two it
-attributes, and this note stops calling them *"the same two people-blocked failures"*: they are
-**OBS-031's state-header conflict** and **`020`'s unplaced UAT file**, and both now have owners.
+**`028` added no tests and changed no code** — it is a correction task. **The +37 is not mine.**
+
+### Another session is working in this repository at the same time
+
+**`0acfb84` — *"Five streams share one account, and the quiet symbol is the slow one"* — is task
+`021`, committed by a concurrent session between my `faee78d` and my `1559320`.** It brought
+`tools/probe_keepuptodate_scale.py`, `tools/analyse_keepuptodate_scale.py` and
+`tests/test_keepuptodate_scale.py` (**37 tests**), with their `BOOTSTRAP_ALLOWLIST` entries.
+
+**This explains `023`'s stray file.** `023`'s done-note records that `git add -A` swept in a
+406-line script authored *"three minutes before I committed"* and that I un-tracked it. It was not
+a stray: **it was another session's work in progress**, and my `faee78d` pulled it back out of the
+index. That session committed it properly afterwards, so nothing was lost — **but the un-tracking
+was the wrong call made for a reason that looked right.** `023`'s entry stands as written; this is
+the fuller account.
+
+**The finding is not the count, it is that I wrote a number I had not re-measured.** The table
+above said `236 / 236` when I drafted this note. **That is Part 4's failure again, in the same
+task that diagnoses it** — a figure carried from earlier in my own context instead of read off a
+run. It was caught by the commit's own suite line, which is the mechanism working.
+
+**Concurrent sessions are not accounted for anywhere in the handoff convention.** `verify.ps1`
+section 2 shows uncommitted paths and section 3 shows `HEAD`, but nothing distinguishes *my*
+changes from another session's, and a done-note's suite count silently becomes a claim about
+someone else's work. **Not solved here.** Named because it will recur.
+
+**The two failures are unchanged** and this note stops calling them *"the same two people-blocked
+failures"*: they are **OBS-031's state-header conflict** and **`020`'s unplaced UAT file**, and
+both now have owners.
+
+**The warning is pre-existing and not from this task**: `eventkit/util.py:21 DeprecationWarning:
+There is no current event loop`, raised inside the `ib_async` dependency chain, surfaced by `021`'s
+new tests importing it.
 
 ## Ledger
 
