@@ -205,7 +205,7 @@ the task files carrying `status: READY` in frontmatter instead of a `**Status**`
 
 ## 5. The one line
 
-**`verify.ps1` run at 2026-08-13 15:12 +02:00.**
+**`verify.ps1` run at 2026-08-13 15:14 +02:00.**
 
 **Its output is deliberately not reproduced here.** It is in `verify-output.txt` at the repo root,
 written by that run. **This is the first note written under v1.2** — `020`, `026` and `027` each
