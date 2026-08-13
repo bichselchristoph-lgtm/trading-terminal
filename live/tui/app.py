@@ -527,3 +527,46 @@ class MomentumApp(App):
             await frame.remove_children()
             await frame.mount(*[Horizontal(*tiles, classes="row")
                                 for tiles in rows if tiles])
+
+
+# ---- starting it as a program ---------------------------------------------
+
+
+def main() -> int:
+    """Start the terminal. **029 — until now nothing did.**
+
+    `MomentumApp` was defined here and never run, so `python -m live.tui.app`
+    imported the module, executed these definitions, reached the end and exited
+    **0**. No output, no traceback. 236 tests passed against it, because every
+    one of them drives the app through Textual's `run_test()` pilot, which
+    constructs the class directly and never needs a process entry point. **The
+    suite was testing a library and the UAT was starting a program.**
+
+    **The layout is loaded HERE and passed in**, rather than left to
+    `MomentumApp.__init__`'s default. `SPEC.md` §4.4 — *no setting acquires a
+    default* — and the launcher is the classic place one appears. Loading it
+    explicitly also means a malformed `config/layout.yaml` fails **before**
+    Textual takes the alternate screen buffer, so the traceback lands on a
+    terminal that still works rather than one mid-teardown.
+
+    **No `record` is passed, and that is not an omission.** There is no broker
+    in this slice; the app boots on `empty_record()` and every panel states its
+    own reason for being empty — `SPEC.md` §4.2, *surfaced, not refused*. **A
+    launcher that exited because TWS was absent would be a refusal the user
+    cannot read**, which is the same defect this function fixes, moved one line
+    later.
+
+    **No arguments, no flags.** There is one command today. A `--headless`
+    switch for the launch test would make this a second place where behaviour
+    lives; the test selects Textual's headless driver through the environment
+    instead.
+    """
+    MomentumApp(layout=Layout.load()).run()
+    return 0
+
+
+if __name__ == "__main__":
+    # **Both this and `live/tui/__main__.py`, not one of them.** `-m live.tui`
+    # is the form worth having, but `-m live.tui.app` is the command in
+    # Christoph's shell history and he will type it again.
+    raise SystemExit(main())
