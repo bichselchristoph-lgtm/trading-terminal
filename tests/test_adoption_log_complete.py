@@ -131,6 +131,13 @@ BOOTSTRAP_ALLOWLIST = {
     # that takes it.
     "export-handoff.ps1",                                  # 020 part 2
     "tests/test_export_scope_is_derived.py",               # 020 part 2
+
+    # ---- 022: one more, and the count is now 24 ----------------------------
+    # The first conftest.py in this tree. It exists to print the credential
+    # scan's root coverage in the pytest report header, because a pytest.skip
+    # renders as a bare `s` and invisibility is the failure test_no_secrets.py
+    # exists to prevent.
+    "tests/conftest.py",                                   # 022 part 2
 }
 
 
