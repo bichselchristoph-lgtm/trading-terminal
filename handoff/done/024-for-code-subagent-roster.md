@@ -293,8 +293,26 @@ fixed.
 | UAT | none | **None** |
 
 `verify.ps1` was run in this worktree — see `verify-output.txt` on this branch, read directly.
-**Not quoted here, per HANDOFF-PROTOCOL v1.2.** Note that its section 1 will show the eleven
-failures §6 explains, and its section 5 will show the Drive mirror at main's `HEAD` rather
-than this branch's, **because the export was deliberately not run.**
+**Not quoted here, per HANDOFF-PROTOCOL v1.2.**
+
+**Three of its five sections read differently from a worktree, and none of it is `024`.** Said
+here because the file is the evidence and a reader meeting it cold would reasonably conclude
+something is badly wrong:
+
+- **§1 — eleven failures.** §6 accounts for every one: seven shared with main's baseline, four
+  worktree artifacts.
+- **§4 — `179 rows checked, 1 mismatches, 149 missing`.** **This looks like the evidence carry
+  has collapsed and it has not.** The 149 are `records/` and `records_truncated/` parquet
+  files, which are **gitignored** and therefore simply absent from any fresh checkout; the one
+  mismatch is `docs/observations/session-defined-twice.md`, **OBS-033**, whose recorded hash
+  is the CRLF copy and is green only in the one working copy predating the `.gitattributes`
+  pin. **Both are properties of running in a worktree, not of this branch.** On main, §4 reads
+  `179 rows checked, 0 mismatches, 0 missing` — as it did on `032` an hour earlier.
+- **§5 — the Drive mirror sits at main's `4597841`, not this branch's `HEAD`**, because the
+  export was deliberately not run. §7 item 3.
+
+**The comparison that matters is against main, and Christoph will run it there before
+merging.** That is the right order: a worktree's `verify-output.txt` cannot answer whether
+this branch is safe to merge, only whether it is internally consistent.
 
 **This note needs to be pasted to chat.**
