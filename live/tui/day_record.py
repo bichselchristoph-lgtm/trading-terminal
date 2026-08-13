@@ -72,6 +72,21 @@ class DayRecord:
     regime_snapshot: RegimeSnapshotRef = field(default_factory=RegimeSnapshotRef)
     #: One number per session, for the monthly P&L accumulator. Not a panel.
     session_pnl: Optional[float] = None
+    #: **Why a field was added to a record whose docstring says not to (032).**
+    #:
+    #: `SPEC.md` §4.2 requires a failed attach to be *surfaced, not refused* — the
+    #: reason renders in the ATTACHED panel and the app stays up. But
+    #: `render_panels(record)` is a PURE function of this object, so a refusal the
+    #: renderer cannot see is a refusal that cannot render. The alternative was to
+    #: hand `render_panels` a second argument, which breaks the one property
+    #: everything downstream leans on.
+    #:
+    #: **It is a rendered reason, not a layer.** The docstring's prohibition is
+    #: about fields that make an unbuilt reading *representable* — `layer_0`,
+    #: `exposure` — and this holds a string that already exists on
+    #: `AttachResult.refusal`. It is cleared on the next successful attach, so it
+    #: describes the last attempt and never accumulates.
+    attach_refusal: str = ""
 
 
 def empty_record() -> DayRecord:

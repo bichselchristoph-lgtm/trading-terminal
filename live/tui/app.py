@@ -2,9 +2,18 @@
 
 **Tiled, not switchable.** Watchlist, attached symbol and tape across the top;
 sizing, risk and health along the bottom. Nothing hidden, nothing switched.
-`Ctrl+Tab` rotates focus and **is the entire navigation surface**; `Ctrl+P` is
-the palette for the long tail. No window management, no screen switching, no
-drag-and-drop.
+`Ctrl+Tab` rotates focus and **is the entire navigation surface**; `a` opens the
+attach prompt. No window management, no screen switching, no drag-and-drop.
+
+**This docstring used to claim `Ctrl+P` is the palette for the long tail, and no
+palette was ever registered** (032). `Ctrl+P` opens Textual's own built-in
+palette, carrying theme and quit — nothing this application put there. The claim
+is deleted rather than implemented: 032 asks for the smallest way in, and a
+command palette with one command in it is a command system, which that task
+forbids in the same sentence. **The sentence is recorded here rather than simply
+removed** — a mechanism named in prose with no implementation is §7, and the
+third instance of it in this repo; deleting the evidence quietly is how the
+fourth one gets written.
 
 **`render_panels(record)` is a PURE FUNCTION of the day record.** No panel
 reaches around it to compute anything. Everything downstream leans on that, and
@@ -53,13 +62,38 @@ import re
 import sys
 import unicodedata
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
-from .day_record import DayRecord, empty_record
+# **The import 032 found missing.** `live/attach/attach.py` existed with 18kB of
+# tests against it and NOTHING in the running application imported it. The three
+# local imports below were the whole of this module's reach, and `attach` was not
+# among them — which is the finding stated as a line of code.
+from ..attach.attach import MarketData, attach
+from .day_record import Attached, DayRecord, empty_record
 from .grammar import Cell
 from .layout import Layout
+
+#: Session logic is US/Eastern via `zoneinfo`, never machine locale — the
+#: workspace convention, applied to the one clock this module reads.
+EASTERN = ZoneInfo("America/New_York")
+
+#: The key that opens the attach prompt.
+#:
+#: **A constant, not a setting, and that is the §4.4 answer rather than a dodge.**
+#: §4.4 forbids a setting acquiring a default at a boundary. A key declared in
+#: `config/layout.yaml` with a fallback here would be exactly that; a key with no
+#: fallback would make a missing config line fatal to a terminal that otherwise
+#: works. So it is not configurable, which is a decision this comment records.
+#:
+#: **Written once, and `BINDINGS` is the only reader.** 032's third constraint is
+#: *not a literal in two places* — the moment a second site spells `"a"`, the key
+#: and the thing describing it can disagree and nothing would notice.
+ATTACH_KEY = "a"
 
 #: §4d — the width the panel is DESIGNED at, and the width every snapshot is
 #: taken at. **Not the width it renders at.** The mockups were 69–71 chars
@@ -312,10 +346,16 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         or [f"  {Cell.absent('no watchlist ingested today').render()}"])
 
     at = record.attached
+    # **A refusal renders alongside what is attached, not instead of it** (032,
+    # `SPEC.md` §4.2 — surfaced, not refused). A failed attach must not blank a
+    # symbol that is working: those are two independent facts and collapsing them
+    # would make one bad ticker look like a disconnection.
+    attach_rows = [f"  {a.symbol}  attached {a.since}" for a in at]
+    if record.attach_refusal:
+        attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
     p["attached"] = Panel(
         "ATTACHED", "not attached" if not at else f"since {at[0].since}",
-        [f"  {a.symbol}  attached {a.since}" for a in at]
-        or [f"  {Cell.absent('nothing attached').render()}"])
+        attach_rows or [f"  {Cell.absent('nothing attached').render()}"])
 
     p["tape"] = Panel(
         "TAPE", "no source",
@@ -428,13 +468,117 @@ class MomentumApp(App):
     Screen { layout: vertical; }
     .row { height: 1fr; }
     Panel { border: none; padding: 0 1; width: 1fr; }
+    /* One line, docked, no border. The prompt is transient and must not change
+       what the too-small guard measured — a three-line bordered Input would take
+       a fifth of an 16-row window away from the tiles it already checked. */
+    #attach-input { dock: bottom; height: 1; border: none; padding: 0 1; }
     """
-    BINDINGS = [("ctrl+tab", "focus_next", "Next panel")]
+    BINDINGS = [
+        ("ctrl+tab", "focus_next", "Next panel"),
+        # **The whole of 032, as one line.** `attach()` shipped complete, tested
+        # at 18kB and reachable from nothing. There was no key, no action, no
+        # palette entry and no command — the only way to run it was to import it
+        # from a test.
+        (ATTACH_KEY, "attach", "Attach a symbol"),
+        # A prompt with no way out is a trap, and the cost of not having this is
+        # a terminal you kill from another window. Textual's `Input` does not
+        # bind `escape`, so it bubbles here.
+        ("escape", "cancel_attach", "Cancel"),
+    ]
 
-    def __init__(self, record: DayRecord | None = None, layout: Layout | None = None):
+    def __init__(self, record: DayRecord | None = None, layout: Layout | None = None,
+                 md: MarketData | None = None):
+        """`md` is the market data the attach path is allowed to ask (S010).
+
+        **It defaults to `None` and that is a state, not an omission.** There is
+        no broker in this slice — `main()` constructs no client and 029's launch
+        test asserts the app starts without one. With `md` absent the attach
+        prompt still opens, still accepts a symbol, and renders a NAMED refusal
+        saying what is missing. `SPEC.md` §4.2: an unreachable feature and a
+        feature that says why it cannot run are not the same screen.
+        """
         self.record = record if record is not None else empty_record()
         self.layout_cfg = layout or Layout.load()
+        self.md = md
         super().__init__()
+
+    # ---- attaching a symbol, 032 -------------------------------------------
+
+    async def action_attach(self) -> None:
+        """Open the prompt. **One line of input, and nothing else.**
+
+        Re-pressing the key while it is open focuses the existing prompt rather
+        than mounting a second one — two inputs stacked at the bottom would both
+        accept a symbol and only one of them would be read.
+        """
+        existing = self.query("#attach-input")
+        if existing:
+            existing.first(Input).focus()
+            return
+        prompt = Input(placeholder="symbol to attach  (enter to attach, esc to cancel)",
+                       id="attach-input")
+        await self.mount(prompt)
+        prompt.focus()
+
+    async def action_cancel_attach(self) -> None:
+        await self._close_prompt()
+
+    async def _close_prompt(self) -> None:
+        for widget in self.query("#attach-input"):
+            await widget.remove()
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Submit — the only place a typed symbol becomes an attach."""
+        typed = event.value.strip()
+        await self._close_prompt()
+        if not typed:
+            return
+        self._record_attach(typed)
+        await self._rerender()
+
+    def _record_attach(self, symbol: str) -> None:
+        """Call `attach()` and put its answer on the record. **Nothing else.**
+
+        032's first constraint: *the binding calls `live.attach.attach()` and does
+        not reimplement any of it.* So there is no resolution here, no slot
+        arithmetic, no refusal wording of this module's own invention — every
+        string below is either `AttachResult`'s or names the one thing
+        `AttachResult` cannot know, which is that no `MarketData` exists at all.
+
+        **`origin="typed"` is passed rather than left to the default.** S010
+        anticipated a typed attach and §8.2a's four populations depend on that
+        field meaning one thing; a new origin value invented here would split one
+        of them silently.
+        """
+        if self.md is None:
+            self.record.attach_refusal = (
+                f"{symbol.strip().upper()}: no market data - the app connects to "
+                "no broker in this slice")
+            return
+        result = attach(symbol, self.md, origin="typed")
+        if not result.attached:
+            # `AttachResult` already carries the failure — render it, do not
+            # re-word it. Ambiguity in particular carries its candidate count,
+            # and a shorter message would drop the number that makes it useful.
+            self.record.attach_refusal = f"{result.symbol}: {result.refusal}"
+            return
+        # An attach that failed at steps 2-5 is still an attach, so a stale
+        # refusal from a previous attempt must not survive one. Detaching is out
+        # of scope; re-attaching the same symbol replaces its row rather than
+        # growing a second one.
+        self.record.attached = [a for a in self.record.attached
+                                if a.symbol != result.symbol]
+        self.record.attached.append(
+            Attached(symbol=result.symbol,
+                     since=datetime.now(EASTERN).strftime("%H:%M")))
+        self.record.attach_refusal = ""
+
+    async def _rerender(self) -> None:
+        """Rebuild the tiles from the record. `_apply_fit` remounts when no
+        `Panel` is present, so emptying the frame is the whole trigger."""
+        frame = self.query_one("#frame", Frame)
+        await frame.remove_children()
+        await self._apply_fit()
 
     def tile_rows(self) -> list[list[Panel]]:
         """The tiling, as rows of tiles. One place, so the too-small guard and

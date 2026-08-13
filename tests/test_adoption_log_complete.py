@@ -176,6 +176,21 @@ BOOTSTRAP_ALLOWLIST = {
     # exit 0 is the failure mode being fixed rather than the pass condition.
     "live/tui/__main__.py",                                # 029 part 1
     "live/tests/test_launches_as_a_program.py",            # 029 part 2
+
+    # ---- 032: one more, and the count is now 34 ----------------------------
+    # `attach()` was reachable from a test and from nothing else. This file is
+    # the key-press test that would have caught it -- `Pilot.press()` through
+    # Textual's real dispatch, never `run_action()`, which would pass against a
+    # binding no key reaches.
+    #
+    # **Written by a SECOND session working this tree concurrently on
+    # 2026-08-13.** Two independent 032 suites existed for four minutes; this one
+    # landed first, imports the existing `Fake` from test_attach.py rather than
+    # declaring a second fixture, and survived on Christoph's call. The other was
+    # deleted after its one unique case was ported in. Recorded here because the
+    # allowlist is where a file's arrival is accounted for, and "arrived from the
+    # other terminal" is exactly the provenance this gate exists to make visible.
+    "live/tests/test_attach_is_reachable_by_key.py",       # 032
 }
 
 
