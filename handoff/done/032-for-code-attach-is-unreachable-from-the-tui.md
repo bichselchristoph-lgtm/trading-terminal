@@ -327,8 +327,16 @@ Two rows added to `docs/observations/OBSERVATIONS.md`:
 |---|---|---|
 | UAT | Press `a` and attach QQQ against live TWS | **None** — no broker is wired; §6 item 1 |
 
-`verify.ps1` was run at **18:0X local, 2026-08-13**. Its output is `verify-output.txt`, read
-directly — **not quoted here, per HANDOFF-PROTOCOL v1.2.**
+`verify.ps1` was run at **18:05:43 +02:00, 2026-08-13**, and again after this note's final
+edit so the output is newer than the note and carries the same `HEAD`. Its output is
+`verify-output.txt`, read directly — **not quoted here, per HANDOFF-PROTOCOL v1.2.**
+
+**`export-handoff.ps1` was run after the commit.** The first verify caught the mirror stale at
+`16b5f9b` from 17:03 — three commits behind — which is section 5 doing its job. The `HEAD` it
+recorded on this run is in the final `verify-output.txt`.
+
+**One uncommitted path is expected and is not mine**:
+`docs/regime-snapshots/README-momentum-regime-snapshots.md`, which belongs to `025`.
 
 **This note needs to be pasted to chat.** It lands in a repo the design session cannot see,
 and on 2026-08-11 two correct done-notes were written and neither arrived.
