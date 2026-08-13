@@ -172,10 +172,59 @@ def test_a_number_collision_copies_neither(tmp_path: Path) -> None:
     r = sync_pair(pair)
 
     assert r.copied == []
-    assert r.collisions == [("031-for-code-second-thing.md", "031-for-code-first-thing.md")]
+    assert r.collisions == [
+        ("031-for-code-second-thing.md", "031-for-code-first-thing.md",
+         "already in destination")]
     assert not (Path(pair["to"]) / "031-for-code-second-thing.md").exists()
     assert existing.read_text(encoding="utf-8") == "already here"
     assert r.blocked
+
+
+def test_two_ARRIVING_files_with_the_same_number_collide(tmp_path: Path) -> None:
+    """027 part 3. **The gap the first version could not see.**
+
+    `by_number` was seeded from the destination and never updated, so two
+    arriving files sharing a number -- neither in the destination -- were both
+    copied silently. That was faithful to 026's text, which describes the check
+    against *an existing inbox file*, and it is the likelier collision: the
+    design session assigns numbers by reading the inbox at a moment, Drive
+    introduces a gap between reading and landing, and two files written in one
+    sitting land together.
+
+    **The first file stays.** It is already placed by the time the second is
+    seen, and nothing this tool has written is removed by this tool.
+    """
+    pair = make_pair(tmp_path)
+    write(Path(pair["from"]), "031-for-code-alpha.md", "first")
+    write(Path(pair["from"]), "031-for-code-beta.md", "second")
+
+    r = sync_pair(pair)
+
+    assert r.copied == ["031-for-code-alpha.md"], "the first arrival is placed"
+    assert (Path(pair["to"]) / "031-for-code-alpha.md").read_text(encoding="utf-8") == "first"
+    assert not (Path(pair["to"]) / "031-for-code-beta.md").exists()
+    assert r.collisions == [
+        ("031-for-code-beta.md", "031-for-code-alpha.md", "copied by this run")]
+    assert r.blocked
+
+    # The report must SAY which case it is -- the two need different responses.
+    from tools.sync_from_drive import render
+    text = "\n".join(render([r]))
+    assert "copied by this run" in text
+    assert "nothing this tool wrote is removed by it" in text
+
+
+def test_the_arriving_collision_is_caught_in_dry_run_too(tmp_path: Path) -> None:
+    """A dry run that misses a collision would green-light a real run that hits
+    it -- the report is the whole point of --dry-run."""
+    pair = make_pair(tmp_path)
+    write(Path(pair["from"]), "031-for-code-alpha.md", "first")
+    write(Path(pair["from"]), "031-for-code-beta.md", "second")
+
+    r = sync_pair(pair, dry_run=True)
+
+    assert len(r.collisions) == 1
+    assert not any(Path(pair["to"]).iterdir())
 
 
 def test_the_checks_are_configured_not_hardcoded(tmp_path: Path) -> None:

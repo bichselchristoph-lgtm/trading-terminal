@@ -71,7 +71,9 @@ class PairResult:
     unchanged: list[str] = field(default_factory=list)
     differing: list[tuple[str, str, str]] = field(default_factory=list)
     off_convention: list[str] = field(default_factory=list)
-    collisions: list[tuple[str, str]] = field(default_factory=list)
+    #: (arriving, other, origin) -- origin distinguishes a clash with a file
+    #: that was already in the destination from one with a file THIS RUN copied.
+    collisions: list[tuple[str, str, str]] = field(default_factory=list)
     source_mutated: list[str] = field(default_factory=list)
     considered: int = 0
 
@@ -121,13 +123,22 @@ def sync_pair(pair: dict, dry_run: bool = False) -> PairResult:
     dest.mkdir(parents=True, exist_ok=True)
     existing = {p.name: p for p in dest.glob(pattern) if p.is_file()}
 
-    # Number -> existing filename, for the collision check. Built from the
-    # DESTINATION, because that is where a reference someone holds points.
-    by_number: dict[str, str] = {}
+    # Number -> (filename, origin), for the collision check. Seeded from the
+    # DESTINATION, because that is where a reference someone holds points, and
+    # then UPDATED AS FILES ARE COPIED.
+    #
+    # 027 part 3. Seeding it once and never updating it was faithful to 026's
+    # text -- which describes the check against "an existing inbox file" -- and
+    # left a reachable gap: two ARRIVING files sharing a number, neither in the
+    # destination, were both copied silently. That is the same failure the check
+    # exists to catch, and it is the likelier one: the design session assigns
+    # numbers by reading the inbox at a moment, Drive introduces a gap between
+    # reading and landing, and two files written in one sitting land together.
+    by_number: dict[str, tuple[str, str]] = {}
     for name in existing:
         m = LEADING_NUM.match(name)
         if m:
-            by_number.setdefault(m.group("num"), name)
+            by_number.setdefault(m.group("num"), (name, "already in destination"))
 
     for src in sorted(source.glob(pattern)):
         if not src.is_file():
@@ -147,19 +158,28 @@ def sync_pair(pair: dict, dry_run: bool = False) -> PairResult:
                 r.differing.append((name, sha256(src), sha256(existing[name])))
             continue
 
+        number = None
         if "number_collision" in checks:
             m = LEADING_NUM.match(name)
-            if m and m.group("num") in by_number:
-                # Copy NEITHER. Numbers have collided three times here. The
-                # design session reads the folder before assigning, but it reads
-                # it at a moment, and Drive introduces a gap between reading and
-                # landing.
-                r.collisions.append((name, by_number[m.group("num")]))
+            number = m.group("num") if m else None
+            if number and number in by_number:
+                # Copy NEITHER of the ones still to come. Numbers have collided
+                # three times here.
+                #
+                # When the clash is with a file THIS RUN copied, that first file
+                # is already placed -- and it stays. **Nothing this tool has
+                # written is removed by this tool.** The report says which case
+                # it is, in those words, because "already in destination" and
+                # "copied by this run" need different responses from a person.
+                other, origin = by_number[number]
+                r.collisions.append((name, other, origin))
                 continue
 
         if not dry_run:
             shutil.copy2(src, dest / name)
         r.copied.append(name)
+        if number:
+            by_number.setdefault(number, (name, "copied by this run"))
 
     after = folder_digest(source, pattern)
     if before != after:
@@ -184,9 +204,12 @@ def render(results: list[PairResult]) -> list[str]:
             out.append("       another party holds, and may already have been read. "
                        "Resolve by hand.")
 
-        for arriving, existing in r.collisions:
-            out.append(f"  !! NUMBER COLLISION, NEITHER COPIED: {arriving}")
-            out.append(f"       already in destination: {existing}")
+        for arriving, other, origin in r.collisions:
+            out.append(f"  !! NUMBER COLLISION, NOT COPIED: {arriving}")
+            out.append(f"       clashes with {other} ({origin})")
+            if origin == "copied by this run":
+                out.append("       That first file IS placed and stays -- nothing this tool "
+                           "wrote is removed by it.")
 
         if r.off_convention:
             out.append(f"  ~  off-convention names (copied anyway): "

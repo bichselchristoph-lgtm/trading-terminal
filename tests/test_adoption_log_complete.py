@@ -146,6 +146,12 @@ BOOTSTRAP_ALLOWLIST = {
     "config/sync.yaml",                                    # 026
     "tools/sync_from_drive.py",                            # 026
     "tests/test_sync_from_drive.py",                       # 026
+
+    # ---- 027: the rule-15 precondition, and the count is now 28 ------------
+    # The grouping itself is NOT built -- could_not_do is free text with no key,
+    # and a matcher that mis-groups would be worse than none. This file holds
+    # the sound half plus the tripwire that fires when the prompt gains an id.
+    "tests/test_regime_snapshot_could_not_do.py",          # 027 part 2
 }
 
 

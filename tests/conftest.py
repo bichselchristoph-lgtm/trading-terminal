@@ -19,6 +19,14 @@ import importlib.util
 from pathlib import Path
 
 
+def _load(name: str):
+    path = Path(__file__).parent / name
+    spec = importlib.util.spec_from_file_location(f"_hdr_{name[:-3]}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def pytest_report_header() -> list[str]:
     # Loaded BY PATH. `tests/` is not a package -- it has no `__init__.py`, by
     # design, so `import tests.test_no_secrets` raises ModuleNotFoundError and
@@ -28,11 +36,18 @@ def pytest_report_header() -> list[str]:
     # it can abort the run, a cosmetic edit to it can silently disable the entire
     # suite -- strictly worse than the invisibility it exists to fix. On failure
     # it says so in the header and the tests still run.
+    lines: list[str] = []
     try:
-        path = Path(__file__).parent / "test_no_secrets.py"
-        spec = importlib.util.spec_from_file_location("_no_secrets_header", path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.coverage_report()
+        lines += _load("test_no_secrets.py").coverage_report()
     except Exception as exc:  # noqa: BLE001 -- see above
-        return [f"credential scan roots: CANNOT COMPUTE ({type(exc).__name__}: {exc})"]
+        lines.append(f"credential scan roots: CANNOT COMPUTE ({type(exc).__name__}: {exc})")
+
+    # 027 part 2. A rule-15 check over an EMPTY snapshot folder is vacuous, and a
+    # vacuous check that reports nothing is indistinguishable from one that found
+    # nothing. Same reasoning as the credential roots above, and the same channel.
+    try:
+        lines += _load("test_regime_snapshot_could_not_do.py").snapshot_report()
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"regime snapshots: CANNOT COMPUTE ({type(exc).__name__}: {exc})")
+
+    return lines
