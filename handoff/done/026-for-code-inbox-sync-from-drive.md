@@ -185,6 +185,18 @@ until green. **Not fixed here — 026 does not own that file.**
 
 **OBS-022**, `OPEN`, review-by 2026-11-13: the flaky TUI resize test above.
 
-## `verify.ps1`
+## `verify.ps1` — run at 2026-08-13 13:29:34 +02:00, after the commit
 
-Run at the time recorded in the section below, after the commit.
+| Section | Output |
+|---|---|
+| 1 SUITE | `2 failed, 222 passed in 4.10s` — the two named above |
+| 2 GIT STATUS | clean, no uncommitted paths |
+| 3 HEAD | `54b55a193fb7cf6afd754761c10ecd02bf34883f` |
+| 4 EVIDENCE | 179 rows checked, **0 mismatches, 0 missing** |
+| 5 EXPORT | both mirrors at `54b55a1`, exported `13:29:22+02:00`, **85 / 13 files, counts match the sources**, tree clean at export |
+
+**The export ran after the commit**: `85 files (3 copied, 82 unchanged)` and
+`13 files (0 copied, 13 unchanged)`, both manifests carrying the same `HEAD`.
+
+**This section is one commit behind the tree by construction** — a note recording its own
+verification cannot be the file that verification described. Stated under 020 and unchanged here.
