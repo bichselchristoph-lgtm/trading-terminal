@@ -164,6 +164,18 @@ BOOTSTRAP_ALLOWLIST = {
     "tools/probe_keepuptodate_scale.py",                   # 021
     "tools/analyse_keepuptodate_scale.py",                 # 021
     "tests/test_keepuptodate_scale.py",                    # 021
+
+    # ---- 029: two more, and the count is now 33 ----------------------------
+    # The app had no entry point. `MomentumApp` was defined and never run, so
+    # `python -m live.tui.app` imported the module and exited 0 in silence while
+    # 236 tests passed -- every one of them driving the app through Textual's
+    # run_test() pilot, which never needs one.
+    #
+    # **The test is a subprocess and has to be.** An import-and-assert-it-exists
+    # test would pass against an entry point that raises on its first line, and
+    # exit 0 is the failure mode being fixed rather than the pass condition.
+    "live/tui/__main__.py",                                # 029 part 1
+    "live/tests/test_launches_as_a_program.py",            # 029 part 2
 }
 
 
