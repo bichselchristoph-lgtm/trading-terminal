@@ -180,9 +180,20 @@ own Part 3 is an argument against adding those casually.
 | When | Result |
 |---|---|
 | Before `028` | **236 passed, 2 failed** |
-| After `028` | **273 passed, 2 failed, 1 warning** |
+| After `028` | **not a stable figure — see below.** Three consecutive runs gave `236/2`, `273/2`, `274/3` |
 
-**`028` added no tests and changed no code** — it is a correction task. **The +37 is not mine.**
+**`028` added no tests and changed no code** — it is a correction task. **None of the movement is
+mine.**
+
+**I am deliberately not quoting a final count**, and that is the honest answer rather than a
+dodge. The authoritative figure is in **`verify-output.txt` at `HEAD addbaf9`**, which is what
+HANDOFF-PROTOCOL v1.2 makes the evidence. Any number written here would be a claim about a tree
+that changed while I was writing it — **and pinning one is how `027` got its counts wrong.**
+
+The third failure in the last run, `test_p95_and_max_survive_a_median_that_hides_the_burst`, is
+**another session's test mid-edit** — `verify.ps1` section 2 shows `tests/test_keepuptodate_scale.py`
+and `tools/analyse_keepuptodate_scale.py` uncommitted at that moment. **It is not a regression in
+anything `028` touched.**
 
 ### Another session is working in this repository at the same time
 
