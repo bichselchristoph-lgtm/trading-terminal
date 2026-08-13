@@ -1,7 +1,70 @@
+---
+id: 030
+title: REGIME-PROMPT v1.8 — the full text, carried into the tree
+type: re-supply
+owner: claude-code
+depends: 028
+---
+
+**Status** WRITTEN
+
+# 030 — The v1.8 text, delivered
+
+**This unblocks `028` Part 2, and `028`'s premise was wrong.** It said "replace the v1.7 copy".
+**The tree holds v1.2.** The design session asserted the tree copy's version without reading it —
+the same defect `028` Part 1 corrected in `027`, committed in the task file that corrected it.
+**Recorded, not smoothed over.**
+
+**The tree copy is six versions behind, not one.** v1.2 → v1.8. It carries no version-history
+table and no tree-side repair marker; the design session read it before writing this. **So the
+re-supply hazard does not apply** — there is nothing in the tree copy to undo. **Full
+replacement, not an amendment.**
+
+---
+
+## What to do
+
+1. **Replace `docs/specs/REGIME-PROMPT.md` entirely** with the text between the two sentinel
+   lines below. **Verbatim.** Do not reflow, do not re-wrap, do not fix what looks like a typo.
+   **A copy that was re-typed is not a copy.**
+2. **Then** bump `test_regime_prompt_invariants.py`'s pin to `1.8`. It should go green
+   immediately. **If it does not, the copy is wrong — say so and stop.**
+3. Add one line to `docs/observations/OBSERVATIONS.md` under OBS-030: the tree copy sat at v1.2
+   for six versions and **nothing went red**, because the pin compares the copy against a
+   version number written in the same file. **A pin that reads its subject's own claim about
+   itself is the self-reference trap** (§7), and it is why this was invisible.
+
+**Do not delete the sentinel lines' contents from this task file afterwards.** This file is the
+delivery record.
+
+---
+
+## Why the pin could not catch it, stated plainly
+
+`test_regime_prompt_invariants.py` asserted `(1, 2) >= (1, 8)` when Claude Code bumped it — which
+is the test working exactly as designed. **What it cannot do is notice that 1.2 is stale**,
+because the only thing it can compare against is a number a human typed into the test. **The
+authoritative text lives in the scheduled task, which neither the tree nor this session's tests
+can read.** Two gaps, and OBS-030 already names the second.
+
+---
+
+## Deliverable
+
+`handoff/done/030-for-code-regime-prompt-v1.8-full-text.md`:
+
+1. Confirmation the replacement is byte-identical to the payload — quote a hash of both.
+2. The pin at `1.8`, green.
+3. The OBS-030 line.
+4. **What you could not do**, and why.
+5. `verify.ps1` run at `<time>`. Do not quote its output.
+
+---
+
+===== BEGIN REGIME-PROMPT v1.8 — everything below this line, up to the END line, is the file =====
 
 # Daily Regime Read — the scheduled Claude prompt
 
-**STATUS** CURRENT
 **Version** 1.8 · **Date** 2026-08-13 · **Companion to** `SPEC.md` §3.2, §5.5a
 **Runs** cron `0 9 * * 1-5` UTC during EDT (= 05:00 ET) · **Prints** the read in the response · **Writes** the snapshot · **Publishes** copies to Drive
 
@@ -479,3 +542,4 @@ Each firing starts a fresh session, so the prompt above must stand alone — it 
 
 **Sync obligation, and it has now failed twice.** This text is the stored prompt of the scheduled task **and is authoritative**. `docs/specs/REGIME-PROMPT.md` is a copy kept in the tree, and `test_regime_prompt_invariants.py` pins the copy's version to this one. **Neither failure was visible to any test.** v1.7 never reached the task; v1.2 sat in the tree through six revisions. **Nothing in this project verifies that the authored document reached either destination. Say so until something does.**
 
+===== END REGIME-PROMPT v1.8 — nothing above this line is part of the file =====

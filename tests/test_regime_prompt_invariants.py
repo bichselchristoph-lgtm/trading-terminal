@@ -45,11 +45,11 @@ def prompt_text() -> str:
     return PROMPT.read_text(encoding="utf-8")
 
 
-def test_version_is_1_2_or_higher() -> None:
+def test_version_is_1_8_or_higher() -> None:
     m = re.search(r"\*\*Version\*\*\s*([0-9]+)\.([0-9]+)", prompt_text())
     assert m, "no `**Version** N.N` line found in REGIME-PROMPT.md"
     major, minor = int(m.group(1)), int(m.group(2))
-    assert (major, minor) >= (1, 2), (
+    assert (major, minor) >= (1, 8), (
         f"REGIME-PROMPT.md is v{major}.{minor}. v1.2 added the ratification bands and the "
         "reduced-card floor;\nanything older reintroduces the defects H10 closed."
     )
