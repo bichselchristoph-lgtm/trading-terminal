@@ -25,9 +25,40 @@
 | When | Result |
 |---|---|
 | Before any change | **182 passed in 6.86s** |
-| After all changes | **191 passed in 2.79s** |
+| After the code, before this note existed | **191 passed in 2.79s** |
+| **Final, with this note in the tree** | **190 passed, 1 failed in 3.14s** |
 
-Nine new tests, all in `test_export_scope_is_derived.py`. **Zero failures at either end.**
+Nine new tests, all in `test_export_scope_is_derived.py`.
+
+### The suite is RED, deliberately, and it is blocked on a person
+
+**`tests/test_uat_has_a_file.py::test_every_declared_uat_exists_as_a_file` fails**, naming this
+note:
+
+```
+020-drive-export-of-handoff-and-christoph-done.md  ->  needs a file declaring **Slice**/**Task** 020
+```
+
+**That is 015's gate working exactly as built, and it went red the moment this note was
+written** — the note's exit table declares a UAT, and no file in `christoph/open/` declares
+task 020.
+
+**There is no legal route to green from this side of the channel.** The test's own message says
+the fix is *"the design session authors it and Christoph saves it to `christoph/open/`"*, and
+`CLAUDE.md` plus 020's *Do not* list both forbid this session from writing there. **The two
+other exits — deleting the UAT row, or writing the file — are respectively a lie and a
+violation.** 020 says: *do not weaken a test to make it pass; report and stop.*
+
+**What clears it:** the design session authors `christoph/open/NNN-020-*.md` declaring
+**Task 020**, Christoph saves it, and the suite goes green with no change to any code here.
+Its criterion is already written in the task: *open both folders in Drive from a device that is
+not this machine — are the notes there, readable, and does the manifest say when they were
+exported?*
+
+**The commit was made with the suite red**, which is unusual and is stated rather than
+buried. The alternative was to leave 020's work uncommitted and therefore unexported, which
+would have left this task's own output stranded in exactly the way 020 exists to prevent.
+`verify.ps1` section 1 prints the failure verbatim on every run, so it cannot be forgotten.
 
 **One intermediate red, and it was the gate working on its own author.**
 `tests/test_spec_pointers.py::test_claude_md_pointers_resolve` went red at **1 failed, 190
@@ -130,7 +161,7 @@ destination folder, so a second stray file cannot hide behind the exemption.
 
 | Test | Result |
 |---|---|
-| **Green** | **191 passed, 0 failed.** Export ran; both manifests written; 76 = 76 and 13 = 13 against the sources. |
+| **Green** | **PARTIAL — 190 passed, 1 failed.** Export ran; both manifests written; 76 = 76 and 13 = 13 against the sources. The single failure is `test_uat_has_a_file`, owed to Christoph and unreachable from here — see above. **No test related to this task fails.** |
 | **Refusal A** | **Confirmed.** Neither the `docs/specs/` probe nor `christoph/open/013-s010-check-against-your-charts.md` appears in either destination, and **no filename from `docs/specs/` appears at all** (all 17 checked). The derivation test passed **while the probe was present** — 9 passed. Probe reverted. |
 | **Refusal B** | **Confirmed.** `MANIFEST-momentum-christoph-done.md`'s `HEAD` hand-edited to `deadbeef… a commit that never happened`. Section 5 printed it beside the live `a950ae1` and then fired **"THE MANIFESTS CARRY DIFFERENT HEADs. Both are printed; neither is preferred"**, listing both. Reverted by re-running the export. |
 | **Refusal C** | **Confirmed.** Second run: **0 copied, 76 unchanged / 0 copied, 13 unchanged**, and both manifests still list every file. |
@@ -189,6 +220,8 @@ after each.**
 |---|---|---|
 | `424d085` | Record Christoph's open item, unmodified | — |
 | `7b48316` | A done-note reaching the design session becomes a mechanism, not a favour | **77 files (1 copied, 76 unchanged) / 13 files (0 copied, 13 unchanged). Working tree clean.** |
+| `065d3cc` | The done-note records the export that could not have carried it | superseded by the run below |
+| *final* | This note, with the UAT gate recorded | see the line under this table |
 
 `handoff/` went 76 → 77 because this note is the only new `.md` in it — 020's *task* file was
 already on disk, untracked, during the first export and was already counted.
