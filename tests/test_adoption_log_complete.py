@@ -155,6 +155,15 @@ BOOTSTRAP_ALLOWLIST = {
 
     # ---- 023: the verification gate writes a file -------------------------
     "tests/test_verify_output_is_ignored.py",              # 023 part 2
+
+    # ---- 021: three more, and the count is now 31 --------------------------
+    # An investigation, not a slice, and it still lands here -- which is the
+    # clearest evidence yet for OBS-008. The probe and its analysis are split on
+    # purpose: the probe holds five live streams for six hours against a session
+    # that cannot be re-recorded, so no arithmetic runs in the same process.
+    "tools/probe_keepuptodate_scale.py",                   # 021
+    "tools/analyse_keepuptodate_scale.py",                 # 021
+    "tests/test_keepuptodate_scale.py",                    # 021
 }
 
 
