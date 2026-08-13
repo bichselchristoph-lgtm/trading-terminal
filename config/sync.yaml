@@ -1,0 +1,40 @@
+# One copier, N configured pairs. 026 part "Build it as a second configured
+# pair, not a second script".
+#
+# Two copies of this logic WILL diverge, and the immutability rule below is
+# subtle enough that having it implemented twice is exactly how one copy loses
+# it. `tools/sync_from_drive.py` reads this file and has no pair-specific
+# branches -- every difference between the two pairs is a value here.
+#
+# ONE WAY, ALWAYS. Nothing is ever written to, deleted from or renamed in a
+# `from` folder. Those belong to Drive sync and to whoever authors into them; a
+# file appearing there because this tool put it there would be
+# indistinguishable from one the author wrote.
+#
+# NOTE THE SPACE in the regime folder name -- `...-from scheduled`. Paths are
+# read as YAML strings and never word-split, but an unquoted path in any shell
+# wrapper fails in a way that looks like an EMPTY FOLDER rather than an error.
+
+pairs:
+  # 025's pair. Configured here because 026 specifies one copier with both
+  # pairs, and writing the second script is the thing 026 exists to prevent.
+  # **Not yet exercised** -- 025 owns the gap analysis, the `git check-ignore`
+  # assertion and the daily wiring, and none of that is done. See 026's
+  # done-note.
+  - id:     regime_snapshots
+    from:  'D:\claude-googledrive-sync\momentum-regime-snapshots-from scheduled'
+    to:    'D:\Dev\momentum\docs\regime-snapshots'
+    glob:  '*.md'
+    checks: []
+
+  # 026's pair.
+  - id:     handoff_inbox
+    from:  'D:\claude-googledrive-sync\momentum-inbox-handoff'
+    to:    'D:\Dev\momentum\handoff\inbox'
+    glob:  '*.md'
+    # Both checks are 026's and belong to THIS pair only. They are listed as
+    # values rather than hardcoded against `id == "handoff_inbox"`, so the
+    # copier keeps having no pair-specific branches.
+    checks:
+      - filename_convention   # NNN-for-code-*.md -- copy anyway, but name it
+      - number_collision      # same NNN, different name -- copy neither

@@ -138,6 +138,14 @@ BOOTSTRAP_ALLOWLIST = {
     # renders as a bare `s` and invisibility is the failure test_no_secrets.py
     # exists to prevent.
     "tests/conftest.py",                                   # 022 part 2
+
+    # ---- 026: three more, and the count is now 27 --------------------------
+    # One copier, two configured pairs -- 026 forbids a second script, so the
+    # regime pair in sync.yaml belongs to 025 and is configured but not yet
+    # exercised.
+    "config/sync.yaml",                                    # 026
+    "tools/sync_from_drive.py",                            # 026
+    "tests/test_sync_from_drive.py",                       # 026
 }
 
 
