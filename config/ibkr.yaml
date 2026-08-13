@@ -1,0 +1,72 @@
+# config/ibkr.yaml — committed and load-bearing. 034.
+#
+# `SPEC.md` §4.4: every setting lives in config, ONCE, is REQUIRED, and acquires
+# NO DEFAULT. A key missing from this file is a refusal at load with the key
+# named — never a fallback, because a fallback is a setting that exists in two
+# places and the two will disagree exactly once, silently, on the day it matters.
+#
+# `note` is a REQUIRED FIELD, not a comment, and the loader refuses a setting
+# whose note is missing or blank. A YAML comment cannot be loaded, cannot be
+# tested, and is dropped by any tool that round-trips the file. The note is the
+# only place the *why* survives.
+#
+# **Anything prefixed `constraint:ibkr` is a fact about the broker's API rather
+# than a preference of ours.** `grep 'constraint:ibkr' config/` is the
+# broker-migration checklist: it is the list of things that stop being true the
+# day this terminal talks to something other than IBKR. Do not reword the prefix.
+
+settings:
+
+  host:
+    value: "127.0.0.1"
+    note: >
+      TWS or IB Gateway runs on THIS machine and the API is a local socket.
+      `SPEC.md` §9 draws the distinction that matters: the claude.ai IBKR
+      connector is reached from Anthropic's cloud and fails by going quiet,
+      whereas this is a socket to a process on this box and fails loudly. A
+      non-loopback host here would be a different security decision and is not
+      one that has been taken.
+
+  port:
+    value: 7496
+    note: >
+      constraint:ibkr — 7496 live TWS, 7497 paper TWS, 4001/4002 Gateway.
+      **These are DIFFERENT ACCOUNTS, not different modes.** Nothing downstream
+      of this file can tell you which one you are on, so the port is the whole
+      of that distinction and it is written here once.
+
+  client_id:
+    value: 7
+    note: >
+      constraint:ibkr — **a client id collision does not raise. TWS silently
+      disconnects whichever client already held it.** That is why this is
+      REQUIRED with no default: a default would be shared by every process that
+      forgot to set one, and the failure is a disconnection somewhere else with
+      no error here. 121 belongs to task 021's six-hour keepUpToDate probe and
+      11 belonged to the 019 capture; pick a number no other live connection is
+      using, and check before you change this.
+
+  connect_timeout_s:
+    value: 10
+    note: >
+      constraint:ibkr — seconds to wait for the API handshake. A CLOSED port
+      refuses immediately and never reaches this; the timeout bounds the other
+      case, where something is listening and does not answer — TWS starting up,
+      or running with the API disabled.
+
+  request_timeout_s:
+    value: 60
+    note: >
+      constraint:ibkr — seconds any single historical request may take before it
+      is abandoned and rendered as a refusal. **Not named by 034 and added
+      because the design needs it**: the attach path runs on the UI thread, so an
+      unbounded request is an unbounded freeze of the whole terminal. A bound
+      turns that into a per-row `unavailable`, which is a state you can read.
+      **60 is measured, not chosen.** At 30 the 20-day 1-minute request — the
+      RVOL reference, by far the largest of the four — refused with
+      `no answer in 30s` on a live QQQ attach at 13:24 ET on 2026-08-13, while
+      task 021 held five keepUpToDate streams on the same account. An earlier
+      attach in the same session answered inside 30s, so this is near the edge
+      rather than past it, and pacing is per account and shared. **Raising this
+      lengthens the worst-case UI freeze by the same amount** — see the
+      done-note; the real fix is to stop attaching on the UI thread.

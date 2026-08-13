@@ -37,12 +37,27 @@ named for. What is asserted is **reachability**, never the numbers — those are
 from __future__ import annotations
 
 import asyncio
+import re
+import socket
+import threading
+from contextlib import contextmanager
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
+from core.indicators.context import Measured
 from live.attach.attach import Contract
+# `_BrokerLoop` and `_ThreadedIB` are private and are imported deliberately.
+# They are the seam between two event loops; a test that reached them only
+# through the public surface would exercise them exactly as `FakeIB` did, which
+# is to say not at all.
+from live.attach.ibkr import (DAILY_DURATION, EASTERN, REQUIRED_SETTINGS,
+                              IBKRMarketData, IbkrConfig, _BrokerLoop,
+                              _ThreadedIB, connect)
 from live.tests.test_attach import Fake
 from live.tui.app import ATTACH_KEY, MomentumApp, Panel
+from live.tui.day_record import empty_record
 
 #: The size the `013` UAT is performed at, and the size 029's launch test uses.
 #: A reachability test at a width where the frame refuses would be asserting
@@ -81,12 +96,28 @@ async def type_symbol(pilot, symbol: str) -> None:
     await pilot.pause()
 
 
-def drive(symbol: str, md, size=UAT_SIZE) -> tuple[str, MomentumApp]:
+def tile_body(panel: Panel) -> str:
+    """What the panel renders **at the size the tile actually gave it** (034).
+
+    `Panel.body()` with no arguments is the DESIGN-width render — 71 columns and
+    an 8-row viewport — which is right for a snapshot and wrong for asking what a
+    person can see. The context block is 26 rows, so the default viewport hides
+    two thirds of it and an assertion against `body()` would be measuring the
+    fixture rather than the screen. That is S009a's whole finding, arriving in
+    a test this time.
+    """
+    w = panel.content_size.width or panel.size.width
+    h = panel.content_size.height or panel.size.height
+    return panel.body(w, h or None) if w else panel.body()
+
+
+def drive(symbol: str, md, size=UAT_SIZE, record=None,
+          at_tile_size: bool = False) -> tuple[str, MomentumApp]:
     """Run one attach through a real key dispatch and return what ATTACHED says."""
     result: dict = {}
 
     async def go():
-        app = MomentumApp(md=md)
+        app = MomentumApp(record=record, md=md)
         async with app.run_test(size=size) as pilot:
             await pilot.pause()
             before = attached_panel(app).body()
@@ -94,7 +125,8 @@ def drive(symbol: str, md, size=UAT_SIZE) -> tuple[str, MomentumApp]:
                 "the ATTACHED panel did not start empty, so a later assertion "
                 f"about it would prove nothing:\n{before}")
             await type_symbol(pilot, symbol)
-            result["body"] = attached_panel(app).body()
+            panel = attached_panel(app)
+            result["body"] = tile_body(panel) if at_tile_size else panel.body()
             result["record"] = app.record
 
     asyncio.run(go())
@@ -294,3 +326,394 @@ def test_it_is_reachable_at_more_than_one_width(size) -> None:
     which is a different test's subject."""
     body, _ = drive("QQQ", Fake(), size=size)
     assert "QQQ" in body, f"unreachable at {size}:\n{body}"
+
+
+# ===========================================================================
+# 034 — the key press reaches a BROKER, and renders what it measured
+#
+# **This file is extended rather than joined by a third suite.** Two sessions
+# wrote two 032 reachability suites on 2026-08-13 and folding them into one was
+# the resolution; a third would re-open exactly that. `test_attach.py` stays
+# untouched for the opposite reason — it tests `attach()` as a function, and that
+# separation is what made 032's independent verification possible.
+# ===========================================================================
+
+#: The four ports that reach a broker on this machine. `SPEC.md` §9, and the
+#: same set `tests/test_keepuptodate_scale.py` guards.
+BROKER_PORTS = {7496, 7497, 4001, 4002}
+
+#: A port nothing listens on. Used to prove the refusal path without needing TWS
+#: to be *absent* — the demonstration must be the same on Christoph's machine
+#: with TWS up as it is in a clean checkout.
+CLOSED_PORT = 9
+
+TODAY = date.today().isoformat()
+
+
+class StubBar:
+    """What `reqHistoricalData` hands back. **Field-for-field what `_bars` reads**
+    — `date`, `open`, `high`, `low`, `close`, `volume`, `average` — and nothing
+    else, so a change to `IBKRMarketData._bars` that reaches for a new attribute
+    fails here rather than at 09:31 against a live account."""
+
+    def __init__(self, when: str, close: float, volume: float) -> None:
+        self.date, self.close, self.average, self.volume = when, close, close, volume
+        self.open, self.high, self.low = close, close + 1.0, close - 1.0
+
+
+class StubDetails:
+    def __init__(self) -> None:
+        self.contract = SimpleNamespace(symbol="QQQ", conId=320227571,
+                                        exchange="SMART", currency="USD",
+                                        primaryExchange="NASDAQ")
+        # No industry mapping for an ETF, which is correct — `_sector_etf`
+        # returns None and `RVOL_rel` then refuses BY NAME rather than rendering
+        # 1.0. That refusal is a value this test wants to see rendered.
+        self.industry = self.category = ""
+
+
+class FakeIB:
+    """A transport for `IBKRMarketData`. **Opens nothing.**
+
+    034 part 5.3 wants `IBKRMarketData` exercised against a fake rather than
+    mocked out, because the class under test is the seam and a mock of the seam
+    tests nothing. This answers the same two methods TWS answers and records
+    what was asked, so the `use_rth` contract is checkable.
+    """
+
+    def __init__(self) -> None:
+        self.asked: list[dict] = []
+
+    def reqContractDetails(self, contract):
+        return [StubDetails()]
+
+    def reqHistoricalData(self, contract, **kw):
+        self.asked.append(kw)
+        size, duration = kw["barSizeSetting"], kw["durationStr"]
+        if size == "1 day":
+            n = 60 if duration == DAILY_DURATION else 260
+            return [StubBar(f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
+                            100.0 + (i % 5), 1_000_000) for i in range(n)]
+        if duration == "1 D":                     # today's minutes
+            return [StubBar(f"{TODAY} {9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00",
+                            101.0, 1000.0) for i in range(30)]
+        return [StubBar(f"2026-07-{d + 1:02d} {9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00",
+                        101.0, 1000.0)
+                for d in range(20) for i in range(30)]
+
+
+@contextmanager
+def no_broker_socket():
+    """Fail any connect to a broker port, for the duration of the block.
+
+    **Narrowed to the four ports rather than to sockets in general**, and the
+    narrowing is the honest version rather than a weakening: importing
+    `ib_async` builds an asyncio event loop, and on Windows that calls
+    `socket.socketpair()`, which is a loopback connect. A blanket assertion
+    fails on that, gets deleted for being noisy, and then catches nothing.
+    """
+    real = socket.socket.connect
+
+    def guard(self, addr, *a, **k):
+        port = addr[1] if isinstance(addr, tuple) and len(addr) > 1 else None
+        if port in BROKER_PORTS:
+            raise AssertionError(f"the suite dialled broker port {port}")
+        return real(self, addr, *a, **k)
+
+    socket.socket.connect = guard
+    try:
+        yield
+    finally:
+        socket.socket.connect = real
+
+
+# ---- 1. the key press renders VALUES ---------------------------------------
+
+
+def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
+    """**Red against `app.py` as it stands**, and the red is the finding.
+
+    032 proved the ATTACHED panel *changes* on a key press. It changes to
+    `QQQ  attached 12:58` and nothing else: `attach()` measured ADR, ATR, the
+    extensions, VWAP, cumulative volume, both RVOLs and the ten-entry level rail,
+    and `_record_attach` kept the symbol and the clock time and **dropped every
+    number one line after it was computed.**
+
+    That is *computed and unreachable* — the fifth instance of this tree's
+    defining shape, and the one that made `christoph/open/013` unperformable:
+    there was nothing to compare against his charts.
+
+    The market data is `IBKRMarketData` itself, against a fake transport, so
+    what is asserted is the real class the live program uses.
+    """
+    md = IBKRMarketData(FakeIB())
+    stamped = empty_record()
+    stamped.health.sources["IBKR 127.0.0.1:7496"] = "connected · client 7"
+    body, record = drive("QQQ", md, record=stamped, at_tile_size=True)
+
+    assert "QQQ" in body, f"the symbol did not attach at all:\n{body}"
+    for row in ("ADR%", "ATR14", "VWAP"):
+        assert row in body, (
+            f"the ATTACHED panel does not render {row!r}. attach() computed it "
+            f"and the record dropped it, which is 034.\nATTACHED renders:\n{body}")
+    assert re.search(r"ADR%\s+[\d,]+\.\d\d", body), (
+        f"ADR% rendered without a number — a refusal where a value was "
+        f"measured:\n{body}")
+    assert "· " in body, (
+        f"a value rendered with no sample beside it. S010 requires the sample "
+        f"on every rendered value, and a bare number is the defect this "
+        f"project is named for.\n{body}")
+    assert "IBKR 127.0.0.1:7496" in body and "as of" in body and "lag" in body, (
+        f"the block renders numbers with no source, as-of or lag. A value with "
+        f"no stamp beside a value with one is the third tenet's failure:\n{body}")
+
+    attached = record.attached[0]
+    assert attached.context and attached.rail, (
+        "the panel rendered a context block the RECORD does not hold, so "
+        "render_panels reached around it — that breaks the one purity property "
+        "everything downstream leans on")
+    assert "PDH" in attached.rail, "the level rail was not carried onto the record"
+
+    # **The rail is measured, carried, and BELOW THE FOLD at 209x54.** The panel
+    # says so rather than dropping it silently, which is §4e and is the whole
+    # difference between a short panel and a lying one. Asserted because the
+    # honest overflow is load-bearing here, not incidental — see the done-note.
+    assert "more ↓" in body or "PDH" in body, (
+        f"the context block overflows the tile and the panel does not say so. "
+        f"'nothing more here' and 'more below' must not render alike:\n{body}")
+
+    # `use_rth` at every call site, S010 §2f. The whole reason the parameter is
+    # keyword-only with no default is that getting it wrong returns RTH-only
+    # data with no error and no flag.
+    asked = md.ib.asked
+    assert {k["barSizeSetting"] for k in asked} >= {"1 day", "1 min"}
+    assert all("useRTH" in k for k in asked), "a request omitted useRTH"
+    assert {k["useRTH"] for k in asked if k["barSizeSetting"] == "1 min"} == {False}, (
+        "today's minutes were requested RTH-only — session VWAP includes "
+        "pre-market and the RVOL curve must match itself")
+
+
+# ---- 2. a refused connection is rendered, and the app survives --------------
+
+
+def test_a_refused_connection_renders_its_host_and_port_and_the_app_lives() -> None:
+    """**Red against `app.py` as it stands** — `main()` builds no connection, so
+    there is no state for HEALTH to carry and the row says `(no feed connected)`
+    whether TWS is up, down, or was never asked.
+
+    034 part 3. Three separate claims, and all three have failed in this project
+    before: `connect()` returns rather than raises; the message names the host
+    and the port rather than saying *error*; and the app still composes every
+    panel afterwards.
+    """
+    cfg = IbkrConfig(host="127.0.0.1", port=CLOSED_PORT, client_id=7,
+                     connect_timeout_s=2, request_timeout_s=5,
+                     notes={k: "test" for k in REQUIRED_SETTINGS})
+    broker = connect(cfg)                       # must not raise
+    try:
+        assert not broker.ok, (
+            f"something answered on port {CLOSED_PORT} — this test cannot say "
+            "anything about the refusal path")
+        assert f"127.0.0.1:{CLOSED_PORT}" in broker.source, (
+            f"the refusal does not name host and port: {broker.source!r}")
+        assert len(broker.state) > 15 and "connected · client" not in broker.state, (
+            f"the refusal does not say why, or reads like a success: "
+            f"{broker.state!r}")
+        assert "Traceback" not in broker.state
+        # It has to FIT. A reason truncated off the end of a HEALTH row is a
+        # reason nobody reads, and the endpoint that survives is the half you
+        # could already guess. ~56 columns is what a HEALTH tile gives a cell
+        # at 209x54, measured rather than assumed — see the done-note.
+        assert len(broker.state) <= 45, (
+            f"the refusal is {len(broker.state)} chars and will truncate in "
+            f"HEALTH at 209x54: {broker.state!r}")
+    finally:
+        broker.close()
+
+    record = empty_record()
+    record.health.unavailable_sources[broker.source] = broker.state
+
+    async def go():
+        app = MomentumApp(record=record, md=None)
+        async with app.run_test(size=UAT_SIZE) as pilot:
+            await pilot.pause()
+            titles = {p.title_text for p in app.query(Panel)}
+            assert titles >= {"WATCHLIST", "ATTACHED", "HEALTH", "PIPELINE"}, (
+                f"the frame did not compose with a refused connection: {titles}")
+            health = next(p for p in app.query(Panel) if p.title_text == "HEALTH")
+            rendered = health.body()
+            assert f"127.0.0.1:{CLOSED_PORT}" in rendered, (
+                f"HEALTH does not name the connection that failed:\n{rendered}")
+            assert "no feed connected" not in rendered, (
+                "HEALTH says `no feed connected`, which is the state where "
+                "NOTHING TRIED. A connection that was attempted and refused is "
+                f"a different fact and must not borrow that wording:\n{rendered}")
+            # And the app is still usable — a refusal that costs you the
+            # keyboard is a crash with better manners.
+            await type_symbol(pilot, "QQQ")
+            assert "no market data" in attached_panel(app).body()
+
+    asyncio.run(go())
+
+
+# ---- 2b. the bridge between the TUI's loop and the client's ----------------
+
+
+class AsyncFakeIB:
+    """Shaped like `ib_async.IB` **where the shape actually matters.**
+
+    Its `reqXAsync` methods return a `Future`, not a coroutine, because that is
+    what `ib_async`'s do — and it is exactly the difference that broke the
+    bridge. It also records which thread each call was made on, so the test can
+    assert the work happened where it was supposed to.
+    """
+
+    def __init__(self) -> None:
+        self.inner = FakeIB()
+        self.threads: list[str] = []
+
+    def _future(self, value):
+        self.threads.append(threading.current_thread().name)
+        fut = asyncio.get_event_loop().create_future()
+        fut.set_result(value)
+        return fut
+
+    def reqContractDetailsAsync(self, contract):
+        return self._future(self.inner.reqContractDetails(contract))
+
+    def reqHistoricalDataAsync(self, contract, **kw):
+        return self._future(self.inner.reqHistoricalData(contract, **kw))
+
+
+def test_the_thread_bridge_carries_a_real_async_client() -> None:
+    """**The seam a synchronous fake does not cover — and it shipped broken.**
+
+    `FakeIB` answers synchronously, so every other test here goes straight into
+    `IBKRMarketData` and never touches `_ThreadedIB`, which is the code standing
+    between Textual's event loop and `ib_async`. **The suite was green at 99
+    passed while the bridge raised `TypeError` on its first live call**, and
+    what reached the screen was `— (QQQ: contract lookup failed (TypeError))`:
+    a correctly-rendered refusal naming an exception class that says nothing
+    about the fault. Found by attaching QQQ against live TWS, which is the one
+    thing no fixture was asking.
+
+    Two faults, one symptom, and this test pins both:
+
+    * `run_coroutine_threadsafe` takes a coroutine and `reqXAsync` returns a
+      `Future`, so it must be awaited inside one.
+    * The awaitable has to be BUILT on the broker loop. Building it on the
+      caller's thread binds it to the caller's loop, which nothing is running.
+    """
+    loop = _BrokerLoop(request_timeout_s=10)
+    ib = AsyncFakeIB()
+    try:
+        body, record = drive("QQQ", IBKRMarketData(_ThreadedIB(loop, ib)),
+                             at_tile_size=True)
+        assert "ADR%" in body, (
+            f"the attach did not survive the thread bridge:\n{body}")
+        assert "TypeError" not in body, (
+            f"the bridge raised and the panel rendered the class name:\n{body}")
+        assert record.attached, "nothing attached through the bridge"
+
+        assert ib.threads, "the client was never called"
+        assert set(ib.threads) == {"ibkr-broker"}, (
+            f"requests ran on {sorted(set(ib.threads))} — an awaitable built "
+            "off the broker thread is bound to a loop nobody is running, and "
+            "it fails only against a real client")
+    finally:
+        loop.close()
+
+
+def test_the_as_of_renders_in_eastern_not_in_the_wire_format() -> None:
+    """**A live defect, not a precaution.** The first successful attach against
+    real TWS rendered `as of 17:18 · lag 55s` at 13:18 ET.
+
+    `IBKRMarketData._bars` passes `formatDate=2`, so IBKR stamps every bar in
+    UTC. The lag was correct and the clock was four hours ahead of the session
+    it describes — a well-formed value answering a different question, sitting
+    beside a correct one, which is the failure this project is named for.
+
+    Session logic is US/Eastern via `zoneinfo`, and a fixture cannot catch this:
+    `FakeIB` above emits naive local-looking timestamps, exactly as a fixture
+    author would write them.
+    """
+    app = MomentumApp()
+    result = SimpleNamespace(context={"VWAP": Measured(
+        value=1.0,
+        sample=("bar-derived · 1 sh · 1 min · "
+                "2026-08-13 13:00:00+00:00 to 2026-08-13 17:18:00+00:00"))})
+    as_of, lag = app._stamp(result)
+
+    assert as_of.endswith("13:18:00"), (
+        f"as-of rendered as {as_of!r} — a UTC clock beside an Eastern session")
+    assert lag, "a parseable timestamp produced no lag"
+
+
+class UtcFakeIB(FakeIB):
+    """`FakeIB`, but stamping intraday bars **the way IBKR actually does** —
+    timezone-aware UTC `datetime`s, which is what `formatDate=2` returns.
+
+    The parent emits naive strings that already look Eastern, which is how a
+    fixture author would naturally write them and is exactly why no fixture
+    caught this.
+    """
+
+    def reqHistoricalData(self, contract, **kw):
+        bars = super().reqHistoricalData(contract, **kw)
+        if kw["barSizeSetting"] == "1 day":
+            return bars
+        for b in bars:
+            naive = datetime.strptime(b.date, "%Y-%m-%d %H:%M:%S")
+            # 09:30 ET is 13:30 UTC in August. The fixture's 09:30 becomes the
+            # UTC instant a real feed would send for that Eastern minute.
+            b.date = (naive.replace(tzinfo=EASTERN)).astimezone(timezone.utc)
+        return bars
+
+
+def test_the_opening_range_is_eastern_and_not_the_wire_format() -> None:
+    """**Four rail values were plausible and wrong**, found on a live attach.
+
+    `attach.py` selects pre-market with `_clock(b.ts) < "09:30"` and the opening
+    range with `"09:30" <= _clock(b.ts) < "09:35"`, slicing `Bar.ts` by
+    position. Against UTC stamps that is **04:00–05:30 ET** and
+    **05:30–05:35 ET** — the live run rendered `PMH · 90 pre-market bars` where
+    a 04:00 anchor gives 330, and an ORH taken four hours before the open.
+
+    The fix is at the seam, in `_bars`, because `core` is timeframe-agnostic and
+    a fix there would be `core` learning about a broker's wire format.
+    """
+    md = IBKRMarketData(UtcFakeIB())
+    _, record = drive("QQQ", md, at_tile_size=True)
+    rail = record.attached[0].rail
+
+    assert rail["ORH"].ok, (
+        f"the opening range is empty against UTC-stamped bars: "
+        f"{rail['ORH'].unavailable} — `_clock` read a UTC hour as an Eastern one")
+    assert "5 opening-range bars" in rail["ORH"].sample, (
+        f"the opening range is not 09:30-09:35 ET: {rail['ORH'].sample!r}")
+
+    ts = record.attached[0].context["VWAP"].sample
+    assert "+00:00" not in ts, (
+        f"a UTC offset reached a rendered sample: {ts!r}")
+
+
+# ---- 3. and none of it opened a socket -------------------------------------
+
+
+def test_nothing_in_this_suite_opens_a_broker_socket() -> None:
+    """034 part 5.3. **The guard is asserted to work before it is trusted.**
+
+    A guard with no positive control is a green test that proves nothing — it
+    passes just as well when the patch is broken, which is the failure mode this
+    whole file exists to catch one level up.
+    """
+    with no_broker_socket():
+        # positive control FIRST: the guard fires on the thing it exists for.
+        with pytest.raises(AssertionError, match="dialled broker port 7496"):
+            socket.socket().connect(("127.0.0.1", 7496))
+
+        # and now the real path, which must not trip it.
+        body, record = drive("QQQ", IBKRMarketData(FakeIB()))
+        assert record.attached and "ADR%" in body
+
+    assert socket.socket.connect.__name__ != "guard", "the guard leaked"

@@ -192,6 +192,18 @@ BOOTSTRAP_ALLOWLIST = {
     # other terminal" is exactly the provenance this gate exists to make visible.
     "live/tests/test_attach_is_reachable_by_key.py",       # 032
 
+    # ---- 034: one more, and the count is now 41 ----------------------------
+    # The connection settings for the first broker this tree has ever dialled.
+    # `config/layout.yaml` landed the same way under S009 and is the precedent:
+    # config/ is not a code tree, but it has no native-prefix carve-out and must
+    # not get one -- a config file is where a value arrives with no provenance
+    # and is then read as a decision somebody took.
+    #
+    # **Only ONE entry for a task that wired a broker into the launcher**, and
+    # that is not the list getting better. Everything else 034 touched was an
+    # edit to a file already accounted for. OBS-008 still stands.
+    "config/ibkr.yaml",                                    # 034 part 1
+
     # ---- 024: six more, and the count is now 40 ----------------------------
     # **The first tracked files under `.claude/` in this tree's history.** M001
     # §6 says "do not copy .claude/ in any form" and the predecessor's
