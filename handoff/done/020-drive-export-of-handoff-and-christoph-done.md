@@ -182,5 +182,28 @@ that line were ever removed, this becomes a silent omission.
 
 ## The export at commit
 
-Stated because `CLAUDE.md` v1.5 now requires it of every task: **the final export ran after the
-commit and recorded `HEAD` = `TO BE FILLED BY THE COMMITTING RUN` on a clean working tree.**
+Stated because `CLAUDE.md` v1.5 now requires it of every task. **Two commits, and the export ran
+after each.**
+
+| Commit | Subject | Export |
+|---|---|---|
+| `424d085` | Record Christoph's open item, unmodified | — |
+| `7b48316` | A done-note reaching the design session becomes a mechanism, not a favour | **77 files (1 copied, 76 unchanged) / 13 files (0 copied, 13 unchanged). Working tree clean.** |
+
+`handoff/` went 76 → 77 because this note is the only new `.md` in it — 020's *task* file was
+already on disk, untracked, during the first export and was already counted.
+
+**One thing does not terminate and is worth naming rather than hiding.** A note that records
+its own export can never be the file that export carried: filling in the `HEAD` above dirties
+the tree again. So a **third commit carries this table**, and the mirror's copy of this note is
+one commit behind the tree until the export runs after it. **`verify.ps1` section 5 makes that
+visible** — it prints the manifest `HEAD` beside the live one and never claims they should
+match. It is a property of recording an export inside the thing being exported, not a defect,
+and no amount of ordering removes it.
+
+---
+
+**Not pushed.** `D:\Dev\CLAUDE.md` is explicit: the GitHub repo named `momentum` maps to the
+**archived** tree, so pushing this one would push the active tree over the archive's history.
+That decision is Christoph's and has not been made. `handoff/inbox/017-active-tree-gets-a-remote.md`
+is the task that would settle it and it has no done-note.
