@@ -74,6 +74,10 @@ from textual.widgets import Input, Static
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
 from ..attach.attach import MarketData, attach
+# **034: the import that was missing one layer down.** `live/attach/ibkr.py` —
+# the only module in this tree that touches a broker — was imported by nothing
+# at all, not even a test, while 032 was fixing the same shape for `attach()`.
+from ..attach.ibkr import IbkrConfig, connect
 from .day_record import Attached, DayRecord, empty_record
 from .grammar import Cell
 from .layout import Layout
@@ -331,6 +335,92 @@ class Panel(Static):
             self.update(self.body(w, h or None))
 
 
+#: The order the context block renders in, and it is **the order the numbers are
+#: used in**, not alphabetical: the range budget first, because ADR is what says
+#: whether there is room left in the day at all; then the SMA extensions; then
+#: today's session. A dict's insertion order would work until `_context_block`
+#: was reordered for an unrelated reason, so the screen declares its own.
+CONTEXT_ORDER = ("ADR%", "ADR $", "ADR used", "room up", "room down", "ATR14",
+                 "ext 10", "ext 20", "ext 50", "VWAP", "cum vol", "RVOL",
+                 "RVOL_rel")
+
+#: The level rail. **`VWAP` is deliberately absent** — `level_rail` carries it
+#: and so does the context block, and rendering one value twice is how two rows
+#: come to disagree after somebody fixes one of them.
+RAIL_ORDER = ("PDH", "PDL", "PMH", "PML", "ORH", "ORL", "52wH", "52wL", "round")
+
+
+def measured_cell(m) -> str:
+    """A `Measured` through the refusal grammar.
+
+    **`sample` rides with the number** — S010 requires it on every rendered
+    value, and a bare `2.00` is a value with nothing behind it, which is the
+    thing tenet 2 and this whole module exist to prevent. An absent `Measured`
+    already names its own reason, so it goes through `Cell.absent` and renders
+    `— (need 21 daily bars, have 5)` rather than a blank.
+    """
+    if not getattr(m, "ok", False):
+        return Cell.absent(getattr(m, "unavailable", "") or "absent").render()
+    text = Cell.value(f"{m.value:,.2f}").render()
+    return f"{text}  · {m.sample}" if m.sample else text
+
+
+def _as_of_clock(ts: str) -> str:
+    """Today's as-of renders as a clock; any other day keeps its date.
+
+    **The date is dropped only when dropping it cannot mislead.** The stamp row
+    is ~72 characters with a full timestamp against a ~62-column tile, so `fit`
+    was truncating `lag` off the end — losing the one number that says how stale
+    the block is, which is precisely the value §4d refuses to let give way. But a
+    bar from LAST session rendered as a bare `16:00` would read as an hour ago,
+    so the date survives whenever it is not today's.
+
+    The record keeps the full timestamp either way; this is the renderer's
+    decision and lives with the rest of the formatting.
+    """
+    today = datetime.now(EASTERN).strftime("%Y-%m-%d")
+    if ts.startswith(today):
+        return ts[11:16] or ts
+    return ts
+
+
+def context_rows(a: Attached) -> list[str]:
+    """The context block for one attached symbol. 034 part 4.
+
+    **Indented one level under its symbol**, because the panel holds a list of
+    attachments and a flat block would read as belonging to whichever symbol the
+    eye landed on last.
+
+    **The stamp is BLOCK-LEVEL, and that is a limitation this function cannot
+    fix.** §3 and the third tenet want source, as-of and lag on every value;
+    `Measured` carries `value`, `sample` and `unavailable` and has no field for
+    an as-of or a lag. So one stamp covers the block, each row carries its own
+    `sample`, and the gap is recorded in the done-note rather than papered over
+    with a stamp computed at render time — which would say when the SCREEN was
+    painted, not when the DATA was true, and would be a well-formed value
+    answering a different question.
+    """
+    if not a.context and not a.rail:
+        return [f"    {Cell.not_yet('no context block measured').render()}"]
+    stamp = " · ".join(x for x in (
+        a.source,
+        f"as of {_as_of_clock(a.as_of)}" if a.as_of else "",
+        f"lag {a.lag}" if a.lag else "") if x)
+    rows = [f"    {'from':<9} {stamp}" if stamp
+            else f"    {'from':<9} {Cell.absent('no source recorded').render()}"]
+    if a.slot_state:
+        rows.append(f"    {'slot':<9} {a.slot_state}")
+    if a.tape:
+        rows.append(f"    {'tape':<9} {a.tape}")
+    for name in CONTEXT_ORDER:
+        if name in a.context:
+            rows.append(f"    {name:<9} {measured_cell(a.context[name])}")
+    for name in RAIL_ORDER:
+        if name in a.rail:
+            rows.append(f"    {name:<9} {measured_cell(a.rail[name])}")
+    return rows
+
+
 def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     """PURE. Day record in, panels out. Nothing else is consulted.
 
@@ -350,7 +440,10 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     # `SPEC.md` §4.2 — surfaced, not refused). A failed attach must not blank a
     # symbol that is working: those are two independent facts and collapsing them
     # would make one bad ticker look like a disconnection.
-    attach_rows = [f"  {a.symbol}  attached {a.since}" for a in at]
+    attach_rows: list[str] = []
+    for a in at:
+        attach_rows.append(f"  {a.symbol}  attached {a.since}")
+        attach_rows += context_rows(a)
     if record.attach_refusal:
         attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
     p["attached"] = Panel(
@@ -376,12 +469,33 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     h = record.health
     ratio = (f"{h.frames_painted}/{h.ticks_received}"
              if h.ticks_received else Cell.not_yet("no ticks received").render())
+    # 034 part 3 — **three states, and they must not render alike.** Connected
+    # names the endpoint and the client. Refused names the endpoint and WHY.
+    # Neither means nothing ever tried, which is what an empty record is and is
+    # a different fact from a connection that was attempted and failed.
+    #
+    # **The endpoint and its state are on SEPARATE ROWS, and that is measured
+    # rather than stylistic.** On one row the cell is
+    # `— (IBKR 127.0.0.1:7496 not connected - connection refused)`, 58 columns
+    # against the ~56 a HEALTH tile has at 209x54 — so `fit` truncated the
+    # REASON and left the endpoint, which is the half you can already guess.
+    # §4d says the caption gives way and the title never does; the same rule
+    # applied here says the endpoint may wrap and the reason may not vanish.
+    source_rows: list[str] = []
+    for name, state in sorted(h.sources.items()):
+        source_rows.append(f"  {'sources' if not source_rows else '':<9} {name}")
+        source_rows.append(f"  {'':<9} {state}")
+    for name, why in sorted(h.unavailable_sources.items()):
+        source_rows.append(f"  {'sources' if not source_rows else '':<9} {name}")
+        source_rows.append(f"  {'':<9} {Cell.no_source(why).render()}")
+    if not source_rows:
+        source_rows = [f"  sources   {Cell.no_source('no feed connected').render()}"]
+    last_seen_rows = ([f"  last seen {Cell.absent('nothing seen').render()}"]
+                      if not h.last_seen else
+                      [f"  last seen {n}  {t}" for n, t in sorted(h.last_seen.items())])
     p["health"] = Panel(
         "HEALTH", "updates · none yet",
-        [f"  sources   {Cell.no_source('no feed connected').render()}"
-         if not h.sources else f"  sources   {len(h.sources)} connected",
-         f"  last seen {Cell.absent('nothing seen').render()}",
-         f"  frames/ticks  {ratio}"],
+        source_rows + last_seen_rows + [f"  frames/ticks  {ratio}"],
         pinned=[f"regime    {Cell.not_built().render()}"
                 if not record.regime_snapshot.ref
                 else f"regime    {record.regime_snapshot.ref}"])
@@ -490,17 +604,31 @@ class MomentumApp(App):
                  md: MarketData | None = None):
         """`md` is the market data the attach path is allowed to ask (S010).
 
-        **It defaults to `None` and that is a state, not an omission.** There is
-        no broker in this slice — `main()` constructs no client and 029's launch
-        test asserts the app starts without one. With `md` absent the attach
-        prompt still opens, still accepts a symbol, and renders a NAMED refusal
-        saying what is missing. `SPEC.md` §4.2: an unreachable feature and a
-        feature that says why it cannot run are not the same screen.
+        **It defaults to `None` and that is a state, not an omission.** Until 034
+        it was also the only state anyone could reach: `main()` constructed no
+        client, so `md` was `None` for every person who ran the program. **That
+        is no longer true** — `main()` now builds an `IBKRMarketData` from
+        `config/ibkr.yaml` — but `None` remains a first-class state, because a
+        refused connection reaches exactly this branch. With `md` absent the
+        attach prompt still opens, still accepts a symbol, and renders a NAMED
+        refusal saying what is missing. `SPEC.md` §4.2: an unreachable feature
+        and a feature that says why it cannot run are not the same screen.
         """
         self.record = record if record is not None else empty_record()
         self.layout_cfg = layout or Layout.load()
         self.md = md
         super().__init__()
+
+    @property
+    def source_name(self) -> str:
+        """The connected feed, named — for stamping an attached context block.
+
+        **Read off the day record rather than held as a second field.** The
+        launcher already put it there for HEALTH to render, and a constructor
+        argument carrying the same string would be the two-places defect with
+        the copies one attach apart.
+        """
+        return next(iter(sorted(self.record.health.sources)), "")
 
     # ---- attaching a symbol, 032 -------------------------------------------
 
@@ -568,10 +696,58 @@ class MomentumApp(App):
         # growing a second one.
         self.record.attached = [a for a in self.record.attached
                                 if a.symbol != result.symbol]
+        # **034: the context block is CARRIED, not recomputed and not dropped.**
+        # `attach()` measured all of it one line ago and until now every value
+        # was discarded here — the panel showed that a symbol was attached and
+        # nothing about it. `render_panels` is pure over the record, so a value
+        # the record does not hold is a value that cannot render.
+        as_of, lag = self._stamp(result)
         self.record.attached.append(
             Attached(symbol=result.symbol,
-                     since=datetime.now(EASTERN).strftime("%H:%M")))
+                     since=datetime.now(EASTERN).strftime("%H:%M"),
+                     context=result.context, rail=result.rail,
+                     source=self.source_name, as_of=as_of, lag=lag,
+                     tape=result.tape, slot_state=result.slot_state))
         self.record.attach_refusal = ""
+
+    def _stamp(self, result) -> tuple[str, str]:
+        """As-of and lag for the block, **derived from the DATA, never the clock
+        alone.** The as-of is the last session bar's own timestamp; the lag is
+        now minus that. A stamp taken at render time would say when the screen
+        was painted, which is exactly the reading this project is named for.
+
+        Both are empty when there is no bar to read one from — `context_rows`
+        then renders the stamp without them rather than inventing one.
+        """
+        vwap = result.context.get("VWAP")
+        span = getattr(vwap, "sample", "") if vwap is not None else ""
+        # `vwap_from_bars` ends its sample with `... · <first ts> to <last ts>`.
+        # The last timestamp is the newest bar the feed gave us, which is the
+        # only as-of the data actually supports.
+        ts = span.rsplit(" to ", 1)[-1].strip() if " to " in span else ""
+        if not ts:
+            return "", ""
+        try:
+            when = datetime.fromisoformat(ts)
+        except ValueError:
+            # A timestamp we cannot parse is still worth rendering; a LAG we
+            # cannot compute is not worth guessing.
+            return ts, ""
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=EASTERN)
+        seconds = int((datetime.now(EASTERN) - when).total_seconds())
+        # **Normalised to US/Eastern, and this was a live defect rather than a
+        # precaution.** `IBKRMarketData._bars` passes `formatDate=2`, so IBKR
+        # stamps every bar in UTC; the first live attach rendered
+        # `as of 17:18 · lag 55s` at 13:18 ET. The lag was right and the clock
+        # was four hours ahead of the session it belongs to — a well-formed
+        # value answering a different question, beside a correct one.
+        #
+        # Session logic is US/Eastern via `zoneinfo`, never machine locale and
+        # never the wire format. The conversion happens HERE, where the
+        # timestamp becomes something a person reads.
+        return (when.astimezone(EASTERN).strftime("%Y-%m-%d %H:%M:%S"),
+                f"{seconds}s" if abs(seconds) < 3600 else f"{seconds // 60}m")
 
     async def _rerender(self) -> None:
         """Rebuild the tiles from the record. `_apply_fit` remounts when no
@@ -693,19 +869,49 @@ def main() -> int:
     Textual takes the alternate screen buffer, so the traceback lands on a
     terminal that still works rather than one mid-teardown.
 
-    **No `record` is passed, and that is not an omission.** There is no broker
-    in this slice; the app boots on `empty_record()` and every panel states its
-    own reason for being empty — `SPEC.md` §4.2, *surfaced, not refused*. **A
-    launcher that exited because TWS was absent would be a refusal the user
-    cannot read**, which is the same defect this function fixes, moved one line
-    later.
+    **A record IS passed now, and 029's reason for not passing one is the reason
+    it must be (034).** 029 said *there is no broker in this slice*; there is
+    one from here on, and the only way HEALTH can say what happened to the
+    connection is for the launcher to write it onto the record the panels are a
+    pure function of.
+
+    **The connection is attempted and its FAILURE IS A VALUE** — `connect()`
+    never raises. `SPEC.md` §4.2, *surfaced, not refused*: with TWS closed, the
+    app still launches, every panel renders, and HEALTH names the host, the port
+    and why. **A launcher that exited because TWS was absent would be a refusal
+    the user cannot read**, which is the same defect 029 fixed arriving through
+    a different door.
+
+    **Config is loaded BEFORE Textual takes the alternate screen buffer.** A
+    malformed `config/ibkr.yaml` is a traceback on a terminal that still works,
+    rather than one mid-teardown — the same reason the layout is loaded here.
+    That is also why a bad config is allowed to raise while a bad *connection* is
+    not: one is a file this repository controls and a person can fix in an
+    editor; the other is the state of the world.
 
     **No arguments, no flags.** There is one command today. A `--headless`
     switch for the launch test would make this a second place where behaviour
     lives; the test selects Textual's headless driver through the environment
     instead.
     """
-    MomentumApp(layout=Layout.load()).run()
+    layout = Layout.load()
+    cfg = IbkrConfig.load()
+
+    record = empty_record()
+    broker = connect(cfg)
+    if broker.ok:
+        record.health.sources[broker.source] = broker.state
+    else:
+        record.health.unavailable_sources[broker.source] = broker.state
+
+    try:
+        MomentumApp(record=record, layout=layout, md=broker.md).run()
+    finally:
+        # The broker thread is a daemon, so this is not what keeps the process
+        # from hanging — it is what releases the client id promptly. A client id
+        # held by a dead-but-not-disconnected session is the collision the
+        # config's note warns about, caused by us.
+        broker.close()
     return 0
 
 

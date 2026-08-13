@@ -43,8 +43,42 @@ class Ticket:
 
 @dataclass
 class Attached:
+    """One attached symbol, **and the context block that was measured for it.**
+
+    **Why fields were added to a record whose docstring says not to (034).**
+    `attach()` has computed `context` and `rail` since S010 and `Attached` had
+    nowhere to put them, so every value the slice exists to produce was
+    discarded one line after it was measured. That is the fifth instance in this
+    tree of *computed and unreachable* — after the app with no entry point, the
+    palette that lived in a docstring, `attach()` with no key, and
+    `IBKRMarketData` imported by nothing.
+
+    **These are `Measured`s, not strings.** `render_panels` is a pure function of
+    this record and formatting is its job; storing pre-rendered rows here would
+    put the refusal grammar in two places, and `grammar.py` exists so that it is
+    in one.
+
+    The docstring's prohibition is about fields that make an UNBUILT reading
+    representable — `layer_0`, `exposure`. These hold values that already exist
+    on `AttachResult`, measured by code that shipped under S010.
+    """
+
     symbol: str
     since: str = ""
+    #: `AttachResult.context` — ADR, ATR, extension, VWAP, cum vol, both RVOLs.
+    context: dict = field(default_factory=dict)
+    #: `AttachResult.rail` — PDH/PDL, PMH/PML, ORH/ORL, VWAP, 52-week, rounds.
+    rail: dict = field(default_factory=dict)
+    #: Where the numbers came from and how old they are. **Block-level, and that
+    #: is a stated limitation rather than a shortcut**: `Measured` carries a
+    #: `sample` but has no as-of or lag field, so a per-value stamp is not
+    #: something this task can render. See the done-note.
+    source: str = ""
+    as_of: str = ""
+    lag: str = ""
+    #: What step 4 said. An attach with no tape is still an attach (S010).
+    tape: str = ""
+    slot_state: str = ""
 
 
 @dataclass
@@ -53,6 +87,16 @@ class Health:
     frames-painted ratio — permanently visible, never hidden."""
 
     sources: dict[str, str] = field(default_factory=dict)
+    #: name -> **why it is not there** (034 part 3). A source that connected is
+    #: in `sources`; one that refused is here, carrying host, port and reason.
+    #:
+    #: **Two dicts rather than one with a magic state string.** The renderer has
+    #: to choose between a value and a refusal cell, and inferring that by
+    #: matching words in a state string would put the grammar's decision inside
+    #: a substring test. Empty-and-empty is still the third case — *nothing ever
+    #: tried to connect* — which is what an empty record renders and is not the
+    #: same fact as a refusal.
+    unavailable_sources: dict[str, str] = field(default_factory=dict)
     last_seen: dict[str, str] = field(default_factory=dict)
     ticks_received: int = 0
     frames_painted: int = 0

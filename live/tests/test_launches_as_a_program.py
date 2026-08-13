@@ -88,10 +88,73 @@ def svg_text(svg: Path) -> str:
     return " ".join(html.unescape(s) for s in spans).replace("\u00a0", " ")
 
 
+#: A `sitecustomize` that refuses the four broker ports. 034.
+#:
+#: **`main()` now dials TWS, so every launch here would open a real socket to a
+#: real account on a machine where TWS happens to be running** — during a test
+#: run, with a client id from `config/ibkr.yaml`, against the same per-account
+#: pacing budget a live capture might be spending. That is not acceptable and it
+#: is not what any of these tests is asking about.
+#:
+#: **It also makes the demonstration deterministic**, which matters more. Part 3
+#: has to be shown with TWS unreachable; without this the same command renders a
+#: connection on Christoph's desk and a refusal in a clean checkout, and the test
+#: would assert whichever the author happened to see.
+#:
+#: `sitecustomize` is imported by `site` at interpreter startup, before `-m`
+#: resolves anything. **That is why the command under test stays verbatim**: the
+#: alternative is a `--no-broker` flag on `main()`, which is the second-place-
+#: where-behaviour-lives that 029 refused for exactly this file.
+#:
+#: Narrowed to the four broker ports, per `tests/test_keepuptodate_scale.py`:
+#: importing `ib_async` builds an asyncio loop, and on Windows that calls
+#: `socket.socketpair()`, which is a loopback connect.
+#:
+#: **`socket.socket.connect` ALONE IS NOT ENOUGH, and this was found by the guard
+#: failing to fire.** The first version of this patched only that, the launch
+#: still connected to live TWS, and the screen came back reading
+#: `connected · client 7 · read-only`. On Windows `asyncio` runs a
+#: `ProactorEventLoop`, and `loop.create_connection` reaches the socket through
+#: `ConnectEx` without ever calling the method that was patched. `ib_async` is
+#: asyncio-native, so **every connection it makes took the unguarded path.**
+#:
+#: `tests/test_keepuptodate_scale.py` has the same hole. It still catches the
+#: incident it was written for — a *synchronous* connect at import — but it would
+#: pass against a module that dialled 7496 through asyncio. Recorded as an
+#: observation rather than fixed here; see the done-note.
+SOCKET_GUARD = '''\
+import asyncio
+import socket
+
+BROKER = {7496, 7497, 4001, 4002}
+REFUSAL = "no listener - test guard, this suite does not dial broker ports"
+
+_real_connect = socket.socket.connect
+def _guard(self, addr, *a, **k):
+    port = addr[1] if isinstance(addr, tuple) and len(addr) > 1 else None
+    if port in BROKER:
+        raise ConnectionRefusedError(REFUSAL)
+    return _real_connect(self, addr, *a, **k)
+socket.socket.connect = _guard
+
+# The one that actually matters for an asyncio client. Defined on BaseEventLoop,
+# so it covers the selector and proactor loops both.
+_real_create = asyncio.base_events.BaseEventLoop.create_connection
+async def _guard_create(self, protocol_factory, host=None, port=None, **k):
+    if port in BROKER:
+        raise ConnectionRefusedError(REFUSAL)
+    return await _real_create(self, protocol_factory, host, port, **k)
+asyncio.base_events.BaseEventLoop.create_connection = _guard_create
+'''
+
+
 def launch(module: str, out_dir: Path,
            cols: int = UAT_COLS, rows: int = UAT_ROWS) -> tuple[subprocess.CompletedProcess, Path]:
     """Start `python -m <module>` as a real process and return it with its shot."""
     shot = out_dir / f"{module.replace('.', '-')}.svg"
+    guard_dir = out_dir / "guard"
+    guard_dir.mkdir(exist_ok=True)
+    (guard_dir / "sitecustomize.py").write_text(SOCKET_GUARD, encoding="utf-8")
     env = dict(os.environ)
     env.update(
         TEXTUAL_DRIVER="textual.drivers.headless_driver:HeadlessDriver",
@@ -103,7 +166,9 @@ def launch(module: str, out_dir: Path,
         # cwd is set to REPO below; PYTHONPATH makes the import independent of
         # it, so a runner that changes directory does not turn this red for an
         # unrelated reason.
-        PYTHONPATH=str(REPO),
+        #
+        # The guard directory comes FIRST so `sitecustomize` resolves to it.
+        PYTHONPATH=os.pathsep.join([str(guard_dir), str(REPO)]),
         PYTHONIOENCODING="utf-8",
     )
     proc = subprocess.run(
@@ -150,6 +215,14 @@ def test_it_starts_with_no_broker_and_says_why_each_panel_is_empty(tmp_path: Pat
     launcher that exits when the broker is absent is a refusal the user cannot
     read** — the same defect as the silent exit, moved one line later. The
     panels render and each states its own reason for being empty.
+
+    **034 changed what HEALTH says here, and the change is the point.** Until
+    now `main()` dialled nothing, so the row read `(no feed connected)` whether
+    TWS was up, down, or had never been asked — one string for three different
+    facts. It now names the host, the port and the reason. `(no feed connected)`
+    survives in `render_panels` for the case it actually describes: a record
+    where nothing ever attempted a connection, which is what `empty_record()` is
+    and what the snapshot tests render.
     """
     proc, shot = launch("live.tui", tmp_path)
     # Named, not left to `read_text` raising FileNotFoundError three frames
@@ -161,8 +234,25 @@ def test_it_starts_with_no_broker_and_says_why_each_panel_is_empty(tmp_path: Pat
         f"  stderr    : {proc.stderr.strip()!r}")
     screen = svg_text(shot)
 
-    for reason in ["(no watchlist ingested today)", "(no feed connected)",
-                   "(no account snapshot)"]:
+    for reason in ["(no watchlist ingested today)", "(no account snapshot)"]:
         assert reason in screen, (
             f"launched with no broker and {reason!r} was not on screen.\n"
             f"Rendered:\n{screen[:2000]}")
+
+    # 034 part 3 — WHICH host and port, and WHY. Not "error", not a traceback.
+    assert "127.0.0.1:7496" in screen, (
+        "HEALTH does not name the connection that failed. A refusal reading "
+        "`could not connect` is the same message for a stopped TWS, a paper "
+        f"port typed in place of a live one, and a Gateway that never came "
+        f"up.\nRendered:\n{screen[:2000]}")
+    assert "connection refused" in screen, (
+        "HEALTH does not say WHY the connection failed. The guard raises "
+        "ConnectionRefusedError, so the reason is deterministic here — if it "
+        "is missing it was truncated off the row, which is the failure mode "
+        f"that made this assertion worth writing.\nRendered:\n{screen[:2000]}")
+    assert "Traceback" not in screen and "Error:" not in screen, (
+        f"a traceback reached the screen instead of a refusal.\n{screen[:2000]}")
+    assert "no feed connected" not in screen, (
+        "HEALTH still says `no feed connected` after a connection was "
+        "attempted and refused. Those are two different facts and one string "
+        f"for both is what 034 came to fix.\nRendered:\n{screen[:2000]}")
