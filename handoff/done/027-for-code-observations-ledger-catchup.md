@@ -236,6 +236,15 @@ including `026` and `027` themselves**, since both arrived in that form.
 **OBS-023 – OBS-027** (the five, above) and **OBS-028** (rule 15 cannot be mechanised against the
 current format). All `OPEN`, review-by 2026-11-13.
 
-## 7. `verify.ps1`
+## 7. `verify.ps1` — run at 2026-08-13 15:04:34 +02:00, after the commit
 
-Run after the commit; output quoted below.
+| Section | Output |
+|---|---|
+| 1 SUITE | `2 failed, 227 passed in 4.69s` — the two named above |
+| 2 GIT STATUS | clean, no uncommitted paths |
+| 3 HEAD | `6e6cf56ccd25495360c82e9baf8ad05e373044ab` |
+| 4 EVIDENCE | 179 rows checked, **0 mismatches, 0 missing** |
+| 5 EXPORT | both mirrors at `6e6cf56`, exported `15:04:33+02:00`, **87 / 13 files, counts match the sources**, tree clean at export |
+
+**As under 020 and 026, this section is one commit behind the tree by construction** — a note
+recording its own verification cannot be the file that verification described.
