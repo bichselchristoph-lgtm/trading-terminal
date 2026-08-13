@@ -141,6 +141,51 @@ function nothing calls**, which is the exact shape `attach()` was already in wit
 its own 395-line test file. That test was in A's suite and died with it; B's file has no
 equivalent and does not need one.
 
+**Red 3 — B's run, and this is the strongest of the three.** Reds 1 and 2 were taken against
+a tree that already held part of the fix. **This one is against `HEAD` `4236cd0` clean**, in a
+throwaway detached worktree outside the repo, with nothing but the two-line seam
+(`ATTACH_KEY`, and `md` on `__init__`) added so the failure would be behavioural rather than an
+`ImportError`. The worktree was removed afterwards; the shared tree was never touched.
+
+```
+AssertionError: unreachable at (240, 70):
+  +- ATTACHED -------------------------------------------- not attached +
+    — (nothing attached)
+    1 of 1 · end
+
+FAILED test_a_key_press_attaches_a_symbol_and_the_panel_shows_it
+FAILED test_the_symbol_is_normalised_the_way_attach_normalises_it
+FAILED test_the_attach_is_recorded_as_typed
+FAILED test_a_bad_symbol_renders_its_reason_and_the_app_stays_up
+FAILED test_the_frame_survives_a_refusal_and_can_attach_afterwards
+FAILED test_no_contract_found_is_a_different_refusal_from_ambiguous
+FAILED test_escape_closes_the_input_without_attaching
+FAILED test_the_key_is_declared_once
+FAILED test_it_is_reachable_at_more_than_one_width[size0]
+FAILED test_it_is_reachable_at_more_than_one_width[size1]
+10 failed, 1 passed in 5.12s
+```
+
+**All eleven assertions were written before their author had seen A's implementation.** B wrote
+the file from the task text alone at 17:27:20, stood down at 17:28:06 on discovering A's
+writes, and only then ran it against A's code — where it passed unmodified, first run. **That
+independence is worth more than the green**: a suite written against an implementation tends to
+describe it, and this one could not have.
+
+**And the one test that passed is the same finding A recorded, arriving by a different route.**
+A's single pass was an import assertion. B's single pass was
+`test_an_empty_submit_attaches_nothing_and_closes` — *press the key, submit nothing, and the
+panel must be unchanged*. It passed against an application where the key was bound to nothing,
+because **a panel nothing can change is trivially a panel nothing changed.**
+
+**Two suites, written independently, each contained exactly one test that passed against a
+completely broken feature, and in both cases for the same reason: the test asserted an
+absence.** Neither author noticed while writing it. That is a sharper statement of §7 than
+either suite set out to make — an assertion that something did *not* happen cannot distinguish
+*"the mechanism ran and correctly did nothing"* from *"there is no mechanism"*, and it is the
+`[ NOT BUILT ]`-versus-data-absent distinction this project already enforces on screen, unenforced
+in its own tests.
+
 **Green:**
 
 ```
