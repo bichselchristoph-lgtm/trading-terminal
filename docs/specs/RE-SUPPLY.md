@@ -32,10 +32,22 @@ instead.**
    A `SUPERSEDED` header additionally carries a `**by**` naming a file that exists.
    *Applied under H9 v3 §2.*
 
-2. **No `claude/`-rooted regime-snapshots path anywhere.** The canonical path is
-   `docs/regime-snapshots/`. Two exemptions, both deliberate:
-   `docs/specs/DRIVE-ARCHIVE-LIST.md` and `handoff/`, which record the old convention as
-   history and must keep saying what it was. *Applied under H8 §B2.*
+2. **No `claude/`-rooted regime-snapshots path in anything this tree READS.**
+   *Applied under H8 §B2; **re-scoped to the consumer 2026-08-13**.*
+
+   **This was "no such path anywhere", and that was wrong.** `REGIME-PROMPT.md` v1.8 uses
+   `claude/regime-snapshots/` six times and is correct to: it instructs a scheduled cloud run
+   which **has no repo access, permanently**, so that is genuinely where it writes. Re-applying
+   the old rule would have rewritten a live task's instructions to write somewhere it cannot
+   reach — a behaviour change to a running system, dressed as a mechanical repair.
+
+   **The test is positional, not lexical: it asks who reads the path.** A consumer is a file
+   this tree executes or parses — `.py`, `.ps1`, `.yaml`, `.yml`, `.json`. **Inside that set
+   there are no exemptions**, because a live pointer in code is a live pointer. **Prose is
+   never a consumer**: it records history, or it instructs a party that cannot see this repo.
+   `tests/test_regime_snapshot_path.py::test_no_consumer_reads_the_legacy_snapshot_path`.
+
+   The canonical path for anything **in this tree** is `docs/regime-snapshots/`.
 
 3. **`SPEC.md` §13's heading carries the human-reachable-only qualification.** The heading
    itself, not only a note beside each citation — the Drive and OneDrive entries resolve for
@@ -52,13 +64,31 @@ instead.**
 Named here so a re-supply of `REGIME-PROMPT.md` is checked against all of them, not only the
 four above:
 
-- **`REGIME-PROMPT.md` is v1.2 or higher**, states `schema_version: 2`, carries the
-  ratification bands with `regime_read_template_2026-08`, and the reduced-card floor with
-  `prompt_decision_2026-08-10` and `PROVISIONAL`.
+**Amended 2026-08-13 when v1.8 landed.** Three of these asserted that v1.2's text was
+*present*. v1.8 superseded all three on purpose. **They were flipped, not deleted** — the risk
+was never that a new supply lacks the old text, it is that a **later** supply restores it, and
+the design session cannot see what was superseded here.
+
+- **`REGIME-PROMPT.md` is v1.8 or higher.**
+- **`schema_version: 2` must NOT appear** — v1.7 bumped it to 3 because row 2 was retired and
+  `layer_i` row 1 replaced. Reinstating 2 makes a v2 and a v3 snapshot indistinguishable to any
+  consumer joining them. A `schema_version:` line must still be present.
+- **The heading `PART E — the three outputs` must NOT appear** — v1.8 renamed it to
+  `PART E — the outputs` and states the count at line 36. `PART E` and `E0` must still exist.
+  `the two outputs` remains forbidden: that is v1.0.
+- **Fewer than three `regime_read_template_2026-08` occurrences** — row 2 was cut in v1.7 and
+  its band block went with it. A third is the retired block returning, and **`row 2` is a
+  retired identifier that must never be reused.** The three bands and the reduced-card floor
+  (`prompt_decision_2026-08-10`, `PROVISIONAL`) are still asserted positively.
 - **No bare `6 of 9`** — or any separator spelling of that digit pair — in `docs/specs/`
   outside the mockups. A count must name its exclusions.
+  **This is RED as of 2026-08-13 and is meant to be.** v1.8 reintroduced it at
+  `health: "6/9 fresh"`. Ruled a real defect in the delivered text, to be fixed **at source in
+  v1.9**, where the field stops being a string and becomes
+  `health_fresh` / `health_total` / `health_not_fresh: [...]`. **Do not fix it tree-side** —
+  that is re-authoring, and the next supply discards it.
 
-Both live in `tests/test_regime_prompt_invariants.py`.
+All live in `tests/test_regime_prompt_invariants.py`.
 
 ## What to do when the test fails
 

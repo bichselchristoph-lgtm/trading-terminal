@@ -177,6 +177,100 @@ while I work. The figure at this task's `HEAD` is in `verify-output.txt`.
 (four superseded invariants + the real `6/9` defect), **one is `027`'s tripwire firing as
 designed**, and the rest are pre-existing or another party's.
 
+---
+
+# Ratified 2026-08-13 — the four decisions, applied
+
+Christoph ruled on all four open items. **Failures went 13 → 8**, and the four that cleared are
+below with what each cost.
+
+## R1. The three superseded invariants: AMENDED, not deleted
+
+**Each flips from *this is present* to *this is gone*.** The ruling's reasoning is now recorded in
+each test, because it is not obvious from the code: **the risk was never that v1.8 lacks the old
+text — it is that a LATER supply restores it**, and the design session authors outside this tree
+and cannot see what was superseded here.
+
+| Was | Now |
+|---|---|
+| `test_part_e_is_the_three_outputs_not_two` — heading must contain *"the three outputs"* | **`test_the_superseded_part_e_headings_stay_gone`** — `PART E — the three outputs` must NOT appear, nor `the two outputs` (v1.0). `PART E` and `E0` still asserted positively: structure, not wording |
+| `test_schema_version_is_2` | **`test_schema_version_2_stays_gone`** — `schema_version: 2` must not reappear, because reinstating it makes a v2 and a v3 snapshot indistinguishable to any consumer joining them. **A `schema_version:` line must still exist**, so the check cannot pass over a file that declares no schema at all |
+| `test_ratification_bands_are_present_and_sourced` — ≥3 `regime_read_template_2026-08` | **`test_the_retired_band_block_stays_gone`** — **fewer than 3**, because row 2 was cut and its block went with it. A third is the retired block returning, and `row 2` is a retired identifier that must never be reused. **The three bands are still asserted positively** — losing them would be a real regression, not a supersession |
+
+`docs/specs/RE-SUPPLY.md`'s adjacent-invariant list was amended in the same change, with a
+paragraph saying why three entries flipped. **Without that, the next re-supply is checked against
+a superseded list** — which is the failure mode this whole document exists to prevent, applied to
+itself.
+
+## R2. The `6/9`: left red, deliberately
+
+**No tree-side fix.** It is a real defect in the delivered text, correct at source as **v1.9**,
+where the field stops being a string and becomes `health_fresh` / `health_total` /
+`health_not_fresh: [...]` — so the count carries its exclusions **structurally** rather than in
+prose, which is a better fix than the one the invariant was asking for.
+
+**A block comment now sits above `BARE_COUNT`** naming the ruling, the v1.9 shape, and
+`DO NOT "FIX" THIS`. Two permanently-red tests with no explanation is how a third arrives
+unnoticed; **a red with a dated reason and a named successor is a tracked defect.**
+
+## R3. Invariant 2: re-scoped to the CONSUMER, positional not lexical
+
+**The invariant was wrong, not the document.** The new rule asks **who reads the path**:
+
+- **A consumer is a file this tree executes or parses** — `.py`, `.ps1`, `.yaml`, `.yml`, `.json`.
+  **Inside that set there are no exemptions at all**, which is *stricter* than the old rule.
+- **Prose is never a consumer.** It records history, or instructs a party that cannot see this
+  repo. `REGIME-PROMPT.md` keeps its six `claude/`-rooted paths and is correct to.
+
+`test_no_consumer_reads_the_legacy_snapshot_path` is the new assertion;
+`test_prose_may_carry_the_legacy_path_because_prose_reads_nothing` asserts the other half **so a
+future edit cannot quietly re-widen the scan to prose**; `test_the_consumer_scan_is_not_vacuous`
+stops the suffix list matching nothing. `RE-SUPPLY.md` invariant 2 rewritten to match.
+
+**The self-reference trap, for the third time in this project.** The first version of the consumer
+scan went red on **its own docstring** in `test_resupplied_docs_are_repaired.py`, which explains
+the rule and therefore contains the path. Fixed the same way as `022`'s root-derivation guard and
+`026`'s pair-id guard: **strip docstrings and comments via `ast` before scanning**, because a
+guard that forbids naming the thing in prose pushes the explanation out of the file to stay green.
+
+**One other thing caught on the way:** `from tests.test_regime_snapshot_path import ...` raises
+`ModuleNotFoundError` — `tests/` has no `__init__.py`, deliberately. The file already had a
+path-based loader for exactly this; it is now shared rather than duplicated.
+
+## R4. The `026` conflict: Drive bytes taken
+
+**A directed one-off replacement, not the copier overwriting.** `handoff/inbox/026-*.md` now
+matches its Drive original byte for byte:
+
+| | sha256 |
+|---|---|
+| before | `c7257a6f4600e179…` — the hand-pasted copy with 8 lines of viewer chrome and a trailing `Displaying …` |
+| after | `2b4b07346453fc8b…` — identical to Drive |
+
+**The Drive source was not touched** — 5,019 bytes, mtime 13:17:14, unchanged. The copier confirms:
+
+```
+handoff_inbox: 1 new · 031-for-code-two-sessions-one-tree.md · 0 differing
+  ok source folder byte-for-byte unchanged (6 files hashed before and after)
+exit 0
+```
+
+**`0 differing`, exit 0 — the first clean run since the pipeline was built.** The same run brought
+in `031`, which is unread.
+
+## What the eight remaining failures are
+
+| Failure | Whose |
+|---|---|
+| `test_no_bare_six_of_nine` ×2 | **Ruled red until v1.9.** R2 |
+| `test_the_format_still_lacks_a_key` | **`027`'s tripwire, firing as designed.** Rule-15 grouping is now buildable; `027` is held |
+| `test_every_declared_uat_exists_as_a_file` | `020`'s UAT file, Christoph's to place |
+| `test_every_task_file_declares_a_state` | OBS-031, the state-header conflict |
+| `test_every_retired_uat_has_a_register_row` ×2 | `014` was retired to `christoph/done/` and needs a register row. **Mine to write**, not `030`'s scope |
+| `test_every_directory_holding_tests_is_declared` | The concurrent session's |
+
+**None is an unexplained red.** Six have a named owner and two have a named successor version.
+
 ## 5. `verify.ps1`
 
 Run at 2026-08-13 15:35 +02:00. Output not quoted, per HANDOFF-PROTOCOL v1.2.

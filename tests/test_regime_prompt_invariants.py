@@ -24,6 +24,21 @@ PROMPT = REPO / "docs" / "specs" / "REGIME-PROMPT.md"
 #: §A1.5, `mockup-02`, and PART B — copied each time rather than recomputed.
 BARE_COUNT = "6 of 9"
 
+#: **RED ON PURPOSE FROM 2026-08-13 UNTIL v1.9 LANDS. DO NOT "FIX" THIS.**
+#:
+#: v1.8 reintroduced the anti-pattern at `health: "6/9 fresh"`. Ruled 2026-08-13:
+#: **a real defect in the delivered text, and the design session's to correct at
+#: source.** A tree-side edit would be re-authoring a re-supplied document and
+#: would be discarded by the next supply — `docs/specs/RE-SUPPLY.md` forbids
+#: exactly that.
+#:
+#: v1.9 fixes it and the field stops being a string:
+#:     health_fresh / health_total / health_not_fresh: [...]
+#: so the count carries its own exclusions structurally instead of in prose.
+#:
+#: **The red is the mechanism working.** Silencing it here would remove the only
+#: thing tracking a known defect in a live scheduled prompt.
+
 #: A line may cite the figure while naming it as the anti-pattern. That is what
 #: v1.2 does, in the passage that forbids it. The test's stated intent is that a
 #: count "must name its exclusions", so an occurrence is a violation unless the
@@ -55,41 +70,94 @@ def test_version_is_1_8_or_higher() -> None:
     )
 
 
-def test_part_e_is_the_three_outputs_not_two() -> None:
-    """Carried forward from the v1.1 pin. A copy saying "the two outputs" is
-    v1.0, superseded by Amendment 3, and must not be committed."""
+def test_the_superseded_part_e_headings_stay_gone() -> None:
+    """**FLIPPED at v1.8, ratified 2026-08-13. Amended, not deleted.**
+
+    It asserted `"the three outputs"` was PRESENT in the heading. v1.8 renamed it
+    to `### PART E — the outputs` and moved the count up to line 36, *"Produce
+    three outputs, in this order"*.
+
+    **The risk was never that v1.8 lacks the old text. It is that a LATER SUPPLY
+    RESTORES it** — the design session authors outside this tree and cannot see
+    what was superseded here, which is the whole re-supply hazard. So the
+    assertion flips from *this is present* to *this is gone*, and the two dead
+    headings are named so either one coming back is caught.
+
+    What stays positive is structural and still true: `PART E` exists and `E0`
+    exists. Those are not wording.
+    """
     text = prompt_text()
     assert "the two outputs" not in text.lower(), (
-        "REGIME-PROMPT.md says 'the two outputs' — that is v1.0, and it must not be committed."
+        "REGIME-PROMPT.md says 'the two outputs' — that is v1.0, superseded by "
+        "Amendment 3, and it must not come back."
     )
-    assert "PART E" in text and "the three outputs" in text, (
-        "REGIME-PROMPT.md is missing the 'PART E — the three outputs' heading."
+    assert "PART E — the three outputs" not in text, (
+        "the v1.2 heading 'PART E — the three outputs' is back. v1.8 renamed it to "
+        "'PART E — the outputs' and states the count at line 36 instead. A supply that "
+        "restores the old heading has been written against a superseded copy."
     )
+    assert "PART E" in text, "REGIME-PROMPT.md is missing PART E entirely."
     assert "E0" in text, "REGIME-PROMPT.md is missing the 'E0 — the chat body' subsection."
 
 
-def test_schema_version_is_2() -> None:
-    """A v1.1 snapshot has no `ratification` block at all, so without the bump a
-    reader cannot tell a v1 snapshot from a v2 one where the floor did not fire.
-    `SPEC.md` §5.5a makes a mismatch refuse-to-parse, which is what makes the two
-    distinguishable."""
-    assert "schema_version: 2" in prompt_text(), (
-        "REGIME-PROMPT.md does not emit `schema_version: 2`. The ratification block's new "
-        "keys\n(rows_available, floor_fired, bands, bands_source, floor_source) are absent "
-        "from a v1\nsnapshot, and without the bump the two are indistinguishable."
+def test_schema_version_2_stays_gone() -> None:
+    """**FLIPPED at v1.8, ratified 2026-08-13. Amended, not deleted.**
+
+    It asserted `schema_version: 2`. v1.8 emits **3**, commented *"bumped in v1.7
+    — row 2 retired, layer_i row 1 replaced"*, and explains the break: a consumer
+    joining v2 and v3 files must handle a retired strip row and a replaced
+    `layer_i` row 1, which **are different questions, not the same question
+    renamed**.
+
+    **A re-supply that reinstates `2` would silently re-merge those two
+    questions**, and nothing downstream would notice — which is exactly why this
+    flips rather than being deleted.
+    """
+    text = prompt_text()
+    assert "schema_version: 2" not in text, (
+        "REGIME-PROMPT.md emits `schema_version: 2` again. v1.7 bumped it to 3 because "
+        "row 2 was retired and layer_i row 1 replaced;\nreinstating 2 makes a v2 and a v3 "
+        "snapshot indistinguishable to any consumer joining them."
+    )
+    # Kept positive so the check cannot pass over a file that emits no schema at all.
+    assert "schema_version:" in text, (
+        "REGIME-PROMPT.md emits no `schema_version:` line. The snapshot must declare its "
+        "schema — an undeclared one is worse than a wrong one."
     )
 
 
-def test_ratification_bands_are_present_and_sourced() -> None:
+def test_the_retired_band_block_stays_gone() -> None:
+    """**FLIPPED at v1.8, ratified 2026-08-13. Amended, not deleted.**
+
+    It asserted **three or more** `regime_read_template_2026-08` occurrences —
+    one per band block. **Row 2 was cut in v1.7 and its block went with it**, so
+    v1.8 carries two: the standing rule at line 61 and the ratification block's
+    `bands_source`.
+
+    **The bands themselves are still asserted positively** — they are what makes
+    the 05:00 read checkable after the fact, and losing them would be a real
+    regression rather than a supersession.
+
+    **What flips is the count.** A third block returning means a supply restored
+    the retired row-2 band, and `row 2` is a retired identifier that *"must never
+    be reused"* — re-mapping four sessions of recorded snapshots onto a different
+    question, which the document itself calls this project's signature defect.
+    """
     text = prompt_text()
     for band in ("+2 or +3", "0 or +1", "−1 or lower"):
         assert band in text, (
             f"ratification band {band!r} missing from PART B. Without the bands the 05:00 read "
             "is not checkable later — whoever reads the ratification decides after the fact."
         )
-    assert text.count("regime_read_template_2026-08") >= 3, (
-        "the ratification bands must each carry `source: regime_read_template_2026-08`. "
-        "Every cut point in PART B comes from the template except the floor."
+    assert "regime_read_template_2026-08" in text, (
+        "no `regime_read_template_2026-08` source anywhere. Every cut point comes from the "
+        "template except the floor, and an unsourced threshold is an invented one."
+    )
+    assert text.count("regime_read_template_2026-08") < 3, (
+        f"{text.count('regime_read_template_2026-08')} `regime_read_template_2026-08` "
+        "occurrences. v1.7 cut row 2 and its band block; a third is the retired block "
+        "coming back.\n`row 2` is a retired identifier and must never be reused — "
+        "renumbering re-maps four sessions of recorded snapshots onto different questions."
     )
 
 

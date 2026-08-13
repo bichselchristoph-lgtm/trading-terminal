@@ -1,11 +1,3 @@
-
-026-for-code-inbox-sync-from-drive.md
-
-Page
-1
-/
-1
-100%
 ---
 id: 026
 title: Copy task files from the Drive sync folder into handoff/inbox
@@ -129,4 +121,3 @@ Three outcomes, and they must not read alike:
 3. The convention-flag case demonstrated.
 4. **What you could not do**, and why. Empty is suspicious.
 5. `verify.ps1` run at `<time>`.
-Displaying 026-for-code-inbox-sync-from-drive.md.

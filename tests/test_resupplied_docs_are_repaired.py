@@ -35,17 +35,25 @@ CAUSE = (
 )
 
 VALID_STATUSES = ("CURRENT", "SUPERSEDED", "HISTORICAL")
-def _legacy_path() -> str:
-    """Imported, not redefined. tests/test_regime_snapshot_path.py is the single
-    definition and skips itself when scanning; a second literal here would be a
-    second occurrence of the very string this asserts is absent."""
+def _path_module():
+    """Loaded BY PATH, not imported. `tests/` has no `__init__.py` — deliberately —
+    so `from tests.test_regime_snapshot_path import ...` raises ModuleNotFoundError.
+    Written that way first and caught immediately.
+
+    `tests/test_regime_snapshot_path.py` is the single definition of the legacy
+    string, the consumer-suffix set and the docstring stripper. **A second literal
+    here would be a second occurrence of the very string this asserts is absent.**"""
     import importlib.util, sys
     src = Path(__file__).with_name("test_regime_snapshot_path.py")
     spec = importlib.util.spec_from_file_location("_legacy_src", src)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["_legacy_src"] = mod
     spec.loader.exec_module(mod)
-    return mod.FORBIDDEN
+    return mod
+
+
+def _legacy_path() -> str:
+    return _path_module().FORBIDDEN
 EXEMPT_FROM_LEGACY_PATH = ("docs/specs/DRIVE-ARCHIVE-LIST.md",)
 BANNERED_SHEETS = ("mockup-02-regime.html", "mockup-04-size-stage.html",
                    "mockup-05-live-context.html")
@@ -69,19 +77,47 @@ def test_invariant_1_every_spec_still_declares_a_status() -> None:
 
 
 def test_invariant_2_no_legacy_snapshot_path_survives() -> None:
+    """**RE-SCOPED TO THE CONSUMER, ratified 2026-08-13. The invariant was wrong,
+    not the document.**
+
+    It scanned every `.md` under `docs/specs/` for the legacy string. v1.8 of
+    `REGIME-PROMPT.md` uses it six times **and is right to**: it instructs a
+    scheduled cloud run that has no repo access, permanently, so
+    `claude/regime-snapshots/` is that run's canonical write location
+    (Christoph, 2026-08-13).
+
+    Re-applying the old rule would have rewritten a live task's instructions to
+    write somewhere it cannot reach — **a behaviour change to a running system,
+    dressed as a mechanical repair.**
+
+    **The question is now who READS the path, not whether the string appears.**
+    Specs are prose: they instruct people and external runs, and read nothing.
+    The consumer-side assertion — no repo-side code or config may point at the
+    legacy path — lives in `tests/test_regime_snapshot_path.py`
+    (`test_no_consumer_reads_the_legacy_snapshot_path`), which has no exemptions
+    at all.
+
+    **This test is kept and inverted rather than deleted**, for the same reason
+    as the three flipped prompt invariants: the risk is a later supply putting
+    the path somewhere a consumer reads it.
+    """
+    mod = _path_module()
+    CONSUMER_SUFFIXES, code_only = mod.CONSUMER_SUFFIXES, mod.code_only
+
     legacy = _legacy_path()
-    hits = []
-    for p in spec_docs():
-        rel = p.relative_to(REPO).as_posix()
-        if rel in EXEMPT_FROM_LEGACY_PATH:
-            continue
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if legacy in line:
-                hits.append(f"{rel}:{i}")
+    hits = [
+        f"{p.relative_to(REPO).as_posix()}:{i}"
+        for p in spec_docs()
+        if p.suffix.lower() in CONSUMER_SUFFIXES
+        for i, line in enumerate(code_only(p, p.read_text(encoding="utf-8")).splitlines(), 1)
+        if legacy in line
+    ]
     assert not hits, (
-        f"the legacy path {legacy!r} is back in docs/specs/:\n  "
+        f"the legacy path {legacy!r} appears in a CONSUMER under docs/specs/:\n  "
         + "\n  ".join(hits)
-        + f"\n\nThe canonical path is `docs/regime-snapshots/`." + CAUSE
+        + "\n\nProse may carry it — it instructs a run with no repo access. Code and config "
+          "may not.\nThe canonical path for anything in this tree is `docs/regime-snapshots/`."
+        + CAUSE
     )
 
 

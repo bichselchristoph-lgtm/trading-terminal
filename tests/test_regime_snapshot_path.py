@@ -52,6 +52,7 @@ exempt; `test_guard_3` pins the three live specs as never-exempt by name.
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -115,18 +116,133 @@ def candidate_files() -> list[Path]:
     ]
 
 
+#: **RE-SCOPED TO THE CONSUMER, ratified 2026-08-13.**
+#:
+#: The rule was lexical: the string `claude/regime-snapshots/` was forbidden
+#: *anywhere*, with a derived exemption for prose that records history. v1.8 of
+#: `REGIME-PROMPT.md` broke it by being neither — a live document, in prose,
+#: correctly instructing a scheduled cloud run to write to `claude/regime-snapshots/`
+#: **because that run has no repo access, permanently** (Christoph, 2026-08-13).
+#:
+#: **The invariant was wrong, not the document.** A `claude/`-rooted path is
+#: CORRECT where the author has no repo, and a DEFECT only where repo-side code
+#: would read it. So the test asks **who reads this path**, and the answer is
+#: positional: a consumer is a file that is executed or parsed by something in
+#: this tree. Prose is never a consumer — it either records history or instructs
+#: a party that cannot see this repo.
+#:
+#: This is narrower than the old rule and stronger where it counts: there is now
+#: NO exemption inside the consumer set. A live pointer in code is a live pointer.
+CONSUMER_SUFFIXES = (".py", ".ps1", ".yaml", ".yml", ".json")
+
+
+def consumer_files() -> list[Path]:
+    return [p for p in candidate_files() if p.suffix.lower() in CONSUMER_SUFFIXES]
+
+
+def code_only(path: Path, text: str) -> str:
+    """Documentation stripped. **A path in a docstring is read by nothing.**
+
+    The consumer rule asks who READS the path, and a `.py` docstring explaining
+    the rule is prose that happens to live in a code file. The first version of
+    this scan tripped on its own explanation in
+    `test_resupplied_docs_are_repaired.py` — **the third time this project has hit
+    the self-reference trap**, after `022`'s root-derivation guard and `026`'s
+    pair-id guard, and it is resolved the same way both times were.
+
+    **A guard that forbids naming the thing in prose pushes the explanation out of
+    the file to stay green**, which costs more than the guard is worth.
+
+    `ast.unparse` drops comments as well as the docstrings we remove explicitly.
+    Non-Python consumers are scanned raw: `.yaml`/`.ps1` comments could be
+    stripped too, but they do not carry explanatory prose here and inventing a
+    second stripper for a case that has never occurred is machinery with no
+    evidence behind it. **Stated so the asymmetry is deliberate rather than
+    discovered.**
+    """
+    if path.suffix.lower() != ".py":
+        return text
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return text  # unparseable: scan it raw rather than skip it
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (isinstance(body, list) and body and isinstance(body[0], ast.Expr)
+                and isinstance(getattr(body[0], "value", None), ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            node.body = body[1:] or [ast.Pass()]
+    return ast.unparse(tree)
+
+
+def test_no_consumer_reads_the_legacy_snapshot_path() -> None:
+    """**The invariant, re-scoped.** No file that this tree executes or parses may
+    point at the legacy path. No exemptions — see `CONSUMER_SUFFIXES` above."""
+    hits = []
+    for p in consumer_files():
+        rel = p.relative_to(REPO).as_posix()
+        if p.name == Path(__file__).name:
+            continue  # defines the forbidden string
+        text = code_only(p, p.read_text(encoding="utf-8", errors="ignore"))
+        for i, line in enumerate(text.splitlines(), 1):
+            if FORBIDDEN in line:
+                hits.append(f"{rel}:{i}  {line.strip()[:70]}")
+    assert not hits, (
+        f"repo-side code or config reads the legacy path {FORBIDDEN!r}:\n  " + "\n  ".join(hits)
+        + f"\n\nThe canonical path for anything IN THIS TREE is {CANONICAL!r}.\n\n"
+          "There is no exemption here and none may be added. A `claude/`-rooted path is "
+          "correct\nonly where the author has no repo access — that is prose instructing the "
+          "scheduled\ncloud run, not code running from this tree."
+    )
+
+
+def test_prose_may_carry_the_legacy_path_because_prose_reads_nothing() -> None:
+    """**The other half of the re-scope, asserted so it cannot quietly invert.**
+
+    `REGIME-PROMPT.md` is a live document that legitimately contains the legacy
+    path six times. If a future edit re-widens the scan to prose, this fails and
+    names why — which is the failure mode the old lexical rule actually had.
+    """
+    prompt = REPO / "docs" / "specs" / "REGIME-PROMPT.md"
+    if not prompt.exists():
+        return
+    assert prompt.suffix.lower() not in CONSUMER_SUFFIXES, (
+        "REGIME-PROMPT.md is now inside CONSUMER_SUFFIXES. It instructs a cloud run with no "
+        "repo access and must keep its `claude/`-rooted paths; scanning it would force a "
+        "correct document to be broken to satisfy a test."
+    )
+
+
+def test_the_consumer_scan_is_not_vacuous() -> None:
+    """A suffix list that matched nothing would make the check above pass over an
+    empty set — the same defect as a scanner with a broken root."""
+    files = consumer_files()
+    assert len(files) >= 10, f"only {len(files)} consumer files scanned"
+    names = {p.relative_to(REPO).as_posix() for p in files}
+    assert any(n.startswith("tools/") for n in names)
+    assert any(n.startswith("config/") for n in names)
+
+
 def test_no_legacy_regime_snapshot_path() -> None:
-    """The old path appears nowhere outside the two exemptions."""
+    """**SUPERSEDED IN SCOPE, kept for the record-derivation it still guards.**
+
+    Retained rather than deleted because its three guards below are what stop the
+    exemption becoming a hiding place, and they are still worth having for the
+    non-prose files the derivation touches. **The prose half of its scan is now
+    handled by the consumer rule above.**
+    """
     hits = []
     for p in candidate_files():
         rel = p.relative_to(REPO).as_posix()
+        if p.suffix.lower() not in CONSUMER_SUFFIXES:
+            continue  # re-scoped 2026-08-13: prose is not a consumer
         # This file DEFINES the forbidden string, so it necessarily contains it.
         # Same precedent as tests/test_no_secrets.py, which skips itself for
         # holding the credential patterns. Excluding the definition is not
         # widening an exemption over content.
         if p.name == Path(__file__).name:
             continue
-        text = p.read_text(encoding="utf-8", errors="ignore")
+        text = code_only(p, p.read_text(encoding="utf-8", errors="ignore"))
         if is_a_record(rel, text):
             continue
         for i, line in enumerate(text.splitlines(), 1):
