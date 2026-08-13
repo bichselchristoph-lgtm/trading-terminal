@@ -22,6 +22,22 @@ $ErrorActionPreference = 'Stop'
 $repo      = $PSScriptRoot
 $driveRoot = 'D:\claude-googledrive-sync'
 
+# POWERSHELL 7+ REQUIRED, checked here rather than discovered at line 83.
+# `[IO.Path]::GetRelativePath` and the `utf8NoBOM` encoding are .NET Core APIs
+# and do not exist in Windows PowerShell 5.1. Run under 5.1 the script gets 60
+# lines in, then dies with `Method invocation failed ... does not contain a
+# method named 'GetRelativePath'` -- which reads as a broken script rather than
+# as the wrong host. Found on 2026-08-13 by invoking it as `powershell` instead
+# of `pwsh`.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw @"
+export-handoff.ps1 requires PowerShell 7+; this host is $($PSVersionTable.PSVersion).
+
+It uses [IO.Path]::GetRelativePath and -Encoding utf8NoBOM, both .NET Core only.
+Run it with `pwsh`, not `powershell`.
+"@
+}
+
 # The two sources, and nothing else. The prohibition on exporting docs/specs/,
 # records/ and christoph/open/ is STRUCTURAL rather than a forbidden-list: it
 # holds because those are not named here, not because something checks for them.
