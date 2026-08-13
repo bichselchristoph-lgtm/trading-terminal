@@ -30,8 +30,8 @@ from tools.probe_keepuptodate_scale import (  # noqa: E402
     ProbeError, parse_until, snapshot,
 )
 from tools.analyse_keepuptodate_scale import (  # noqa: E402
-    BASELINE_008B_MEDIAN_S, BUCKETS, analyse_symbol, bucket_of, load,
-    pearson, spearman, stats,
+    BASELINE_008B_MEDIAN_S, BUCKETS, analyse_symbol, bucket_of, grid_adherence,
+    load, p95, pearson, spearman, stats,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -183,12 +183,59 @@ def test_buckets_do_not_overlap():
 
 def test_stats_on_a_known_list():
     assert stats([1.0, 2.0, 3.0, 10.0]) == {
-        "n": 4, "min": 1.0, "median": 2.5, "mean": 4.0, "max": 10.0}
+        "n": 4, "min": 1.0, "median": 2.5, "mean": 4.0, "p95": 10.0, "max": 10.0}
 
 
 def test_stats_of_nothing_is_none_not_zero():
     """Zero would read as 'measured, and it was zero'."""
-    assert stats([]) == {"n": 0, "min": None, "median": None, "mean": None, "max": None}
+    assert stats([]) == {"n": 0, "min": None, "median": None, "mean": None,
+                         "p95": None, "max": None}
+
+
+def test_p95_is_nearest_rank_so_every_value_it_returns_really_happened():
+    """An interpolated p95 would report a silence nobody measured, and the tail
+    is the entire reason for quoting it."""
+    xs = [float(i) for i in range(1, 101)]          # 1..100
+    assert p95(xs) == 95.0
+    assert p95([1.0]) == 1.0
+    assert p95([]) is None
+    # Nearest-rank never invents a value between observations.
+    assert p95([1.0, 2.0, 100.0]) in (1.0, 2.0, 100.0)
+
+
+def test_max_catches_a_lone_burst_that_p95_is_blind_to():
+    """The reason this exists, and a caveat on how to read the table.
+
+    Nineteen 5 s gaps and one 59.2 s hole -- AMZN's 09:19 shape. The median says
+    5. So does p95: at n=20 the nearest-rank 95th is the 19th value, and a
+    1-in-20 event sits above it. **Only max sees a single hole.** p95 starts
+    reporting the tail once it happens twice in twenty. Both are quoted because
+    they answer different questions -- p95 is the recurring tail, max is the
+    worst thing that actually happened."""
+    s = stats([5.0] * 19 + [59.2])
+    assert s["median"] == 5.0
+    assert s["p95"] == 5.0        # blind, by construction
+    assert s["max"] == 59.2       # the one that catches it
+
+    twice = stats([5.0] * 18 + [59.2, 59.2])
+    assert twice["p95"] == 59.2   # two in twenty, and p95 reports it
+
+
+def test_grid_adherence_separates_skipped_ticks_from_a_slower_beat():
+    """The distinction the measurement turns on. A stream sitting on 5, 10 and
+    15 s is keeping a 5 s beat and skipping ticks; one sitting on 7 s has a
+    different beat. Both have a median above 5 and only this tells them apart."""
+    skipping = grid_adherence([5.0, 10.0, 5.0, 15.0, 5.0])
+    assert skipping["on_grid_pct"] == 100.0
+    assert skipping["ticks_skipped_histogram"] == {1: 3, 2: 1, 3: 1}
+
+    off_grid = grid_adherence([7.0, 7.2, 6.8, 7.1])
+    assert off_grid["on_grid_pct"] == 0.0
+
+
+def test_grid_adherence_of_nothing_is_none_not_a_hundred_percent():
+    g = grid_adherence([])
+    assert g["counted"] == 0 and g["on_grid_pct"] is None
 
 
 def test_correlation_signs():
@@ -249,6 +296,33 @@ def test_no_update_is_unbucketed():
     assert r["cadence_by_bucket"]["pre-09:25"]["n"] == 1
     bucketed = sum(b["n"] for b in r["cadence_by_bucket"].values())
     assert bucketed == r["total_updates"]
+
+
+def test_worst_rth_silence_is_the_largest_gap_with_the_moment_it_ended():
+    """A median of 5 s can sit on top of a 40 s hole, and the hole is what a stop
+    level waits for. The worst gap is reported with its wall clock so it can be
+    quoted rather than only counted."""
+    r = analyse_symbol("TEST", _records())
+    w = r["worst_rth_silence"]
+    assert w["silence_s"] == 7.0                      # the 09:32 gap, not the 6.0 at 09:31
+    assert w["ended_at"] == "2026-08-13T09:32:03-04:00"
+    assert w["bucket"] == "09:30-10:00"
+
+
+def test_a_pre_open_hole_never_becomes_the_rth_headline():
+    """AMZN went 59.2 s dark at 09:19, before the open. The console does not
+    trade then, so that must not be reported as the session's worst silence."""
+    recs = _records()
+    recs[1]["since_prev_s"] = 59.2                    # the 09:13 pre-market update
+    r = analyse_symbol("TEST", recs)
+    assert r["worst_rth_silence"]["silence_s"] == 7.0
+    assert r["cadence_by_bucket"]["pre-09:25"]["max"] == 59.2
+
+
+def test_worst_rth_silence_is_none_when_nothing_traded_in_session():
+    """None, not 0.0 -- zero would read as 'measured, and it was never dark'."""
+    recs = [r for r in _records() if r["kind"] != "update" or "09:13" in r["wall_et"]]
+    assert analyse_symbol("TEST", recs)["worst_rth_silence"] is None
 
 
 def test_classifications_and_anchor_are_reported():

@@ -45,14 +45,33 @@ BUCKETS: list[tuple[str, dtime, dtime]] = [
 ]
 
 
-def stats(xs: list[float]) -> dict:
+def p95(xs: list[float]) -> float | None:
+    """Nearest-rank 95th percentile: the smallest observed value at or above 95%
+    of the sample. Nearest-rank rather than interpolated because every value it
+    can return is a gap that actually happened -- an interpolated p95 reports a
+    silence nobody measured, and the whole reason for quoting p95 here is that
+    the tail is real."""
     if not xs:
-        return {"n": 0, "min": None, "median": None, "mean": None, "max": None}
+        return None
+    s = sorted(xs)
+    k = max(1, -(-95 * len(s) // 100))   # ceil(0.95 * n), at least 1
+    return round(s[k - 1], 3)
+
+
+def stats(xs: list[float]) -> dict:
+    """Median, p95 and max together. The median alone hides bursts: AMZN in this
+    run sat at a ~5 s median while going 59.2 s dark at 09:19 and 0.0 s at 09:21.
+    A staleness figure that a stop level depends on is decided by the tail, not
+    the middle."""
+    if not xs:
+        return {"n": 0, "min": None, "median": None, "mean": None,
+                "p95": None, "max": None}
     return {
         "n": len(xs),
         "min": round(min(xs), 3),
         "median": round(median(xs), 3),
         "mean": round(mean(xs), 3),
+        "p95": p95(xs),
         "max": round(max(xs), 3),
     }
 
@@ -92,6 +111,38 @@ def spearman(xs: list[float], ys: list[float]) -> float | None:
     return pearson(rank(xs), rank(ys))
 
 
+# Gaps in this run land on multiples of ~5 s: 91-96% of them within 0.6 s of an
+# exact multiple. That says the beat is a fixed 5 s grid and a stream with no new
+# prints SKIPS ticks rather than slowing down -- which is why a quiet symbol's
+# median is 15 s and a busy one's is 5 s, with no value in between.
+GRID_SECONDS = 5.0
+GRID_TOLERANCE_S = 0.6
+
+
+def grid_adherence(gaps: list[float]) -> dict:
+    """How well the gaps fit a fixed GRID_SECONDS beat, and how many ticks get
+    skipped. Reported rather than asserted: under another broker, or another
+    TWS version, the grid could differ or not exist, and a hard-coded 5 would
+    then be a threshold with no source string."""
+    ticks: dict[int, int] = {}
+    on_grid = 0
+    counted = 0
+    for g in gaps:
+        k = round(g / GRID_SECONDS)
+        ticks[k] = ticks.get(k, 0) + 1
+        if k >= 1:
+            counted += 1
+            if abs(g - GRID_SECONDS * k) < GRID_TOLERANCE_S:
+                on_grid += 1
+    return {
+        "grid_seconds": GRID_SECONDS,
+        "on_grid": on_grid,
+        "counted": counted,
+        "on_grid_pct": round(100.0 * on_grid / counted, 1) if counted else None,
+        "ticks_skipped_histogram": dict(sorted(ticks.items())),
+    }
+
+
 def bucket_of(t: dtime) -> str | None:
     for name, lo, hi in BUCKETS:
         if lo <= t < hi:
@@ -124,6 +175,11 @@ def analyse_symbol(symbol: str, recs: list[dict]) -> dict:
     by_bucket: dict[str, list[float]] = {name: [] for name, _, _ in BUCKETS}
     unbucketed = 0
     per_minute: dict[str, dict] = {}
+    # The single worst silence inside the regular session, kept with the moment
+    # it ended so it can be quoted rather than just counted. Pre-market gaps are
+    # excluded here: the console does not trade then, and a 59 s pre-open hole
+    # would otherwise become the headline number for a session that never had it.
+    worst_rth: dict | None = None
     classes = {"APPEND_NEW_BAR": 0, "REVISE_IN_PLACE": 0, "NO_CHANGE": 0,
                "REPLACED_TIMESTAMP_WITHOUT_HASNEWBAR": 0}
 
@@ -137,6 +193,14 @@ def analyse_symbol(symbol: str, recs: list[dict]) -> dict:
                 by_bucket[b].append(float(gap))
             else:
                 unbucketed += 1
+            if dtime(9, 30) <= wall.time() < dtime(16, 0):
+                if worst_rth is None or float(gap) > worst_rth["silence_s"]:
+                    worst_rth = {
+                        "silence_s": round(float(gap), 3),
+                        "ended_at": u["wall_et"],
+                        "bar_timestamp": u["bar_timestamp"],
+                        "bucket": b,
+                    }
         # Group by the FORMING minute the update referred to. Volume is the last
         # snapshot for that minute -- 008b established that the bar is revised in
         # place, so the final value is the minute's true volume and summing the
@@ -179,6 +243,8 @@ def analyse_symbol(symbol: str, recs: list[dict]) -> dict:
         "classifications": classes,
         "cadence_by_bucket": {k: stats(v) for k, v in by_bucket.items()},
         "cadence_overall": stats([g for v in by_bucket.values() for g in v]),
+        "grid_adherence": grid_adherence([g for v in by_bucket.values() for g in v]),
+        "worst_rth_silence": worst_rth,
         "ratio_vs_008b_by_bucket": {
             k: (round(stats(v)["median"] / BASELINE_008B_MEDIAN_S, 2)
                 if stats(v)["median"] else None)
@@ -237,8 +303,21 @@ def main(argv: list[str] | None = None) -> int:
               f"earliest={r['initial']['earliest']}  anchor_held={r['anchor_held']} "
               f"(last seen {r['final_earliest_seen']})")
 
-    print("\n-- cadence seconds by period (median, and x008b's 5.002s one-stream baseline) --")
     names = [b[0] for b in BUCKETS]
+
+    print("\n-- cadence seconds by period: median / p95 / max " + "-" * 28)
+    print("   the median is the beat; p95 and max are what a stop level actually waits for")
+    for r in results:
+        print(f"  {r['symbol']}")
+        for n in names:
+            s = r["cadence_by_bucket"][n]
+            if not s["n"]:
+                continue
+            ratio = r["ratio_vs_008b_by_bucket"][n]
+            print(f"     {n:<12} n={s['n']:<5} median={s['median']:<8} p95={s['p95']:<8} "
+                  f"max={s['max']:<8} ({ratio:.1f}x 008b median)")
+
+    print("\n-- median only, side by side (x008b's 5.002s one-stream baseline) " + "-" * 11)
     print(f"  {'symbol':<7}" + "".join(f"{n:>16}" for n in names))
     for r in results:
         cells = []
@@ -247,6 +326,23 @@ def main(argv: list[str] | None = None) -> int:
             cells.append(f"{s['median']:.2f}/{r['ratio_vs_008b_by_bucket'][n]:.1f}x"
                          if s["median"] else "-")
         print(f"  {r['symbol']:<7}" + "".join(f"{c:>16}" for c in cells))
+
+    print("\n-- worst silence per symbol, regular session only " + "-" * 27)
+    worst_all = None
+    for r in results:
+        w = r["worst_rth_silence"]
+        if not w:
+            print(f"  {r['symbol']:<6} no regular-session updates yet")
+            continue
+        print(f"  {r['symbol']:<6} {w['silence_s']:>7.1f} s dark, ending {w['ended_at'][11:23]} "
+              f"in {w['bucket']} (bar {w['bar_timestamp'][11:19]})")
+        if worst_all is None or w["silence_s"] > worst_all[1]["silence_s"]:
+            worst_all = (r["symbol"], w)
+    if worst_all:
+        sym, w = worst_all
+        print(f"\n  WORST SILENCE IN RTH: {w['silence_s']:.1f} s on {sym}, ending "
+              f"{w['ended_at'][11:23]} ET ({w['bucket']}) "
+              f"-- {w['silence_s'] / BASELINE_008B_MEDIAN_S:.1f}x the 008b median beat")
 
     stray = sum(r["unbucketed_updates"] for r in results)
     if stray:
@@ -263,6 +359,16 @@ def main(argv: list[str] | None = None) -> int:
                       f"mean={s['mean']:<8} max={s['max']}")
             else:
                 print(f"     {n:<12} no updates")
+
+    print("\n-- is the beat a fixed grid? " + "-" * 48)
+    print("   a stream that skips ticks is not a stream that slowed down")
+    for r in results:
+        g = r["grid_adherence"]
+        if not g["counted"]:
+            continue
+        hist = " ".join(f"{k}x:{v}" for k, v in g["ticks_skipped_histogram"].items() if k >= 1)
+        print(f"  {r['symbol']:<6} {g['on_grid_pct']:>5}% of {g['counted']} gaps within "
+              f"{GRID_TOLERANCE_S}s of a {g['grid_seconds']}s multiple   [{hist}]")
 
     print("\n-- does cadence track print rate? (RTH minutes only) " + "-" * 24)
     for r in results:
