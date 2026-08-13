@@ -152,6 +152,9 @@ BOOTSTRAP_ALLOWLIST = {
     # and a matcher that mis-groups would be worse than none. This file holds
     # the sound half plus the tripwire that fires when the prompt gains an id.
     "tests/test_regime_snapshot_could_not_do.py",          # 027 part 2
+
+    # ---- 023: the verification gate writes a file -------------------------
+    "tests/test_verify_output_is_ignored.py",              # 023 part 2
 }
 
 

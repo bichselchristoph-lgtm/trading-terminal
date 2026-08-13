@@ -46,5 +46,11 @@ secrets.yaml
 # never committed. This line is belt-and-braces in case one is made in-tree.
 /_adopt/
 
+# verify.ps1's output (023). GENERATED, PER-MACHINE, AND DESCRIBES A MOMENT.
+# Committing it would create a second source of truth about the tree that ages
+# badly and diffs noisily on every run. Anchored: only the repo root.
+# tests/test_verify_output_is_ignored.py asserts this with `git check-ignore`.
+/verify-output.txt
+
 .DS_Store
 Thumbs.db

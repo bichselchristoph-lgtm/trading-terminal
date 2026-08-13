@@ -1,12 +1,12 @@
 # HANDOFF-PROTOCOL
 
-> **STATUS** CURRENT · **version** v1.1 · **date** 2026-08-12
+> **STATUS** CURRENT · **version** v1.2 · **date** 2026-08-13
 
 **Status** CURRENT
-**Version** v1.1
+**Version** v1.2
 **Origin** authored
-**Date** 2026-08-12
-**Supersedes** v1.0 (2026-08-11) — same document, amended in place. **One substantive change:** copy-and-keep is now scoped. It was written as a universal rule and is not one.
+**Date** 2026-08-13
+**Supersedes** v1.1 (2026-08-12) — same document, amended in place. **One substantive change:** the verification gate. `REVIEWED` now requires `verify-output.txt`, read directly, and **the paste step is retired as the routine channel**.
 
 ---
 
@@ -24,8 +24,8 @@ The design session cannot see the repo, cannot see the inbox, and cannot see whe
 |---|---|---|
 | **WRITTEN** | The design session delivers the `.md` with a download link. | Design session asks: *placed in the inbox?* |
 | **HANDED OFF** | Christoph answers yes. | Design session asks: *is it running?* |
-| **RUNNING** | Christoph answers yes. | Christoph pastes the done-note. Design session confirms receipt and nothing more. |
-| **REVIEWED** | Design session has read the done-note and named every open issue. | If anything is owed to Claude Code, that is a **new task file** and this task stays open. If nothing is owed, design session asks: *done, based on this note?* |
+| **RUNNING** | Christoph answers yes. | Claude Code writes the done-note **and runs `verify.ps1`**. Design session reads both directly. |
+| **REVIEWED** | **All three of:** the done-note exists; `verify-output.txt` exists, is **newer than the done-note**, and its `HEAD` **matches** the note's; and the design session has read both and named every open issue. | If anything is owed to Claude Code, that is a **new task file** and this task stays open. If nothing is owed, design session asks: *done, based on this note?* |
 | **DONE** | Both parties agree. | — |
 
 ---
@@ -36,7 +36,11 @@ The design session cannot see the repo, cannot see the inbox, and cannot see whe
 
 **2. The design session never advances a state on its own.** Not on inference, not on elapsed time, not because a done-note reads as successful. Only Christoph's explicit answer moves a task forward.
 
-**3. Claude Code's own report of success is not confirmation.** It is evidence, and it arrives inside a repo the design session cannot see. The paste is the channel; there is no other.
+**3. Claude Code's own report of success is not confirmation.** It is a **claim**, and it must be checkable against something Claude Code did not write as prose. **That something is `verify-output.txt`** — the raw output of `verify.ps1`, read directly by the design session.
+
+**A done-note is not its own evidence.** `016` part 1 records the case this rule exists for: `015` claimed `103 passed, 1 failed`, `012` claimed `2 failed, 102 passed`, and the tree was at `126 tests, 2 failed, 124 passed`. **Neither note described this tree**, and nothing was contradicted or confirmed, because there was nothing independent to compare against.
+
+**The design session must not accept a summary of `verify-output.txt` in place of the file.** A summary is authored by the same party as the claim; reading the artifact is the whole mechanism.
 
 **4. Judgment is shared, and which of us holds it depends on the call.**
 
@@ -44,7 +48,9 @@ The design session cannot see the repo, cannot see the inbox, and cannot see whe
 - The reading is the design session's to *propose*: whether the note shows the task did what it set out to do, what remains open, whether anything is owed.
 - The proposal is not a verdict. Christoph weighs it and may call something the design session missed or misread.
 
-**The contents of the note are NOT uniquely his.** An earlier draft of this rule listed *"what the note says"* among the mechanical facts. It does not belong there — once he pastes it, the design session reads the same text, and can read it as well or as badly as anyone. What only he can see is whether a note exists at all, and whether the whole of it arrived.
+**The contents of the note are NOT uniquely his.** An earlier draft of this rule listed *"what the note says"* among the mechanical facts. It does not belong there — the design session reads the same text, and can read it as well or as badly as anyone.
+
+**Amended v1.2.** *"Whether the whole of it arrived"* is no longer his either, for a note the design session reads directly: truncation is visible to whoever is reading. **It remains his whenever the fallback channel is in use** — see the connectivity limit below.
 
 **Proved on 2026-08-11.** `012a` and `013` both wrote done-notes into `handoff/done/`. **Neither reached the design session**, which went on holding a stale `RUNNING` for both. Nothing in either repo detected it and nothing could: the file was real on one side of the channel and absent on the other. Only Christoph stood where both sides are visible. That is why *whether a note exists* is on his side of the list and *what it says* is not.
 
@@ -53,6 +59,41 @@ The design session cannot see the repo, cannot see the inbox, and cannot see whe
 **5. A task at RUNNING blocks its dependents.** No dependent task is written, and no output of a running task is treated as fact, until that task reaches DONE.
 
 **6. Re-opening is cheap; false DONE is not.** If a task reaches DONE and a later session finds it did not hold, it is reopened as a new task file rather than silently amended.
+
+---
+
+## The verification gate — rewritten in full, v1.2 (023)
+
+**The last action of any task that changes the tree is to run `verify.ps1`.** Unprompted, every time, after the commit. It writes `verify-output.txt` in the repo root, overwritten each run.
+
+**The done-note states one line: that `verify.ps1` was run, and at what time. Nothing more.**
+
+**Do not paste its output into the done-note, and do not summarise it.** The file is the **evidence**; the note is the **claim**. Merging them destroys the only independence the gate has — a claim checked against a summary written by the claimant is not checked.
+
+### Why this changed, recorded so it is not reverted
+
+**The paste step rested on a premise that is no longer true.** The gate was designed when the design session **could not see the repo**, so Christoph was the only channel, and his job was to carry raw output he was explicitly not expected to interpret.
+
+**The design session now reads the tree directly.** It has staged and read files under `handoff/done/`, enumerated `handoff/inbox/` to assign task numbers, and listed the tree in full. **For reading, the courier step is obsolete**, and Christoph's objection to it is correct: he gets no value from pasting output he cannot interpret, and a step with cost and no benefit is a step that will be skipped inconsistently rather than deliberately.
+
+**The property is preserved and strengthened, not dropped.** The gate exists so that *a done-note is not its own evidence*. Reading the raw artifact is a **stronger** form of that: the design session compares the note against the file itself rather than against a report of it.
+
+**This paragraph is the reason.** A protocol change with no recorded reason gets reverted by the next person who reads the old rationale and finds it persuasive — and the old rationale is still persuasive, because it was correct when it was written.
+
+### What `verify-output.txt` must satisfy
+
+| Check | Why |
+|---|---|
+| **Exists** | Absent means the task did not finish its last step, whatever the note says |
+| **Newer than the done-note** | An older file describes a tree from before the work. **Same failure as a stale mirror**: it looks exactly like a current one |
+| **Its `HEAD` matches the note's** | Two files describing two commits cannot corroborate each other |
+| **Its header shows no `TREE MOVED` warning** | The script captures `HEAD` at start and at end. If they differ, sections above and below describe different commits and **the file cannot say which is which** |
+
+### Two limits, both unchanged in force
+
+**1. Nothing reports on `verify.ps1`.** It reports on the repo, and if it ever printed a comfortable falsehood — a summary line it mis-parsed, a section it silently skipped — nothing would catch it. **This task did not close that gap and this protocol keeps saying so.** The mitigation is only that the script has no opinion: it prints raw facts, so a falsehood would have to be a transcription error rather than a judgment error.
+
+**2. The direct read depends on Christoph's desktop being connected.** When it is not, **the paste is the fallback** — an exception, not the routine. **Do not read this section as "the channel is unconditional."** While the fallback is in use, rule 4's original allocation applies in full: whether the whole of it arrived is Christoph's to report, because he is again the only party who can see both sides.
 
 ---
 
@@ -187,6 +228,7 @@ The design session authored four acceptance records; Christoph discarded them an
 
 | Version | Date | Change |
 |---|---|---|
+| **v1.2** | 2026-08-13 | **The verification gate, rewritten in full** (023). `verify.ps1` now writes `verify-output.txt`, and the design session reads it directly. **`REVIEWED` gains three mechanical conditions**: the file exists, is newer than the done-note, and its `HEAD` matches. **The paste step is retired as the routine channel** and demoted to a fallback for when Christoph's desktop is offline — recorded with its reason, because the old rationale is still persuasive and would otherwise be re-adopted. Adds the rule that the done-note states only *that* `verify.ps1` ran and at what time; adds the `TREE MOVED` condition; restates the unchanged limit that **nothing reports on `verify.ps1`**. Rule 4 amended: *whether the whole of it arrived* returns to Christoph only while the fallback is in use. |
 | **v1.1** | 2026-08-12 | **Copy-and-keep scoped.** `handoff/` is copy-and-keep because it is addressed by name; `christoph/` is copy-verify-retire because it is a queue. Adds the three tests this owes, the `**Status**`-not-`**State**` ruling, and the note that the `012` UAT relocation was a birth defect rather than a precedent. Everything else byte-identical to v1.0. |
 | **v1.0** | 2026-08-11 | First statement of a convention that was previously implicit. Five states, one gate per file, shared judgment, copy-and-keep, the evidence exemption, and `handoff/accepted/` as a copy rather than an authored record. |
 
