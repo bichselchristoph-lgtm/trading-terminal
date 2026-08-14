@@ -324,8 +324,15 @@ shape of failure this task exists to remove.
 8 failed, 340 passed, 1 warning in 32.01s
 ```
 
-**After, in `D:\Dev\momentum`:** see §8 — `verify.ps1` was the last action and its output is not
-pasted here, per `037`'s instruction.
+**After, in `D:\Dev\momentum`:**
+
+```
+8 failed, 346 passed, 1 warning in 30.58s
+```
+
+**Same eight, six more passing** — the six in `tests/test_export_run_record.py`. Nothing that
+was green went red. `verify.ps1` ran as the last action and its output is not pasted here, per
+`037`'s instruction.
 
 The eight pre-existing failures are unrelated to this task and were red before it started:
 `test_handoff_state_declared`, `test_observations_ledger` (×2), `test_pytest_collection`,

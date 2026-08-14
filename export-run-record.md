@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-14T13:56:19+02:00
+last_attempt : 2026-08-14T14:02:47+02:00
 
-last_success : 2026-08-14T13:56:19+02:00
+last_success : 2026-08-14T14:02:48+02:00
 
-outcome      : 0 new - up to date
+outcome      : 1 new - momentum-code-handoff/done/037-drive-export-stopped.md
 
-head         : 6f273dd02bc9eabe8b182500f9cc285841fef4e9 Merge 037: the export leaves a record of every attempt
+head         : eba938d24e26326b28d55432aab4d5717e68ebbe 037 done-note, the run record, and four ledger rows
