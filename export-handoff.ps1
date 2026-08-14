@@ -178,8 +178,28 @@ try {
     # here, the field describes the source tree, which is what a reader of the
     # manifest is actually asking about. A record left uncommitted by a PREVIOUS
     # run does show up, correctly: that is a real uncommitted change.
-    $dirty     = @(& git -C $repo status --short)
-    $treeState = if ($dirty.Count) { "DIRTY -- $($dirty.Count) uncommitted paths" } else { 'clean' }
+    #
+    # AND the run record is excluded from the count by name. This script
+    # modifies that one file on every single invocation, so counting it makes
+    # `working tree` say DIRTY forever and stop carrying information -- the
+    # signal-degradation this field exists to avoid, caused by the fix for a
+    # different one. The carve-out is exactly one path, it is the path this
+    # script writes, and it is named in the output rather than hidden: a
+    # tree whose only uncommitted change is the record reads `clean (bar this
+    # script's own run record)`, not `clean`.
+    #
+    # The commit order that follows from this, and it terminates: commit the
+    # work, run the export, then commit the record. The record is in neither
+    # export source, so committing it afterwards changes nothing that needs
+    # exporting. Committing it BEFORE the export is the infinite regress.
+    $allDirty  = @(& git -C $repo status --short)
+    $recLeaf   = Split-Path $runRecord -Leaf
+    $dirty     = @($allDirty | Where-Object { $_ -notmatch [regex]::Escape($recLeaf) + '\s*$' })
+    $treeState = if ($dirty.Count) {
+        "DIRTY -- $($dirty.Count) uncommitted paths"
+    } elseif ($allDirty.Count) {
+        "clean (bar this script's own run record, uncommitted)"
+    } else { 'clean' }
 
     # Before the copy. If the process is killed from here on, this is what is
     # left behind, and it says so.

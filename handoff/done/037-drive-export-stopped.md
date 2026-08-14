@@ -177,11 +177,24 @@ that it failed to reach the destination.* It is the smoke alarm not wired to the
 
 **It is tracked, not gitignored.** Two reasons: `tests/test_export_run_record.py` needs a
 subject on a fresh clone (2c makes an absent record red), and `git log -p export-run-record.md`
-is then the attempt history for free. **The cost, stated rather than discovered later:** an
-export run after a commit leaves the tree dirty until the next commit picks the record up. To
-stop that degrading the manifest's `working tree` field into a permanent `DIRTY`, `git status`
-is read **before** the first record write — so the field describes the source tree, and a record
-left uncommitted by a *previous* run does still show up, correctly.
+is then the attempt history for free.
+
+**The cost, and it bit within ten minutes of shipping.** A tracked file that the export rewrites
+on every run means the tree is dirty the moment the export finishes — so the manifest's
+`working tree` field would read `DIRTY -- 1 uncommitted paths` forever and stop carrying
+information. That is signal degradation caused by the fix for a different signal, which is
+exactly the trade `037` warns against. **And committing the record then requires re-exporting,
+which rewrites the record: an infinite regress.**
+
+Closed two ways:
+
+1. **`git status` is read before the first record write, and the record is excluded from the
+   count by name.** The carve-out is one path, it is the path this script writes, and it is
+   **named in the output rather than hidden** — a tree whose only uncommitted change is the
+   record reads `clean (bar this script's own run record, uncommitted)`, not `clean`.
+2. **A commit order that terminates: commit the work → run the export → commit the record.**
+   The record is in neither export source, so committing it afterwards changes nothing that
+   needs exporting. Committing it *before* the export is the regress.
 
 **ISO-8601 with an offset**, not the `yyyy-MM-dd HH:mm:ss` the task sketched. It matches the
 manifest's `exported` stamp, and an offset-less time is ambiguous across the DST change in a
