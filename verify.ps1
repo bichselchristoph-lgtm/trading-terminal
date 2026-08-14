@@ -182,6 +182,52 @@ Section 5 'EXPORT — what each Drive mirror says, beside what this tree says'
 # The script is never dot-sourced — running it would perform an export, and
 # verify.ps1 never modifies anything.
 
+# 037 part 2b. THE RUN RECORD GOES FIRST, because the manifests below cannot
+# answer the question it answers. A manifest lives INSIDE a destination and is
+# written ONLY on success, so "ran and copied nothing", "never ran at all" and
+# "ran and died" all leave the same unchanged file — which is how fifteen hours
+# passed on 2026-08-14 with nobody able to tell the three apart. The run record
+# lives in the repository root and is written on every invocation.
+#
+# STILL NO VERDICT, consistent with the rest of this script. An age in hours and
+# a count of newer source files are facts. What they mean is the reading, and
+# the reading belongs to the design session.
+$runRecord     = Join-Path $repo 'export-run-record.md'
+$lastSuccessAt = $null
+if (-not (Test-Path $runRecord)) {
+    Say '  run record        MISSING — no export-run-record.md in the repo root'
+    Say '                    (the export has never run against this tree, or the copier'
+    Say '                     stopped writing it — tests/test_export_run_record.py covers'
+    Say '                     the second case and would be red)'
+} else {
+    $rtext = Get-Content $runRecord -Raw
+    $rAtt  = ([regex]'(?m)^\s*last_attempt\s*:\s*(.+?)\s*$').Match($rtext)
+    $rSuc  = ([regex]'(?m)^\s*last_success\s*:\s*(.+?)\s*$').Match($rtext)
+    $rOut  = ([regex]'(?m)^\s*outcome\s*:\s*(.+?)\s*$').Match($rtext)
+
+    $now = [datetimeoffset]::Now
+    $ageOf = {
+        param($m)
+        if (-not $m.Success) { return 'CANNOT COMPUTE: field absent' }
+        $v = $m.Groups[1].Value
+        if ($v -eq 'never') { return 'never' }
+        [datetimeoffset]$parsed = [datetimeoffset]::MinValue
+        if (-not [datetimeoffset]::TryParse($v, [ref]$parsed)) { return "$v   (UNPARSEABLE)" }
+        $d = $now - $parsed
+        "$v   ({0}h {1:00}m ago)" -f [int]$d.TotalHours, $d.Minutes
+    }
+
+    Say "  drive export      last attempt $(& $ageOf $rAtt)"
+    Say "                    last success $(& $ageOf $rSuc)"
+    Say ("                    outcome      " + $(if ($rOut.Success) { $rOut.Groups[1].Value } else { 'CANNOT COMPUTE: no outcome line' }))
+
+    if ($rSuc.Success -and $rSuc.Groups[1].Value -ne 'never') {
+        [datetimeoffset]$tmp = [datetimeoffset]::MinValue
+        if ([datetimeoffset]::TryParse($rSuc.Groups[1].Value, [ref]$tmp)) { $lastSuccessAt = $tmp }
+    }
+    Say ''
+}
+
 $exportScript = Join-Path $repo 'export-handoff.ps1'
 if (-not (Test-Path $exportScript)) {
     Say "CANNOT COMPUTE: export-handoff.ps1 not found at $exportScript"
@@ -224,9 +270,29 @@ if (-not (Test-Path $exportScript)) {
             # Live count of the source, computed here and not taken from anything
             # the export wrote. Same .md rule the export applies.
             if (Test-Path $srcDir) {
-                $liveCount = @(Get-ChildItem -LiteralPath $srcDir -File -Recurse:$recurse |
-                               Where-Object { $_.Extension -eq '.md' }).Count
-                Say "    live files        $liveCount"
+                $live = @(Get-ChildItem -LiteralPath $srcDir -File -Recurse:$recurse |
+                          Where-Object { $_.Extension -eq '.md' })
+                Say "    live files        $($live.Count)"
+
+                # 037 part 2b. THE CONTENT-BASED STALENESS SIGNAL, and the
+                # reason it is not a clock. "The last success was 15 hours ago"
+                # is unalarming on a Sunday and alarming on a Thursday, and a
+                # check that cannot tell those apart is a check that gets
+                # ignored. "Four source files are newer than the last success"
+                # means the same thing on both days: four things the design
+                # session cannot read.
+                if ($null -ne $lastSuccessAt) {
+                    $newer = @($live | Where-Object { [datetimeoffset]$_.LastWriteTime -gt $lastSuccessAt })
+                    if ($newer.Count) {
+                        $names = ($newer | Sort-Object LastWriteTime |
+                                  ForEach-Object { [IO.Path]::GetRelativePath($srcDir, $_.FullName) })
+                        $shown = if ($names.Count -le 8) { $names -join ', ' }
+                                 else { (($names[0..7]) -join ', ') + ", ... and $($names.Count - 8) more" }
+                        Say "    newer than export  $($newer.Count) — $shown"
+                    } else {
+                        Say '    newer than export  0'
+                    }
+                }
             } else {
                 Say '    live files        CANNOT COMPUTE: source folder missing'
             }

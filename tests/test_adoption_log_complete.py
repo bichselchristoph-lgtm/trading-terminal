@@ -221,6 +221,24 @@ BOOTSTRAP_ALLOWLIST = {
     # all -- it is infrastructure. **The second job this list is doing has now
     # outgrown the first by a wide margin**, and a fourth route into the tree is
     # still a design decision nobody has taken.
+    # ---- 037: two more, and the count is now 42 ----------------------------
+    # `export-run-record.md` is at the repo root, alongside `verify.ps1` and
+    # `export-handoff.ps1`, and for the same reason those are: the root has no
+    # native-prefix carve-out and must not get one.
+    #
+    # It is the one entry here that is WRITTEN BY A PROGRAM rather than by a
+    # person. That is deliberate and is the whole mechanism -- the export leaves
+    # a record of every attempt outside both destinations, because a record
+    # inside the destination cannot report a failure to reach the destination.
+    # Tracked rather than gitignored so test_export_run_record.py has a subject
+    # on a fresh clone; the cost is that an export run after a commit leaves the
+    # tree dirty until the next commit picks it up.
+    #
+    # OBS-008 again, unchanged: a fourth route in -- "authored here for a slice"
+    # -- is still a design decision nobody has taken, and 037 is a bug fix.
+    "export-run-record.md",                                # 037 part 2a
+    "tests/test_export_run_record.py",                     # 037 part 2c
+
     ".claude/agents/architect.md",                         # 024
     ".claude/agents/implementer.md",                       # 024
     ".claude/agents/reviewer.md",                          # 024
