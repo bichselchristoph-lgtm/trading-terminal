@@ -298,6 +298,26 @@ BOOTSTRAP_ALLOWLIST = {
     "sync-run-record.md",                                  # 043 Part 2
     "tests/test_sync_run_record.py",                       # 043 Part 2
     "tests/test_sync_never_targets_christoph_done.py",     # 043 Part 1
+
+    # ---- 046: one more, and it is the SECOND file ever tracked under .claude/
+    # The shared permission policy. `.gitignore` gained one exact negation for
+    # it -- `!.claude/settings.json`, placed after the blanket `.claude/**/*.json`
+    # because that is the only position git honours.
+    #
+    # **`settings.local.json` is still ignored and that is the whole care taken
+    # here.** The two filenames differ by one word; one is the shared policy and
+    # the other is where a machine-local secret goes, and the predecessor tree's
+    # `.claude/settings.local.json` held a live Databento key. The negation names
+    # a file rather than a pattern for exactly that reason -- `!.claude/settings*`
+    # would have readmitted it.
+    #
+    # `tests/test_claude_dir_stays_ignored.py` keeps both halves: the ordering
+    # assertion was RESTATED rather than deleted, so a widened negation appended
+    # after the blanket rule still goes red.
+    #
+    # Bootstrap rather than adopted, like `verify.ps1` and `export-handoff.ps1`
+    # before it: authored here, for this tree, and it came from nowhere else.
+    ".claude/settings.json",                               # 046
 }
 
 

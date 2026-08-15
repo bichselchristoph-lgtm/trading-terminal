@@ -28,11 +28,28 @@
 # it is gone: git does not descend into an ignored directory, so no negation
 # inside one can rescue anything.
 #
-# NOTHING ELSE BECOMES TRACKABLE. Not settings.json, not settings.local.json,
-# not a .json at any depth, not a subdirectory under agents/, not worktrees/.
-# The final rule is belt-and-braces and is LAST DELIBERATELY -- later rules win
-# in git, so a future edit that widens the exception still cannot admit a JSON
-# config without deleting a line that says why it exists.
+# NOTHING ELSE BECOMES TRACKABLE. Not settings.local.json, not a .json at any
+# depth under agents/, not a subdirectory under agents/, not worktrees/.
+# `.claude/**/*.json` is belt-and-braces -- later rules win in git, so a future
+# edit that widens the exception still cannot admit a JSON config without
+# deleting a line that says why it exists.
+#
+# 046 ADDS ONE MORE EXCEPTION, and it is one exact filename.
+#
+#   !.claude/settings.json   the SHARED permission policy
+#
+# It sits AFTER the blanket rule because that is the only position git will
+# honour, and it names a single path rather than a pattern. **What it does not
+# admit is the point**: `settings.local.json` -- the shape that held a live
+# Databento key in the predecessor tree -- is still ignored, and so is every
+# other .json at every depth. A permission policy that is not committed is a
+# policy the next clone does not have, which is the same argument that opened
+# the agents/ exception under 024.
+#
+# THE ORDER OF THE LAST TWO LINES IS LOAD-BEARING and is asserted, not just
+# written here: the blanket rule must stay directly above, so a widened negation
+# added after it still goes red. See
+# tests/test_claude_dir_stays_ignored.py::test_a_json_under_agents_is_ignored_even_if_the_negation_widens
 #
 # tests/test_claude_dir_stays_ignored.py asserts every one of these with
 # `git check-ignore`, and was seen RED against a planted
@@ -42,6 +59,7 @@
 .claude/agents/*
 !.claude/agents/*.md
 .claude/**/*.json
+!.claude/settings.json
 
 # Python
 __pycache__/

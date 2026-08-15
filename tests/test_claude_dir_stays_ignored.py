@@ -15,12 +15,23 @@ rather than chosen, and moving it is not available.
 
 ----
 
-**The exception is `.claude/agents/*.md`. Everything else stays ignored**, and
-this file is what makes that a fact rather than an intention:
+**The exceptions are `.claude/agents/*.md` and — since `046` — the single file
+`.claude/settings.json`. Everything else stays ignored**, and this file is what
+makes that a fact rather than an intention:
 
-* no `settings.json`, no `settings.local.json`, **no `.json` at any depth**
+* **no `settings.local.json`** — the shape that held the key, and the near-miss
+  here, because it differs from the one permitted filename by a single word
+* no `.json` under `agents/`, at any depth
 * no subdirectory under `agents/`
-* no `worktrees/`, no `.credentials`, nothing at the top level
+* no `worktrees/`, no `.credentials`, nothing else at the top level
+
+**`046` opened the second exception and narrowed the guard rather than removing
+it.** The shared permission policy has to be committed for the same reason the
+roster does: a rule that is not in the repository is not inherited by a clone.
+It is negated **by exact filename, never by pattern** — `!.claude/settings*.json`
+would have readmitted the local file — and the ordering assertion below was
+restated rather than deleted, so a widened negation appended after the blanket
+rule still goes red. **Both of those were seen red before this was accepted.**
 
 **Seen red before it was accepted**, against a real
 `.claude/agents/settings.local.json` planted in the working tree. A test that has
@@ -42,8 +53,23 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: The ONLY shape that may be tracked under `.claude/`.
-PERMITTED = ".claude/agents/*.md"
+#: The ONLY shapes that may be tracked under `.claude/`. **Two, since 046**, and
+#: the second is one exact filename rather than a pattern.
+PERMITTED = ".claude/agents/*.md and the single file .claude/settings.json"
+
+#: 046. The shared permission policy, and the one `.json` that may be committed.
+#:
+#: **Why the exception was opened at all**: a permission policy that is not in
+#: the repository is not inherited by a clone — the same argument that opened the
+#: `agents/` exception under `024`, where a reviewer's restrictions were useless
+#: if the next clone did not have them.
+#:
+#: **Why it is a filename and not a pattern.** `settings.local.json` is where the
+#: predecessor's live Databento key sat, and it is what a developer writes a
+#: secret into precisely because it is the local one. A pattern such as
+#: `!.claude/settings*.json` would admit it. This does not, and
+#: `MUST_STAY_IGNORED` asserts it below.
+TRACKED_POLICY = ".claude/settings.json"
 
 #: Paths that MUST stay ignored. **Written as paths that do not exist**, because
 #: `git check-ignore` answers about a path, not about a file — so this asserts
@@ -55,7 +81,11 @@ PERMITTED = ".claude/agents/*.md"
 #: over-broad negation would let through and the one this file was seen red
 #: against.
 MUST_STAY_IGNORED = [
-    ".claude/settings.json",
+    # `.claude/settings.json` was HERE until 046 and has moved to
+    # MUST_BE_TRACKABLE. **`settings.local.json` did not move and must not.**
+    # That is the near-miss: the two filenames differ by one word, one is the
+    # shared policy and the other is where a machine-local secret goes, and the
+    # predecessor's live Databento key was in the second.
     ".claude/settings.local.json",
     ".claude/agents/settings.local.json",
     ".claude/agents/settings.json",
@@ -69,8 +99,10 @@ MUST_STAY_IGNORED = [
     ".claude/agents/notes.txt",
 ]
 
-#: Paths that must be TRACKABLE. The four names are 024's roster.
+#: Paths that must be TRACKABLE. The four `.md` names are 024's roster; the
+#: fifth is 046's shared permission policy.
 MUST_BE_TRACKABLE = [
+    TRACKED_POLICY,                                        # 046
     ".claude/agents/architect.md",
     ".claude/agents/implementer.md",
     ".claude/agents/reviewer.md",
@@ -137,11 +169,30 @@ def test_a_json_under_agents_is_ignored_even_if_the_negation_widens() -> None:
     lines = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("#")]
     claude = [l for l in lines if l.lstrip("!").startswith(".claude/")]
     assert claude, ".gitignore no longer has a .claude/ block at all"
-    assert claude[-1] == ".claude/**/*.json", (
-        f"the last .claude/ rule is {claude[-1]!r}, not '.claude/**/*.json'.\n"
-        "That rule is last DELIBERATELY: later rules win in git, so it is what "
-        "stops a\nwidened negation from admitting a settings file. Moving it up "
-        "silently removes\nthat protection while every other test here still passes.")
+
+    # **046 CHANGED THIS ASSERTION AND DELIBERATELY DID NOT DROP IT.**
+    #
+    # Until 046 the blanket rule was LAST and the test said so. Committing the
+    # shared permission policy needs exactly one negation after it, because that
+    # is the only position git honours. So the invariant is restated rather than
+    # deleted: the blanket rule must be second-to-last, and the ONE thing allowed
+    # after it is the single exact path.
+    #
+    # The protection is intact. A widened negation — `!.claude/agents/**`, or the
+    # `!.claude/settings*` that would readmit settings.local.json — still has to
+    # be placed after the blanket rule to have any effect, and placing it there
+    # fails this test. **Deleting the assertion instead would have removed the
+    # protection while leaving a file that looked guarded.**
+    assert claude[-2:] == [".claude/**/*.json", "!" + TRACKED_POLICY], (
+        f"the last two .claude/ rules are {claude[-2:]!r}, not "
+        f"['.claude/**/*.json', '!{TRACKED_POLICY}'].\n\n"
+        "That ORDER is the protection: later rules win in git, so the blanket "
+        "JSON rule\nmust sit directly above the one exact negation 046 opened. "
+        "Anything else after it\nwins over it — which is how "
+        "`!.claude/settings*` would readmit settings.local.json,\nthe shape that "
+        "held a live Databento key in the predecessor tree.\n\n"
+        "Add the one path you need to MUST_BE_TRACKABLE and negate it by exact "
+        "name, or\nnarrow the rule. Do not append a pattern here.")
 
 
 def test_the_directory_form_is_gone_and_that_is_load_bearing() -> None:
@@ -169,8 +220,9 @@ def test_only_the_roster_is_tracked_under_claude() -> None:
         ["git", "ls-files", "--", ".claude"], cwd=REPO,
         capture_output=True, text=True, check=True).stdout.split()
     offenders = [p for p in tracked
-                 if not (p.startswith(".claude/agents/") and p.endswith(".md")
-                         and p.count("/") == 2)]
+                 if p != TRACKED_POLICY
+                 and not (p.startswith(".claude/agents/") and p.endswith(".md")
+                          and p.count("/") == 2)]
     assert not offenders, (
         f"tracked under .claude/ but outside {PERMITTED}: {offenders}\n\n"
         ".gitignore does not untrack a file that is already in the index. Remove it "
