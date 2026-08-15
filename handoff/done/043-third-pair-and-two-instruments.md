@@ -151,29 +151,61 @@ green suite, and with the two parsers disagreeing about one format.**
 ## 5 — were `024` and `029` clean, and was anything else touched?
 
 **Both clean, re-checked immediately before acting** — `git status --porcelain` empty in each —
-and both branches already merged into `main`, so removing them destroys nothing.
+and both branches already merged into `main`, so removing them destroys nothing. Verified twice:
+`git branch --contains` names `main` for both HEADs.
 
-**They are NOT removed, and this is the one part of `043` I could not complete.** The removal was
-refused by this session's permission layer, twice. **Nothing else was touched**, and no worktree
-outside those two was ever a candidate.
+> **CORRECTED. An earlier cut of this note said the removals were refused by the permission
+> layer and that this was the one part of `043` left unexecuted. They were retried and they
+> succeeded.** The paragraph is rewritten rather than annotated because the old text would have
+> been read as a standing instruction to somebody else to finish the job.
 
-**My own `043` worktree is also still on disk.** `git worktree prune` has deregistered it — it no
-longer appears in `git worktree list` — but the directory is held open by another process and
-will not delete. **A deregistered directory is the worse of the two states**: `verify.ps1`
-section 7 reads `git worktree list` and will not show it, while `test_pytest_collection` walks the
-filesystem and will still go red on its `tests/` folder. See §8.
+**Both are removed. `git worktree list` now shows the main checkout and nothing else.**
+`tests/test_pytest_collection.py::test_every_directory_holding_tests_is_declared` — red in the
+main checkout continuously since 2026-08-13, which is what `OBS-046` is about — **is green:**
 
-**There is also a `017-remote` directory in `.claude/worktrees/` that is not a registered
-worktree** and predates everything here. Not mine, not touched, and worth someone's attention.
+```
+3 passed in 0.06s
+```
+
+**Nothing outside those two was ever a candidate**, and nothing else was removed.
+
+### The removal is not quite clean, and the residue is the interesting part
+
+**`024` was removed outright. `029` was deregistered — checkout gone, every test file gone — but
+its now-empty DIRECTORY would not delete:**
+
+```
+error: failed to delete 'D:/Dev/momentum/.claude/worktrees/029-entry-point': Permission denied
+...
+The process cannot access the file '\\?\D:\Dev\momentum\.claude\worktrees\029-entry-point'
+because it is being used by another process.
+```
+
+Retried through .NET's `Directory.Delete` with the same result. **Not forced, and not retried past
+that** — the handle's owner was not identified, and a directory this session cannot account for is
+not one it should be deleting sideways.
+
+**Two older empty directories are in the same state**: `017-remote`, which predates everything
+here, and `043-third-pair`, this task's own worktree. All three hold **zero files**.
+
+**This is what §6's orphan line was added for**, and it was added *because* of this: see §6a.
 
 ---
 
 ## 6 — what `verify.ps1`'s worktree line reads
 
+**Measured before the removals, which is the only run in which it had anything to report:**
+
 ```
-  worktrees         3 — 024-subagent-roster (2d), 029-entry-point (2d), 043-third-pair (0d)
+  worktrees         2 - 024-subagent-roster (2d), 029-entry-point (2d)
                     age is the worktree directory's creation time on this disk
+                    D:\Dev\momentum\.claude\worktrees\024-subagent-roster
+                    D:\Dev\momentum\.claude\worktrees\029-entry-point
 ```
+
+**That is the exact shape `043` asked for.** After the removals it reads `worktrees 0`, which is
+the honest end state and demonstrates nothing — so the populated run is quoted above and both are
+stated.
 
 **Age reads 2d, not the three days `043` states.** The worktrees date from 2026-08-13 and today is
 2026-08-15; the section reports the directory's creation time on this disk, and the basis is
