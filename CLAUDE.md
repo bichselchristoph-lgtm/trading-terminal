@@ -129,9 +129,16 @@ from an elevated PowerShell: `tools/register-sync-task.ps1`. **The export is nev
 it runs as a task's last action, after the commit, and a scheduled export would race a session
 mid-commit.
 
-### `claude/NOW.md` — what is runnable, and on whom
+### NOW.md — what is runnable, and on whom
 
-**Rewritten from the tree by every `verify.ps1` run, and gitignored.** It is derived, never
+**`tools/now.py` writes it into `claude/`, from the tree, on every `verify.ps1` run.**
+
+**Its path is deliberately not backticked here.** The file is gitignored and does not exist
+until the generator has run once, so a backticked pointer to it is red on a fresh clone —
+measured, on the run that introduced this section. **The generator is the durable thing; the
+artefact is a rendering of the tree that happens to be on disk.**
+
+**Derived, never stored.** It is derived, never
 stored: `ready`, `blocked` with the unmet dependency named, `superseded`, `on christoph`, `done`,
 and rule 16's admin:product ratio. **A hand edit does not survive a run**, and
 `tests/test_now_is_derived.py` asserts it.
@@ -419,7 +426,7 @@ decision before it runs, and that decision is Christoph's.
 
 | Version | Date | Change |
 |---|---|---|
-| **v1.7** | 2026-08-15 | **The workflow engine** (045). Records **`sync.ps1`** — the one-word command that pulls Drive into the tree — because until this day the inbound copier had no trigger of its own and **no document stated the invocation**: four UAT files sat in Drive while `christoph/open/` held one `.gitkeep`, and Christoph was the one party who could have unblocked it. Adds the 15-minute scheduled run, **which overturns `037`'s ruling against a daemon**: that objection was to *silence*, and `043`'s run record removed the silence. Adds `claude/NOW.md`, derived from the tree and gitignored. **And moves the decision line**: rule 16's product/admin split now governs who may decide, so Claude Code may author and act on its own `class: admin` task in one session — with four guardrails, of which the load-bearing one is that **admin unblocking admin remains forbidden**. `037` flagged this version bump as owed and correctly did not take it unasked; `045` asks. |
+| **v1.7** | 2026-08-15 | **The workflow engine** (045). Records **`sync.ps1`** — the one-word command that pulls Drive into the tree — because until this day the inbound copier had no trigger of its own and **no document stated the invocation**: four UAT files sat in Drive while `christoph/open/` held one `.gitkeep`, and Christoph was the one party who could have unblocked it. Adds the 15-minute scheduled run, **which overturns `037`'s ruling against a daemon**: that objection was to *silence*, and `043`'s run record removed the silence. Adds NOW.md — written into `claude/` by `tools/now.py`, derived from the tree and gitignored, and **deliberately never named as a backticked path**, because a pointer to a generated file is red on a fresh clone. **And moves the decision line**: rule 16's product/admin split now governs who may decide, so Claude Code may author and act on its own `class: admin` task in one session — with four guardrails, of which the load-bearing one is that **admin unblocking admin remains forbidden**. `037` flagged this version bump as owed and correctly did not take it unasked; `045` asks. |
 | **v1.6** | 2026-08-13 | **The active tree gets a remote** (017). Records `origin` as `trading-terminal` and the habit that follows from it: **push at the end of every session, because a commit is local and only a push survives the disk.** Names the archive explicitly — **`momentum` on GitHub is `momentum-harness` and is never pushed to** — since that collision is why a new repository exists rather than the old name reused. **Flags that `D:\Dev\CLAUDE.md` v1.1 still says the opposite** and must be corrected, rather than leaving a reader to guess which of two statements is current. Notes that the repository is `trading-terminal` and **not the `momentum-terminal` that 017 proposed**, so the unused name is not mistaken for the real one. |
 | **v1.5** | 2026-08-13 | **The Drive export** (020). `export-handoff.ps1` carries `handoff/` and `christoph/done/` one-way to two Drive-mirrored folders, ending the class of failure where four correct done-notes were written on 2026-08-11 and none reached the design session. Records both destinations, the one-way direction, and that **the repository itself is never mirrored**. States **why `christoph/open/` is excluded** — it answers by being empty, and an additive export cannot represent empty — because the obvious "improvement" is to add it. Carries the sentence that is the natural misreading of the whole task: **syncing a done-note does not close it.** `verify.ps1` gains section 5, so a stale mirror is visible rather than silent. |
 | **v1.4** | 2026-08-12 | **The retention position becomes a decision** (016 §6). `records/tape/` is kept indefinitely until Christoph says otherwise, with its reason: the 2026-08-11 QQQ session is unrepeatable and is Row 14's basis. v1.1 said *"no retention rule exists yet"*, which reads as a gap someone might helpfully close. **States explicitly that no policy for FUTURE captures is decided**, so the rule is not read as "keep everything forever". |

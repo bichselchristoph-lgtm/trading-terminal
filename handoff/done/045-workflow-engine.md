@@ -240,7 +240,30 @@ required — **and it would happily permit a single `Remove-Item` pointed at a r
 
 ---
 
-## 10 — the tests
+## 10 — a defect I introduced and caught between two verify runs
+
+**Two consecutive `verify.ps1` runs disagreed — 9 failed, then 8 — and the difference was
+`test_spec_pointers`.**
+
+`CLAUDE.md` v1.7 named `claude/NOW.md` as a backticked path. That test resolves every
+backticked repo-relative token, **NOW.md is gitignored, and it does not exist until the generator
+has run once.** So the first verify run was red, its own NOW.md section then created the file,
+and the second run was green.
+
+**On a fresh clone it would be red until somebody ran `verify.ps1`** — a pointer to an artefact
+that is not guaranteed to exist.
+
+**Fixed by not backticking a generated path**, in both places it appeared. The generator,
+`tools/now.py`, is tracked and real and is what the file now points at. **Confirmed against the
+fresh-clone case by deleting NOW.md and re-running: green with it absent and green with it
+present.**
+
+**It would have been invisible in a single run**, which is the argument for reading an
+instrument's output twice when you have just changed the instrument.
+
+---
+
+## 11 — the tests
 
 **`verify.ps1` ran from the main checkout at the time in `verify-output.txt`.** No count quoted.
 **The inbound sync ran first, then `verify.ps1`, then the export**, in 045's order, from the main
