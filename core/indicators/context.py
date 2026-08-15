@@ -384,11 +384,54 @@ def adr_used(current: float, todays_open: float, adr_dol: Measured) -> Measured:
                     unit=Unit.PERCENT, basis=ADR_BASIS)
 
 
+def adr_available(current: float, todays_open: float, adr_dol: Measured) -> Measured:
+    """**042 Part 3. The one row that replaces four.**
+
+    `ADR used`, `ADR $`, `room up` and `room down` leave the panel (c015 §1.7).
+    What replaces them is *the percentage of the day's average range still
+    available*, which is the reading Christoph actually takes.
+
+    **`room up` and `room down` measured the same quantity in dollars and
+    invited being read as `clear for`** — distance to the next obstacle — which
+    is a different question entirely. That confusion is the reason for the
+    deletion, not screen space.
+
+    **`ADR` itself is not deleted.** It stays RTH, it stays the denominator for
+    every ADR-expressed distance, and `round`'s span still consumes `ADR $`.
+    Only the display rows go.
+
+    **NOT CLAMPED AT ZERO, deliberately.** A name that has travelled 130 % of
+    its average range returns `-30 %`, and that is the honest number: it says
+    *past the budget and by how much*. Clamping would render the most
+    informative case identically to the merely-exhausted one.
+    """
+    used = adr_used(current, todays_open, adr_dol)
+    if not used.ok:
+        return Measured.absent(used.unavailable)
+    return Measured(value=100.0 - used.value,
+                    # The referent, named — 038 Part 2 forbids a bare `36%`.
+                    sample=f"of ${adr_dol.value:,.2f} · from today's open · "
+                           f"{adr_dol.sample}",
+                    unit=Unit.PERCENT, basis=ADR_BASIS)
+
+
 def room_left(current: float, todays_open: float, adr_dol: Measured) -> tuple[Measured, Measured]:
     """Distance to a full ADR, **both directions.** Returns `(up, down)`.
 
     Both, because a name that has used 90 % of its budget upward has very
     little room up and a great deal down, and one number cannot say that.
+
+    **042 Part 3 DELETED BOTH ROWS FROM THE PANEL, AND THIS FUNCTION NOW HAS NO
+    CALLER.** It is kept rather than removed for one reason: the argument in the
+    paragraph above is correct and is the kind that gets re-derived badly. What
+    is *wrong* with the rows is not the arithmetic — it is that **they measured
+    the same quantity as `ADR used` in dollars and invited being read as
+    `clear for`**, which is distance to the next obstacle and a different
+    question entirely.
+
+    **Do not re-add them to `CONTEXT_ORDER`.** If `clear for` needs distance
+    arithmetic when `S012` builds the level rail, it needs distance to the next
+    *level*, which is not this function.
     """
     if not adr_dol.ok:
         return Measured.absent(adr_dol.unavailable), Measured.absent(adr_dol.unavailable)
@@ -604,13 +647,32 @@ def round_numbers(price: float, span: float) -> list[float]:
 
 
 def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
-               opening_range: Sequence[Bar], vwap: Measured,
+               opening_5: Sequence[Bar], opening_15: Sequence[Bar],
+               session_clock: Optional[str], vwap: Measured,
                year_high: Optional[float], year_low: Optional[float],
                price: float, adr_dol: Measured) -> dict[str, Measured]:
-    """PDH/PDL · PMH/PML · ORH/ORL · session VWAP · 52-week · round numbers.
+    """PDH/PDL · PMH/PML · ORH5/ORL5 · ORH15/ORL15 · VWAP · 52-week · rounds.
 
     **Every entry that cannot be computed names why.** A rail with silent gaps
     is worse than a short rail, because the gap looks like open space.
+
+    ----
+
+    **042 Part 1: the opening range is TWO windows, and a bare `ORH` is gone.**
+    `038` v1.0 named `ORH`/`ORL` and there are four levels — 09:30–09:35 and
+    09:30–09:45. A bare `ORH` is a well-formed name answering two different
+    questions, which is this project's defining defect, so it does not survive
+    anywhere. **Every bare `ORH`/`ORL` in this tree meant the 5-minute window**
+    — the caller sliced `09:30 <= t < 09:35` and nothing else ever existed — so
+    the rename carried no ambiguity to resolve. Recorded in `042`'s done-note.
+
+    **Both are RTH by definition** and `041` does not change that: the opening
+    range is a regular-session object.
+
+    **`session_clock` is the newest bar's ET start time, and it is what makes
+    the refusal possible.** Without it a 15-minute range computed at 09:37 is a
+    7-minute range wearing a 15-minute name — a partial window rendering as a
+    complete one, with a plausible number in it.
     """
     def hi_lo(bars: Sequence[Bar], what: str,
               window: str) -> tuple[Measured, Measured]:
@@ -629,8 +691,33 @@ def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
                 Measured(value=min(b.low for b in bars), sample=sample,
                          unit=Unit.DOLLAR, basis=INTRADAY_BASIS))
 
+    def opening(bars: Sequence[Bar], window: str,
+                final_minute: str) -> tuple[Measured, Measured]:
+        """**Refuses a partial range rather than rendering one** — 042's exit
+        refusal, and `038`'s rule that a level carries its validity time.
+
+        `final_minute` is the START of the window's last one-minute bar: 09:34
+        closes 09:30–09:35, 09:44 closes 09:30–09:45. The window is complete
+        once a bar starting then exists, so the comparison is `>=` against the
+        newest bar's clock. **This assumes one-minute bars**, which is what the
+        whole intraday path assumes — `_clock` slices `ts[11:16]` and every
+        caller passes minutes.
+
+        Counting bars instead would be wrong on a thin name: a minute with no
+        trades produces no bar, and fifteen-minus-one bars is a closed window
+        with a quiet minute in it, not an open one.
+        """
+        if session_clock is None:
+            return (Measured.absent("no session bars — window not closed"),
+                    Measured.absent("no session bars — window not closed"))
+        if session_clock < final_minute:
+            why = f"window not closed — {window} needs {final_minute}, session at {session_clock}"
+            return Measured.absent(why), Measured.absent(why)
+        return hi_lo(bars, "opening-range", window)
+
     pmh, pml = hi_lo(premarket, "pre-market", "04:00-09:30 ET, today")
-    orh, orl = hi_lo(opening_range, "opening-range", "09:30-09:35 ET, today")
+    orh5, orl5 = opening(opening_5, "09:30-09:35 ET, today", "09:34")
+    orh15, orl15 = opening(opening_15, "09:30-09:45 ET, today", "09:44")
     span = adr_dol.value if adr_dol.ok else 0.0
     # **`round` is a COUNT, and 038 Part 6 row 2 is right that the label does not
     # say so.** The row computes `len(round_numbers(...))` — how MANY half-dollar
@@ -648,7 +735,8 @@ def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
         "PDL": Measured(value=prev_day.low, sample="prior session",
                         unit=Unit.DOLLAR, basis=PRIOR_DAY_BASIS) if prev_day
                else Measured.absent("no prior session bar"),
-        "PMH": pmh, "PML": pml, "ORH": orh, "ORL": orl,
+        "PMH": pmh, "PML": pml,
+        "ORH5": orh5, "ORL5": orl5, "ORH15": orh15, "ORL15": orl15,
         "VWAP": vwap,
         "52wH": Measured(value=year_high, sample="52 weeks", unit=Unit.DOLLAR,
                          basis=LONG_BASIS) if year_high is not None

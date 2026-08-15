@@ -1004,7 +1004,14 @@ Making it uniform would be wrong in both directions, and the fetch code must not
 | **PDH / PDL** | **09:30–16:00, prior day** | prior **regular** session extremes |
 | **PMH / PML** | 04:00–09:30, today | pre-market extremes |
 | **AMH / AML** | 16:00–20:00, prior day | post-market extremes |
-| **ORH / ORL** | 09:30–09:35, today | opening range |
+| **ORH5 / ORL5** | 09:30–09:35, today | opening range, 5-minute |
+| **ORH15 / ORL15** | 09:30–09:45, today | opening range, 15-minute |
+
+> **Amended 2026-08-15 under `042` Part 1.** This table said ~~`ORH / ORL`, 09:30–09:35~~ and there are **four** opening-range levels, not two. **Both windows are RTH by definition** — the opening range is a regular-session object and `041` does not change that. **A bare `ORH` does not survive anywhere**: it is a well-formed name answering two different questions, which is this project's defining defect. Every bare `ORH`/`ORL` in the tree meant the 5-minute window, so the rename carried no ambiguity to resolve.
+>
+> **`ORH15 ≥ ORH5` and `ORL15 ≤ ORL5`, always**, since the 15-minute window contains the 5-minute one. Asserted in `core/tests/test_opening_range_windows.py` against bars where the two windows genuinely disagree — containment holds trivially when both see the same extreme, and a test that only checked `≥` would pass against a rail slicing both windows identically.
+>
+> **A window that has not closed refuses rather than rendering a partial range.** `ORH15` before 09:44 renders `window not closed`, naming the minute it needs and the minute the session is at. A max over the seven bars it does have would be correctly computed, plausible, and answering a question nobody asked.
 
 **Why `PDH`/`PDL` are RTH, and this is the part to record.** If they were ETH, then on any day the extreme occurred after 16:00, **`PDL` *is* `AML`** — one number, two names, and no way to tell which you are looking at. **A level that silently changes identity depending on when the extreme occurred is the canonical defect of this project.** Confirmed on Christoph's own QQQ chart for 2026-08-13: the session low of `722.34` sits in the early pre-market, so an ETH `PDL` would have been `PML` that day.
 
@@ -1081,13 +1088,35 @@ Each indicator carries its basis as a **constant declared beside its own definit
 | Prices, distances, dollar ranges | **`$` prefix** |
 | Share counts | **`sh` suffix** |
 | Ratios / multiples | **`×` suffix, and the baseline named** — `6.1×` alone is the `12.4M` complaint again |
-| ADR distances | **both** — `+$0.25 · 0.19 ADR`. ADR is a dollar quantity used as a ratio |
+| ADR distances | **both** — `+$0.25 · 0.19ADR`. ADR is a dollar quantity used as a ratio |
 | Percentages | **name the referent** — `78% of $1.29`, not bare `78%` |
 | Times | **`HH:MMh` 24-hour, and `ET`** |
 
 **`ET` is not optional.** Christoph is in Cape Town, the levels mean nothing except in exchange time, and `034` lost four values to a UTC/ET slicing defect. **A bare clock time on this panel is the same defect wearing a different hat.**
 
-Precisions come from `config/formatting.yaml` (§4.0a). **One wording difference, recorded rather than silently resolved:** §4.0a's example renders a percentage as `2.8 %` with a space and `038` renders `78%` without. The implementation follows `038`.
+**The unit is attached with NO SPACE** — `042` Part 2, Christoph's ruling. `0.19ADR`, `$733.14`, `36%`, `6.1×`, `14:41h ET`. **One exception: share counts keep their space** — `280k sh`, because `280ksh` is unreadable. `038` carried the units rule and not the spacing, and `ADR` was the only unit in `config/formatting.yaml` that had a leading space; it is now `ADR`. **`count`'s ` levels` keeps its space for the same reason `sh` does** — it is a noun, not a unit symbol, and the exception is about readability rather than about the specific string `sh`.
+
+Precisions come from `config/formatting.yaml` (§4.0a). **One wording difference, recorded rather than silently resolved:** §4.0a's example renders a percentage as `2.8 %` with a space and `038` renders `78%` without. The implementation follows `038`, and `042` Part 2 settles the general rule in the same direction.
+
+**The `HH:MMh ET` row has no consumer.** There is no `Unit.TIME` and nothing on the panel renders a clock through the formatter — the VWAP anchor and the block stamp are built as strings at the call site. The rule is recorded and unenforced, and `042`'s done-note says so rather than leaving the table looking uniformly covered.
+
+#### 4.4a.4a `ADR%avail`, and four rows are deleted
+
+**`042` Part 3, from c015 §1.7.** `ADR used`, `ADR $`, `room up` and `room down` **leave the panel.** What replaces all four is one row:
+
+```
+ADR%avail  36%
+```
+
+**The percentage of the day's average range still available**, which is the reading Christoph actually takes.
+
+**Why they go, and it is not screen space.** `room up` and `room down` measured the same quantity as `ADR used`, in dollars, **and invited being read as `clear for`** — distance to the next obstacle (§4.4a.5) — which is a different question entirely. Two rows that answer one question in two units, next to a row that answers a different question in the same units, is how a reader comes to conflate them.
+
+**`ADR` itself is not deleted.** It remains RTH, it remains the denominator for every ADR-expressed distance, and the stop table (§7b.2) consumes it. **Only the four display rows go** — `ADR $` is still computed, still divides `ADR%avail`, and still spans `round`. Dropping the computation with the row would silently blank `round` as well.
+
+**`ADR%avail` is not clamped at zero.** A name that has travelled 130 % of its average range renders `−30 %`, which says *past the budget and by how much*. Clamping would render the most informative case identically to the merely-exhausted one.
+
+**Nothing consumed `room up` or `room down` other than rendering** — checked, and recorded in `042`'s done-note. `core.indicators.context.room_left` therefore has no caller and is kept rather than deleted, with a note in its own docstring saying why it must not be re-added.
 
 #### 4.4a.5 A level has a state, not only a distance
 
@@ -1120,6 +1149,22 @@ BREAKING  $48.55  flag high · yours 10:11h ET
 **The lookahead cap is a threshold and renders `unfitted`** — suggested first three levels or 1.5 ADR, whichever comes first, but nothing is fitted until Christoph has watched it.
 
 **Specified, not built.** `038` changes no panel layout, so `room up` / `room down` are still rendered today.
+
+**A state and a distance never share a colour — `042` Part 4.**
+
+- `gapped over` is a **state**. One colour.
+- `clear for 0.19ADR` is a **distance**. A different colour.
+- `▲ above` / `▼ below` is **side**, not good and bad.
+
+**Neither a state nor a distance is a verdict, and the colours must not imply one.** Two different kinds of fact rendered identically is how a reader learns to stop distinguishing them.
+
+> **STOPPED HERE, and `042` Part 4 asks for exactly that.** *"No new palette. Use what §4.1 already permits — if it permits only one non-default colour, say so and stop rather than inventing a second."*
+>
+> **§4.1 binds colour to KIND, and none of these three is a kind that has a colour.** Blue is a declared parameter, amber a failed rule, green and red a *fitted* signal measured against its pre-registration — and nothing in this system is fitted, so both are unavailable by construction. Dim-plus-badge is the system refusing. **A level state and a distance to the next level are measurements about the market: they are not rules, not signals, and not refusals, so §4.1 offers them no colour at all — not one, zero.**
+>
+> **The ruling above is therefore satisfied vacuously today** — all three render in the default foreground, which trivially does not conflate them with a verdict, and equally does not distinguish them from each other. **Four distinguishable meanings do not fit inside the palette, because the palette has none to give.**
+>
+> **The distinction must be carried by the non-colour channel, and §4.1 already requires this** — *"colour is still never the only channel"*, for colourblind accessibility. When `S012` builds the rail, `gapped over` and `clear for` must be separated by typography, glyph or position. **Reaching for a colour there would need a §4.1 amendment and Christoph's decision, not a slice's judgment.**
 
 #### 4.4a.6 A window is a definition, and there are two of them
 

@@ -43,9 +43,9 @@ from typing import Optional, Protocol, Sequence
 
 from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar, Measured,
                                      PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
-                                     adr_dollar, adr_pct, adr_used, atr_d14,
+                                     adr_available, adr_dollar, adr_pct, atr_d14,
                                      cumulative_volume, extension_in_adr,
-                                     level_rail, room_left, rvol_at, rvol_curve,
+                                     level_rail, rvol_at, rvol_curve,
                                      rvol_rel, sma, vwap_from_bars)
 
 #: The three origins, recorded from day one **even though only `typed` exists.**
@@ -217,21 +217,31 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     rth_dailies = dailies_on(ADR_BASIS)
     eth_dailies = dailies_on(ATR_BASIS)
 
-    # **ADR, ADR $, ADR used, room up/down — RTH.** Each row still refuses on
-    # its own; a failure on the ETH request must not blank ADR and vice versa.
+    # **ADR% and ADR%avail — RTH.** Each row still refuses on its own; a failure
+    # on the ETH request must not blank ADR and vice versa.
+    #
+    # **042 Part 3 deletes four rows and adds one.** `ADR used`, `ADR $`,
+    # `room up` and `room down` leave the panel — `room up`/`room down`
+    # measured the same quantity as `ADR used` in dollars and invited being read
+    # as `clear for`, which is distance to the next obstacle and a different
+    # question. `ADR%avail` is the reading Christoph actually takes.
+    #
+    # **`dol` IS STILL COMPUTED AND IS NOT A DEAD LOCAL.** `ADR $` leaves the
+    # PANEL; the value does not leave the system. `adr_available` divides by it
+    # and `level_rail` spans `round` with it. 042: *"`ADR` itself is not
+    # deleted... only the four display rows go."* Dropping the computation would
+    # silently blank `round` as well, which is the kind of second-order deletion
+    # a row-removal task invites.
     if rth_dailies:
         todays_open = rth_dailies[-1].open
         price = rth_dailies[-1].close
         pct = adr_pct(rth_dailies)
         dol = adr_dollar(pct, todays_open)
-        up, down = room_left(price, todays_open, dol)
         out["ADR%"] = pct
-        out["ADR $"] = dol
-        out["ADR used"] = adr_used(price, todays_open, dol)
-        out["room up"], out["room down"] = up, down
+        out["ADR%avail"] = adr_available(price, todays_open, dol)
     else:
         why = daily_why(ADR_BASIS)
-        for k in ("ADR%", "ADR $", "ADR used", "room up", "room down"):
+        for k in ("ADR%", "ADR%avail"):
             out[k] = Measured.absent(why)
         dol = Measured.absent(why)
         price = 0.0
@@ -296,12 +306,21 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     prior = dailies_on(PRIOR_DAY_BASIS)
     prev_day = prior[-2] if len(prior) >= 2 else None
     premarket = [b for b in today if _clock(b.ts) < "09:30"]
-    opening = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
-    rail = level_rail(prev_day=prev_day, premarket=premarket, opening_range=opening,
+    # 042 Part 1. Two windows, and the 15 CONTAINS the 5 — which is what makes
+    # `ORH15 >= ORH5` and `ORL15 <= ORL5` hold by construction rather than by
+    # luck. Sliced here rather than inside `level_rail` so `core` keeps taking
+    # bars and never a clock convention.
+    opening_5 = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
+    opening_15 = [b for b in today if "09:30" <= _clock(b.ts) < "09:45"]
+    rail = level_rail(prev_day=prev_day, premarket=premarket,
+                      opening_5=opening_5, opening_15=opening_15,
+                      session_clock=_clock(today[-1].ts) if today else None,
                       vwap=out.get("VWAP", Measured.absent("no session bars")),
                       year_high=yh, year_low=yl,
                       price=today[-1].close if today else (prior[-1].close if prior else 0.0),
-                      adr_dol=out.get("ADR $", Measured.absent("no ADR $")))
+                      # `ADR $` no longer renders (042 Part 3) so it is no
+                      # longer in `out` — passed directly from the local.
+                      adr_dol=dol)
     return out, rail
 
 
