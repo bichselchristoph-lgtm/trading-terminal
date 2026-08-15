@@ -243,3 +243,48 @@ def test_a_refused_file_does_not_read_as_up_to_date(tmp_path: Path) -> None:
         f"a refusal still reads as `up to date`:\n{proc.stdout}")
     assert (dst / "001-for-code-a.md").read_text(encoding="utf-8") == "old", (
         "the refused file was overwritten")
+
+# ---- 045 Part 5 / test 1: both timestamps, on the committed record ---------
+
+
+def test_the_committed_record_carries_both_timestamps() -> None:
+    """**045 test 1**, extending `043`'s rather than writing a second file.
+
+    `verify.ps1` section 6 renders both fields and computes an age from each.
+    **A record carrying only `last_attempt` would render `last success never`
+    forever** — indistinguishable from a copier that has genuinely never
+    succeeded, which is the one thing the pair of fields exists to tell apart.
+    """
+    for name in ("last_attempt", "last_success"):
+        value = read_field(name, RUN_RECORD)
+        assert value, f"`{name}` is empty in {RUN_RECORD.name}"
+        # `never` is legal for last_success and not for last_attempt: the record
+        # is written BEFORE the attempt, so an attempt always exists by the time
+        # anything can read the file.
+        if name == "last_attempt":
+            assert value != "never", (
+                "last_attempt reads `never`, which cannot happen — the record is "
+                "written before the copy runs.")
+
+
+def test_a_scheduled_run_and_a_hand_run_do_not_corrupt_each_other(tmp_path) -> None:
+    """**045 Part 2's concurrency question, answered by running it.**
+
+    *If a scheduled run collides with a session running the sync by hand, the
+    copier's existing behaviour governs: byte-identical is a no-op, differing is
+    a refusal.* Two runs over the same source and destination, back to back:
+    the second must find everything already there and change nothing.
+    """
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir(); dst.mkdir()
+    (src / "001-for-code-a.md").write_text("x", encoding="utf-8")
+    cfg = write_config(tmp_path / "c.yaml", src=src, dst=dst)
+
+    first = run_sync(cfg, tmp_path / "rec.md")
+    assert first.returncode == 0
+    assert "1 new" in first.stdout
+
+    second = run_sync(cfg, tmp_path / "rec.md")
+    assert second.returncode == 0, second.stdout
+    assert "up to date" in second.stdout, second.stdout
+    assert (dst / "001-for-code-a.md").read_text(encoding="utf-8") == "x"

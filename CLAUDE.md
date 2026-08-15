@@ -1,6 +1,6 @@
 # CLAUDE.md — momentum
 
-> **version** v1.6 · **date** 2026-08-13 · **supersedes** v1.5 (2026-08-13)
+> **version** v1.7 · **date** 2026-08-15 · **supersedes** v1.6 (2026-08-13)
 
 Guidance for Claude Code working in `D:\Dev\momentum`.
 
@@ -101,6 +101,77 @@ C:\venvs\trading\Scripts\python.exe -m pytest
 collected. `tests/test_pytest_collection.py` keeps that list honest.
 
 **IBKR access is `ib_async`, always. Never `ib_insync`.**
+
+### Pulling Drive into the tree — `sync.ps1`
+
+**One word, from anywhere:**
+
+```powershell
+D:\Dev\momentum\sync.ps1
+```
+
+**That is the whole command.** No arguments, no working directory, no activated
+environment — the script names the venv interpreter in full and derives the repository from its
+own location. `sync.ps1 -Pair christoph_open` does one pair; `-DryRun` copies nothing.
+
+**Why this is written down.** Until 2026-08-15 the inbound copier had no trigger of its own: it
+ran when a task ran, because a task running was what made someone invoke it. **`handoff/inbox/`
+files arrive by the same run that consumes them, so the gap was invisible — but a UAT arrives
+*between* tasks, and between tasks nothing runs.** Four UAT files sat in Drive while
+`christoph/open/` held one `.gitkeep`. **Christoph was the one party who could have unblocked it
+and no document stated the command.**
+
+**A non-zero exit means a person must look** — a refused file, a differing file, an unreachable
+source or destination. Nothing is ever overwritten.
+
+**It also runs every 15 minutes as a Windows Scheduled Task**, inbound only. Register it once,
+from an elevated PowerShell: `tools/register-sync-task.ps1`. **The export is never scheduled** —
+it runs as a task's last action, after the commit, and a scheduled export would race a session
+mid-commit.
+
+### `claude/NOW.md` — what is runnable, and on whom
+
+**Rewritten from the tree by every `verify.ps1` run, and gitignored.** It is derived, never
+stored: `ready`, `blocked` with the unmet dependency named, `superseded`, `on christoph`, `done`,
+and rule 16's admin:product ratio. **A hand edit does not survive a run**, and
+`tests/test_now_is_derived.py` asserts it.
+
+## Who may decide — the product/admin line, applied a second time
+
+**Rule 16 already draws this line to count the admin tax. From 2026-08-15 it also governs who may
+decide.**
+
+> **Product** — changes what the terminal renders, computes, or does for Christoph.
+> **Admin** — everything else. Pipelines, protocols, tests, git, workflow, ledgers, syncs.
+
+| | Gated on Christoph |
+|---|---|
+| **Product** — what a panel shows, what a number means, a spec change, a threshold, a UAT, an architectural choice | **Yes. Always.** |
+| **Admin** — a failing test, a git conflict, a broken guard, a sync defect, a worktree, a duplicate ledger id | **No. Proceed.** |
+
+**Claude Code may author its own task file — for admin only — and act on it in the same session.**
+Until now only the design session could author task files, which is why a broken test guard waited
+for a file to be written and a prompt relayed. **The file is still written; it exists for the
+record and the review, not for permission.**
+
+**Four guardrails, all already in force:**
+
+1. **`class: admin` only.** A self-authored file carrying `spec` or `product` is defective.
+   **Anything touching what Christoph sees, or what a number means, is a question file** and the
+   gate stands.
+2. **Rule 16 still binds.** It must name the product task it unblocks, and **admin unblocking
+   admin remains forbidden.** That is what stops this becoming a machine for generating work.
+3. **The tax is still counted.** Self-authored tasks appear in `NOW.md`'s ratio like any other.
+   **Autonomy buys no exemption from the count.**
+4. **Review moves after, not before.** The design session reads the done-note and may reject.
+
+**Numbering: read the inbox, never infer.** The next free number, by the same rule as any other
+file, and **a collision is a stop** — three duplicate ledger ids and two files numbered `035`
+already say why.
+
+**The risk, stated so it is watched:** rule 16 exists to *discourage* admin, and this makes admin
+cheaper to produce. **If six self-authored admin tasks land in a day, that is the same failure
+with a new author**, and `NOW.md`'s ratio is where it will show.
 
 ## docs/specs/ — the location of record
 
@@ -348,6 +419,7 @@ decision before it runs, and that decision is Christoph's.
 
 | Version | Date | Change |
 |---|---|---|
+| **v1.7** | 2026-08-15 | **The workflow engine** (045). Records **`sync.ps1`** — the one-word command that pulls Drive into the tree — because until this day the inbound copier had no trigger of its own and **no document stated the invocation**: four UAT files sat in Drive while `christoph/open/` held one `.gitkeep`, and Christoph was the one party who could have unblocked it. Adds the 15-minute scheduled run, **which overturns `037`'s ruling against a daemon**: that objection was to *silence*, and `043`'s run record removed the silence. Adds `claude/NOW.md`, derived from the tree and gitignored. **And moves the decision line**: rule 16's product/admin split now governs who may decide, so Claude Code may author and act on its own `class: admin` task in one session — with four guardrails, of which the load-bearing one is that **admin unblocking admin remains forbidden**. `037` flagged this version bump as owed and correctly did not take it unasked; `045` asks. |
 | **v1.6** | 2026-08-13 | **The active tree gets a remote** (017). Records `origin` as `trading-terminal` and the habit that follows from it: **push at the end of every session, because a commit is local and only a push survives the disk.** Names the archive explicitly — **`momentum` on GitHub is `momentum-harness` and is never pushed to** — since that collision is why a new repository exists rather than the old name reused. **Flags that `D:\Dev\CLAUDE.md` v1.1 still says the opposite** and must be corrected, rather than leaving a reader to guess which of two statements is current. Notes that the repository is `trading-terminal` and **not the `momentum-terminal` that 017 proposed**, so the unused name is not mistaken for the real one. |
 | **v1.5** | 2026-08-13 | **The Drive export** (020). `export-handoff.ps1` carries `handoff/` and `christoph/done/` one-way to two Drive-mirrored folders, ending the class of failure where four correct done-notes were written on 2026-08-11 and none reached the design session. Records both destinations, the one-way direction, and that **the repository itself is never mirrored**. States **why `christoph/open/` is excluded** — it answers by being empty, and an additive export cannot represent empty — because the obvious "improvement" is to add it. Carries the sentence that is the natural misreading of the whole task: **syncing a done-note does not close it.** `verify.ps1` gains section 5, so a stale mirror is visible rather than silent. |
 | **v1.4** | 2026-08-12 | **The retention position becomes a decision** (016 §6). `records/tape/` is kept indefinitely until Christoph says otherwise, with its reason: the 2026-08-11 QQQ session is unrepeatable and is Row 14's basis. v1.1 said *"no retention rule exists yet"*, which reads as a gap someone might helpfully close. **States explicitly that no policy for FUTURE captures is decided**, so the rule is not read as "keep everything forever". |
