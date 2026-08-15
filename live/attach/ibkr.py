@@ -57,7 +57,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from core.indicators.context import (Bar, INTRADAY_BASIS, SessionBasis,
-                                     YEAR_BASIS)
+                                     LONG_BASIS)
 from .attach import Contract
 
 REPO = Path(__file__).resolve().parents[2]
@@ -294,10 +294,11 @@ class IBKRMarketData:
         return ""          # no playbook binding in this slice
 
     def year_high_low(self, c: Contract) -> tuple[Optional[float], Optional[float]]:
-        # **YEAR_BASIS is UNRULED by 038** and carries the flag this call always
-        # had. Named rather than left as a literal so the next ruling has one
-        # place to land.
-        bars = self._bars(c, "1 Y", "1 day", use_rth=YEAR_BASIS.use_rth)
+        # **LONG_BASIS is RULED RTH by 041** -- 038 left it inherited, which is
+        # not a decision. The year is the maximum of its months, the month of
+        # its weeks, the week of its days, and 038 made the day RTH; an ETH
+        # year would sit above every month inside it.
+        bars = self._bars(c, "1 Y", "1 day", use_rth=LONG_BASIS.use_rth)
         if not bars:
             return (None, None)
         return (max(b.high for b in bars), min(b.low for b in bars))
