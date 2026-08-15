@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T10:31:27+02:00
+last_attempt : 2026-08-15T10:48:16+02:00
 
-last_success : 2026-08-15T10:31:27+02:00
+last_success : 2026-08-15T10:48:17+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/042-four-deltas.md, momentum-code-handoff/inbox/043-for-code-task-third-pair-and-two-instruments.md
+outcome      : 1 new - momentum-code-handoff/done/043-third-pair-and-two-instruments.md
 
-head         : 4555500d34649297ef79152904e39678c75d2763 042 done-note: the after-count
+head         : 87fc8434f7f1758a0747add8b82b41c10638d217 043: verify.ps1 section 7 also reports orphaned worktree directories
