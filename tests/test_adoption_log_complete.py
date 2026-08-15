@@ -266,6 +266,16 @@ BOOTSTRAP_ALLOWLIST = {
     "core/tests/test_trade_classification.py",             # 039 Part 2
     "config/risk.yaml",                                    # 039 Part 1
     "tests/test_risk_config_matches_core.py",              # 039 Part 1
+
+    # ---- 042: one more ------------------------------------------------------
+    # The containment property and the not-closed refusal, in `core` because
+    # `level_rail` is where both live. **It is here and not in the 2026-08-13
+    # regression fixture on purpose**: that fixture runs to 09:35, so its
+    # 15-minute window never closes, and even if it did both extremes sit in the
+    # 09:30 bar -- containment would hold as equality and prove nothing.
+    # Extending it would mean inventing ten minutes nobody verified, inside the
+    # one file whose values came from outside this repo.
+    "core/tests/test_opening_range_windows.py",            # 042 Part 1
 }
 
 

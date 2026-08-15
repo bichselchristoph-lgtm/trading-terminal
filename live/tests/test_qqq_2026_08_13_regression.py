@@ -53,8 +53,12 @@ QQQ = Contract(symbol="QQQ", con_id=320227571, exchange="SMART", sector_etf=None
 PDH = 727.25          # 8/12 high, matched
 PMH = 725.46          # pre-market high, matched
 PML = 722.80          # pre-market low, matched
-ORH = 726.02          # opening range high, matched — 034's fix confirmed
-ORL = 724.03          # opening range low, matched
+ORH = 726.02          # opening range high (5-min), matched — 034's fix confirmed
+ORL = 724.03          # opening range low (5-min), matched
+# **There is no ORH15/ORL15 here and there must not be.** The fixture runs to
+# 09:35 and Christoph's chart reading covers the 5-minute range only. Extending
+# the bar series to 09:45 would mean inventing ten minutes that nobody verified,
+# inside the one file in this repo whose values came from outside it.
 ATR14 = 15.60         # Christoph's TWS daily ATR(14) reads ~15.6. ETH.
 
 #: **The extended-hours low. NOT `PDL`.** Under 038 Part 1 this is `AML` — the
@@ -160,10 +164,16 @@ def _attached():
 
 
 def test_the_four_matched_levels_still_match() -> None:
-    """PDH, PMH, PML, ORH, ORL — verified against IBKR's own chart."""
+    """PDH, PMH, PML, ORH5, ORL5 — verified against IBKR's own chart.
+
+    **042 Part 1 renamed `ORH`/`ORL` to `ORH5`/`ORL5`. The VALUES are
+    untouched** — the window they were always computed over was 09:30–09:35,
+    so this is a rename and not a re-measurement. Anything else here would be
+    a regression against the only outside verification this project has.
+    """
     rail = _attached().rail
     for name, expected in (("PDH", PDH), ("PMH", PMH), ("PML", PML),
-                           ("ORH", ORH), ("ORL", ORL)):
+                           ("ORH5", ORH), ("ORL5", ORL)):
         got = rail[name]
         assert got.ok, f"{name} refused: {got.unavailable}"
         assert round(got.value, 2) == expected, (
@@ -244,3 +254,30 @@ def test_adr_percent_is_not_pinned_against_tws() -> None:
     adr = _attached().context["ADR%"]
     assert adr.ok, f"ADR% refused: {adr.unavailable}"
     assert adr.basis is not None and adr.basis.label == "09:30-16:00 ET"
+
+
+def test_the_fifteen_minute_range_refuses_because_the_window_never_closes() -> None:
+    """**042's exit refusal, and the fixture demonstrates it for free.**
+
+    `_today_minutes` runs `04:00` to `09:35`, so the newest bar starts at 09:34.
+    The 5-minute window is closed; the 15-minute one is not. `ORH15` must
+    therefore render `window not closed` — **never a partial range**, which is
+    what a max over the seven bars it does have would be: a plausible number,
+    correctly computed, answering a question nobody asked.
+
+    **This is the strongest form of the refusal available** — it fires against
+    the same fixture that produces the externally-verified values, so nothing
+    was staged to make it happen.
+    """
+    rail = _attached().rail
+    for name in ("ORH15", "ORL15"):
+        got = rail[name]
+        assert not got.ok, (
+            f"{name} rendered {got.value} from a window that has not closed. "
+            f"The fixture's last bar starts 09:34 and the window needs 09:44.")
+        assert "window not closed" in got.unavailable, got.unavailable
+        assert "09:44" in got.unavailable and "09:34" in got.unavailable, (
+            "the refusal must name what it needed and what it had: "
+            + got.unavailable)
+
+    assert rail["ORH5"].ok, "the 5-minute window HAS closed and must render"

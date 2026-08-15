@@ -30,7 +30,7 @@ if str(REPO) not in sys.path:
 from core.indicators.context import Measured, Unit
 from live.attach.attach import attach
 from live.tui.app import CONTEXT_ORDER, RAIL_ORDER, measured_cell
-from live.tui.numbers import NO_BASIS, format_value, needs_basis
+from live.tui.numbers import FORMATS, NO_BASIS, format_value, needs_basis
 
 from .test_attach import Fake
 
@@ -38,10 +38,28 @@ from .test_attach import Fake
 #: if a row invents a seventh, that is a ruling somebody has to make, not a string
 #: a renderer may produce.
 DECLARED_BASES = ("09:30-16:00 ET", "04:00-20:00 ET", "04:00-09:30 ET",
-                  "09:30-09:35 ET", "04:00 anchor")
+                  "09:30-09:35 ET", "09:30-09:45 ET", "04:00 anchor")
 
 #: What a rendered unit looks like. Mirrors `config/formatting.yaml`.
-UNIT_MARKS = ("$", "%", " ADR", "×", " sh", " levels")
+#: **042 Part 2: `ADR` lost its leading space.** `0.19ADR`, not `0.19 ADR`.
+UNIT_MARKS = ("$", "%", "ADR", "×", " sh", " levels")
+
+#: **042 Part 2, the spacing rule, as data.** `(unit, marker, space_before)`.
+#: The unit is attached with NO space -- `0.19ADR`, `$733.14`, `36%`, `6.1×` --
+#: and **share counts are the one exception**, because `280ksh` is unreadable.
+#:
+#: `count`'s ` levels` keeps its space for the same reason `sh` does: it is a
+#: NOUN, not a unit symbol, and 042's exception is about readability rather
+#: than about the specific string `sh`. Stated here because the rule as written
+#: names only `sh`, and a reader applying it literally would close up ` levels`.
+SPACING = (
+    (Unit.DOLLAR,   "$",       False),
+    (Unit.PERCENT,  "%",       False),
+    (Unit.ADR,      "ADR",     False),
+    (Unit.MULTIPLE, "×",       False),
+    (Unit.SHARES,   "sh",      True),
+    (Unit.COUNT,    "levels",  True),
+)
 
 
 def numeric_rows() -> list[tuple[str, Measured, str]]:
@@ -154,7 +172,7 @@ def test_a_pure_count_is_exempt_and_renders() -> None:
     (Unit.DOLLAR, 733.14, "$733.14"),
     (Unit.DOLLAR, 0.9412, "$0.9412"),      # §4.0a — 4 decimals below $1.00
     (Unit.PERCENT, 1.6349, "1.6%"),        # §4.0a — one decimal
-    (Unit.ADR, 1.44, "1.4 ADR"),
+    (Unit.ADR, 1.44, "1.4ADR"),          # 042 Part 2 — no space
     (Unit.MULTIPLE, 6.14, "6.1×"),
     (Unit.SHARES, 18_119_366, "18.1M sh"),  # §4.0a — abbreviated above 1M
     (Unit.SHARES, 265, "265 sh"),
@@ -169,5 +187,4 @@ def test_the_formatter_matches_spec_4_0a(unit: Unit, value: float,
     every quantity on the panel — which also produced `18,119,366.00` for a share
     count, decimals and all, where §4.0a asks for `18.1M sh`.
     """
-    from live.tui.numbers import FORMATS
     assert FORMATS[unit].render(value) == expected

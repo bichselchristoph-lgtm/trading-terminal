@@ -221,10 +221,21 @@ def test_a_clean_attach_fills_the_context_block() -> None:
     assert r.attached and r.qualified
     assert r.contract.symbol == "QQQ"
     assert r.origin == "typed"
-    for k in ("ADR%", "ADR $", "ADR used", "ATR14", "VWAP", "RVOL", "RVOL_rel"):
+    # 042 Part 3 deleted `ADR $`, `ADR used`, `room up` and `room down` from the
+    # panel. `ADR%avail` replaces all four.
+    for k in ("ADR%", "ADR%avail", "ATR14", "VWAP", "RVOL", "RVOL_rel"):
         assert k in r.context, f"{k} missing from the context block"
+    for gone in ("ADR $", "ADR used", "room up", "room down"):
+        assert gone not in r.context, (
+            f"{gone} is back in the context block. 042 Part 3 removed it: it "
+            f"measured the same quantity as `ADR used` and invited being read "
+            f"as `clear for`, which is a different question.")
     assert r.context["ADR%"].ok
-    assert set(r.rail) >= {"PDH", "PDL", "PMH", "PML", "ORH", "ORL", "VWAP"}
+    # 042 Part 1: four opening-range levels, and no bare `ORH`/`ORL` anywhere.
+    assert set(r.rail) >= {"PDH", "PDL", "PMH", "PML",
+                           "ORH5", "ORL5", "ORH15", "ORL15", "VWAP"}
+    assert "ORH" not in r.rail and "ORL" not in r.rail, (
+        "a bare ORH/ORL is a well-formed name answering two different questions")
 
 
 def test_all_three_origins_are_recordable_even_though_only_typed_exists() -> None:
@@ -282,7 +293,7 @@ def test_refusal_a_a_failed_request_leaves_the_others_rendering() -> None:
     `unavailable (reason)`, never a partial ADR.**"""
     r = attach("QQQ", Fake(fail=["daily"]))
     assert r.attached, "one failed request must not fail the attach"
-    for k in ("ADR%", "ADR $", "ADR used", "ATR14", "room up", "room down"):
+    for k in ("ADR%", "ADR%avail", "ATR14"):
         assert not r.context[k].ok, f"{k} rendered a value from a failed request"
         assert "pacing limit, retry in 42s" in r.context[k].unavailable, (
             "pacing is a display state, not an error, and the reason must survive")
@@ -296,8 +307,13 @@ def test_a_partial_adr_is_impossible_by_construction() -> None:
     ADR% does not, because each is derived from the other and both carry the
     same refusal."""
     r = attach("QQQ", Fake(fail=["daily"]))
-    assert r.context["ADR%"].value is None and r.context["ADR $"].value is None
-    assert r.context["ADR used"].value is None
+    assert r.context["ADR%"].value is None
+    # 042 Part 3: `ADR $` no longer RENDERS, but the value still exists inside
+    # the attach path -- `ADR%avail` divides by it and `round` spans by it. The
+    # invariant is unchanged and is now checked through the row that survived.
+    assert r.context["ADR%avail"].value is None
+    assert r.rail["round"].value is None, (
+        "`round` spans by ADR $; a failed daily request must blank it too")
 
 
 def test_refusal_c_end_to_end_no_sector_means_rvol_rel_refuses_by_name() -> None:

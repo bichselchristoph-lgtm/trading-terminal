@@ -36,11 +36,15 @@ units:
 
   adr:
     decimals: 1
-    suffix: " ADR"
+    suffix: "ADR"
     note: >-
       A distance in ADR units. §4.0a groups this with ratios at one decimal.
       ADR normalises by the name's own daily range, which is what makes two
-      symbols comparable where a percentage would not.
+      symbols comparable where a percentage would not. **042 Part 2 removed the
+      leading space: `0.19ADR`, not `0.19 ADR`.** This was the only unit in the
+      file that carried one against the rule -- `%`, `×` and the `$` prefix were
+      already tight, and `sh` keeps its space by 042's stated exception because
+      `280ksh` is unreadable.
 
   multiple:
     decimals: 1

@@ -682,7 +682,7 @@ def test_the_opening_range_is_eastern_and_not_the_wire_format() -> None:
     range with `"09:30" <= _clock(b.ts) < "09:35"`, slicing `Bar.ts` by
     position. Against UTC stamps that is **04:00–05:30 ET** and
     **05:30–05:35 ET** — the live run rendered `PMH · 90 pre-market bars` where
-    a 04:00 anchor gives 330, and an ORH taken four hours before the open.
+    a 04:00 anchor gives 330, and an ORH5 taken four hours before the open.
 
     The fix is at the seam, in `_bars`, because `core` is timeframe-agnostic and
     a fix there would be `core` learning about a broker's wire format.
@@ -691,11 +691,11 @@ def test_the_opening_range_is_eastern_and_not_the_wire_format() -> None:
     _, record = drive("QQQ", md, at_tile_size=True)
     rail = record.attached[0].rail
 
-    assert rail["ORH"].ok, (
+    assert rail["ORH5"].ok, (
         f"the opening range is empty against UTC-stamped bars: "
-        f"{rail['ORH'].unavailable} — `_clock` read a UTC hour as an Eastern one")
-    assert "5 opening-range bars" in rail["ORH"].sample, (
-        f"the opening range is not 09:30-09:35 ET: {rail['ORH'].sample!r}")
+        f"{rail['ORH5'].unavailable} — `_clock` read a UTC hour as an Eastern one")
+    assert "5 opening-range bars" in rail["ORH5"].sample, (
+        f"the opening range is not 09:30-09:35 ET: {rail['ORH5'].sample!r}")
 
     ts = record.attached[0].context["VWAP"].sample
     assert "+00:00" not in ts, (

@@ -341,14 +341,15 @@ class Panel(Static):
 #: whether there is room left in the day at all; then the SMA extensions; then
 #: today's session. A dict's insertion order would work until `_context_block`
 #: was reordered for an unrelated reason, so the screen declares its own.
-CONTEXT_ORDER = ("ADR%", "ADR $", "ADR used", "room up", "room down", "ATR14",
+CONTEXT_ORDER = ("ADR%", "ADR%avail", "ATR14",
                  "ext 10", "ext 20", "ext 50", "VWAP", "cum vol", "RVOL",
                  "RVOL_rel")
 
 #: The level rail. **`VWAP` is deliberately absent** — `level_rail` carries it
 #: and so does the context block, and rendering one value twice is how two rows
 #: come to disagree after somebody fixes one of them.
-RAIL_ORDER = ("PDH", "PDL", "PMH", "PML", "ORH", "ORL", "52wH", "52wL", "round")
+RAIL_ORDER = ("PDH", "PDL", "PMH", "PML", "ORH5", "ORL5", "ORH15", "ORL15",
+              "52wH", "52wL", "round")
 
 
 def measured_cell(m) -> str:
