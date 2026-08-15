@@ -503,9 +503,14 @@ work, run `verify.ps1`, run the export, commit the run records — the records a
 export source, so committing them afterwards changes nothing that needed exporting, and
 committing them first is the infinite regress.
 
-**This note is exported at the version above.** The sections added after it — §6a–§6d, §8a, and
-the §5/§6/§9/§11 corrections — are in that copy. **§5 in particular reverses an earlier
-statement**: the `024` and `029` removals were reported as refused, and they succeeded.
+**The export was then run a second time, and that is the copy Drive holds.** The first run
+carried this note as it stood before this section was written into it; re-running is additive
+and copies only what changed. **The mirror therefore holds the note including §6a–§6d, §8a and
+the §5/§6/§9/§11 corrections.**
+
+**§5 in particular reverses an earlier statement**: the `024` and `029` removals were reported
+as refused by the permission layer, and on retry they succeeded. A reader who saw the first
+copy must be able to see that it changed rather than wonder which of two files is current.
 
 ---
 
