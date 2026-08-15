@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T11:42:49+02:00
+last_attempt : 2026-08-15T12:05:03+02:00
 
-last_success : 2026-08-15T11:42:49+02:00
+last_success : 2026-08-15T12:05:03+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/044-colour-links-and-boundaries.md, momentum-code-handoff/inbox/044-for-code-spec-colour-links-and-boundaries.md, momentum-code-handoff/questions/044-duplicate-ledger-ids.md
+outcome      : 2 new - momentum-code-handoff/done/045-workflow-engine.md, momentum-code-handoff/inbox/045-for-code-task-workflow-engine.md
 
-head         : ad93f9fc344fd8a9c39d23aa608355a668d06d8c 044 done-note and task file
+head         : 3c5301bdf119ea00af3d786396986061191b1342 045: do not backtick a generated path in CLAUDE.md
