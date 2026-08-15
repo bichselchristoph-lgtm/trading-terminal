@@ -275,11 +275,17 @@ def test_the_three_outcomes_are_distinguishable(tmp_path: Path) -> None:
 
 # ------------------------------------------------------------------ the config
 def test_the_shipped_config_has_both_pairs() -> None:
-    """026: one copier, two configured pairs. A second script is the thing the
-    task exists to prevent, and a config with one pair is how that starts."""
+    """026: one copier, N configured pairs. A second script is the thing the
+    task exists to prevent, and a config with one pair is how that starts.
+
+    **Three pairs since 043**, which added `christoph_open`. The name of this
+    test still says "both" and is deliberately not renamed: `043` cites it and a
+    test that moves out from under a citation breaks the reference, which is the
+    same argument `handoff/` is copy-and-keep for.
+    """
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     ids = [p["id"] for p in cfg["pairs"]]
-    assert ids == ["regime_snapshots", "handoff_inbox"], ids
+    assert ids == ["regime_snapshots", "handoff_inbox", "christoph_open"], ids
     for p in cfg["pairs"]:
         assert Path(p["to"]).is_absolute() and Path(p["from"]).is_absolute()
 

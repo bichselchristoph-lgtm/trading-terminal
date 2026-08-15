@@ -1,8 +1,17 @@
-# verify.ps1 — five facts about this tree, and no opinion about them.
+# verify.ps1 — seven facts about this tree, and no opinion about them.
 #
 # Four became five under 020 part 3, which added the export freshness check.
-# The count is in the name of the thing, so it is maintained rather than left
-# saying "four" while printing five.
+# Five became seven under 043: the INBOUND copier's run record (part 2) and the
+# worktrees (part 3). The count is in the name of the thing, so it is maintained
+# rather than left saying "four" while printing seven.
+#
+# 043 part 3, and it is the same shape as 020's and 037's. THIS SCRIPT RUNS
+# AFTER EVERY TASK AND REPORTED ON EVERYTHING EXCEPT THE THING THAT OUTLIVES
+# TASKS. Two worktrees from 2026-08-13 outlived theirs by three days and kept
+# `test_every_directory_holding_tests_is_declared` red in the main checkout the
+# whole time -- OBS-034 predicted that breakage was transient because removing
+# the worktree clears it, and measured three days later it was not, because
+# nobody removed them. The tasks were accepted and merged. Nothing said so.
 #
 # 016 part 1. Christoph cannot verify what he carries. A done-note is
 # machine-to-machine communication passing through a human who can see that it
@@ -338,6 +347,154 @@ if (-not (Test-Path $exportScript)) {
     }
 }
 
+# --- 6. inbound sync freshness ----------------------------------------------
+Section 6 'SYNC — the INBOUND copier''s run record'
+
+# 043 part 2. OBS-044. `037` gave the outbound export a run record on every
+# attempt and said plainly that `tools/sync_from_drive.py` had the same defect
+# and was WORSE OFF -- three stdout lines and nothing on disk at all. A record
+# nothing reads is only half a fix, so it is read here, beside the outbound one.
+#
+# TWO RECORD FILES, NOT ONE, and the reasoning is at `RUN_RECORD` in
+# tools/sync_from_drive.py: the two copiers are written in two languages, so one
+# shared file would mean two independent implementations of the same
+# write-and-parse contract -- and a crash mid-write would destroy the OTHER
+# copier's evidence, in the one artifact whose whole job is surviving a crash.
+# The cost is this section existing; that is cheaper than the divergence.
+#
+# STILL NO VERDICT. An age and an outcome string are facts.
+#
+# THE DIRECTION MATTERS FOR HOW THIS READS, and it is not the same as section 5.
+# The outbound copier is the only writer of its destination, so a stale mirror is
+# its fault. The inbound one has Drive as a concurrent writer, so `0 new` is the
+# EXPECTED state most of the time -- OBS-044's own argument for why the inbound
+# record is quieter evidence than the outbound one. `last_attempt` is the field
+# that carries information here; `outcome` saying `up to date` does not.
+$syncRecord = Join-Path $repo 'sync-run-record.md'
+if (-not (Test-Path $syncRecord)) {
+    Say '  run record        MISSING — no sync-run-record.md in the repo root'
+    Say '                    (the inbound sync has never run against this tree, or the'
+    Say '                     copier stopped writing it — tests/test_sync_run_record.py'
+    Say '                     covers the second case and would be red)'
+} else {
+    $stext = Get-Content $syncRecord -Raw
+    # `^\s*`, matching the reader in tools/sync_from_drive.py and the one in
+    # section 5. A bare `^` here is 037's bug in a third place.
+    $sAtt = ([regex]'(?m)^\s*last_attempt\s*:\s*(.+?)\s*$').Match($stext)
+    $sSuc = ([regex]'(?m)^\s*last_success\s*:\s*(.+?)\s*$').Match($stext)
+    $sOut = ([regex]'(?m)^\s*outcome\s*:\s*(.+?)\s*$').Match($stext)
+
+    $now = [datetimeoffset]::Now
+    $ageOfSync = {
+        param($m)
+        if (-not $m.Success) { return 'CANNOT COMPUTE: field absent' }
+        $v = $m.Groups[1].Value
+        if ($v -eq 'never') { return 'never' }
+        [datetimeoffset]$parsed = [datetimeoffset]::MinValue
+        if (-not [datetimeoffset]::TryParse($v, [ref]$parsed)) { return "$v   (UNPARSEABLE)" }
+        $d = $now - $parsed
+        "$v   ({0}h {1:00}m ago)" -f [int]$d.TotalHours, $d.Minutes
+    }
+
+    Say "  inbound sync      last attempt $(& $ageOfSync $sAtt)"
+    Say "                    last success $(& $ageOfSync $sSuc)"
+    Say ("                    outcome      " + $(if ($sOut.Success) { $sOut.Groups[1].Value } else { 'CANNOT COMPUTE: no outcome line' }))
+}
+
+# The configured pairs, read out of config/sync.yaml rather than restated. Same
+# rule as section 5's destination table: a second copy would drift, invisibly.
+$syncConfig = Join-Path $repo 'config\sync.yaml'
+Say ''
+if (-not (Test-Path $syncConfig)) {
+    Say "  CANNOT COMPUTE: config/sync.yaml not found at $syncConfig"
+} else {
+    $ctext = Get-Content $syncConfig -Raw
+    $pairRe = [regex]'(?m)^\s*-\s*id:\s*(\S+)\s*$\s*^\s*from:\s*''([^'']+)''\s*$\s*^\s*to:\s*''([^'']+)''\s*$'
+    $pairs  = $pairRe.Matches($ctext)
+    if ($pairs.Count -eq 0) {
+        Say '  CANNOT COMPUTE: no pairs parsed out of config/sync.yaml.'
+        Say '  The file was reformatted. This section is now checking nothing.'
+    } else {
+        Say "  configured pairs  $($pairs.Count)"
+        foreach ($p in $pairs) {
+            $pid_ = $p.Groups[1].Value
+            $from = $p.Groups[2].Value
+            $to   = $p.Groups[3].Value
+            $fromState = if (Test-Path -LiteralPath $from) {
+                "$(@(Get-ChildItem -LiteralPath $from -File -Filter *.md).Count) .md"
+            } else { 'NOT PRESENT' }
+            $toState = if (Test-Path -LiteralPath $to) {
+                "$(@(Get-ChildItem -LiteralPath $to -File -Filter *.md).Count) .md"
+            } else { 'NOT PRESENT' }
+            Say "    $pid_"
+            Say "      from  $from   [$fromState]"
+            Say "      to    $to   [$toState]"
+        }
+    }
+}
+
+# --- 7. worktrees -----------------------------------------------------------
+Section 7 'WORKTREES — what is still checked out beside the main tree'
+
+# 043 part 3. OBS-046. NAME AND AGE, AND NO VERDICT -- no threshold, no "stale",
+# no advice. A worktree three days old may be a task in flight or a task that
+# finished on Tuesday, and this script does not know which. It states the fact
+# and the reading belongs to the design session, exactly as everywhere else.
+#
+# IT REMOVES NOTHING. OBS-036: verify.ps1 is read-only, and a verification script
+# with a side effect cannot be run to find out whether something happened.
+#
+# WHY THIS BELONGS HERE AT ALL: a worktree holds its own tests/ directory, so
+# from the MAIN checkout `test_every_directory_holding_tests_is_declared` walks
+# into it and goes red -- which is section 1 reporting a failure whose cause is
+# invisible in every other section of this file.
+$wtRaw = & git -C $repo worktree list --porcelain 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Say "  CANNOT COMPUTE: git worktree list failed: $wtRaw"
+} else {
+    # The FIRST record is the main checkout itself and is not a worktree in the
+    # sense this section is about. **Excluded by POSITION, not by comparing
+    # against `$repo`.** `git worktree list` always emits the main working tree
+    # first, from wherever it is invoked.
+    #
+    # An earlier cut excluded `$repo` by path and claimed in its own comment that
+    # this let the script run from any checkout. It does the opposite: `$repo` is
+    # `$PSScriptRoot`, so run from a worktree it excluded ITSELF and listed the
+    # main checkout as a worktree -- measured, `momentum (5d)`. **Same class as
+    # OBS-045**: a tool that assumes it is running in the main tree.
+    $entries = @()
+    foreach ($line in @($wtRaw)) {
+        if ($line -match '^worktree\s+(.+)$') {
+            $pth = $matches[1].Trim()
+            try { $full = (Resolve-Path -LiteralPath $pth -ErrorAction Stop).Path } catch { $full = $pth }
+            $entries += $full
+        }
+    }
+    # Drop the main checkout: it is always the first record.
+    $entries = @($entries | Select-Object -Skip 1)
+
+    if ($entries.Count -eq 0) {
+        Say '  worktrees         0'
+    } else {
+        # AGE IS THE DIRECTORY'S CREATION TIME ON THIS DISK, and the basis is
+        # printed because this project does not render a number without one. It
+        # is not the branch date and not the last commit: the question is how
+        # long this checkout has been sitting here, which is a disk fact.
+        $parts = foreach ($e in $entries) {
+            $leaf = Split-Path $e -Leaf
+            try {
+                $days = [int]((Get-Date) - (Get-Item -LiteralPath $e).CreationTime).TotalDays
+                "$leaf ($($days)d)"
+            } catch {
+                "$leaf (age CANNOT COMPUTE)"
+            }
+        }
+        Say "  worktrees         $($entries.Count) — $($parts -join ', ')"
+        Say '                    age is the worktree directory''s creation time on this disk'
+        foreach ($e in $entries) { Say "                    $e" }
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Say ''
@@ -357,7 +514,7 @@ if ($null -ne $suiteSeconds) {
     }
 }
 Say ''
-Say 'verify.ps1 states five facts and draws no conclusion from them.'
+Say 'verify.ps1 states seven facts and draws no conclusion from them.'
 Say 'The reading belongs to the design session.'
 
 # --- the file ---------------------------------------------------------------

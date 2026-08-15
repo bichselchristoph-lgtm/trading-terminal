@@ -276,6 +276,28 @@ BOOTSTRAP_ALLOWLIST = {
     # Extending it would mean inventing ten minutes nobody verified, inside the
     # one file whose values came from outside this repo.
     "core/tests/test_opening_range_windows.py",            # 042 Part 1
+
+    # ---- 043: three more ----------------------------------------------------
+    # `sync-run-record.md` lands at the repo root beside `export-run-record.md`
+    # and for the same reasons: the root has no native-prefix carve-out and must
+    # not get one, and the record is TRACKED so `tests/test_sync_run_record.py`
+    # has a subject on a fresh clone. **It is the second entry here written by a
+    # program rather than by a person**, and it carries the same cost 037's does
+    # -- a sync run after a commit leaves the tree dirty until the next commit
+    # picks it up.
+    #
+    # **Two record files, not one.** The writers are in two languages, so one
+    # file would mean two independent implementations of the same write-and-parse
+    # contract -- and a Python read-modify-write around PowerShell's whole-file
+    # `Set-Content` would put both copiers' evidence in one artifact whose entire
+    # job is surviving a crash. Reasoned in full at `RUN_RECORD` in
+    # `tools/sync_from_drive.py`.
+    #
+    # OBS-008 again, unchanged: a fourth route in -- "authored here for a slice"
+    # -- is still a design decision nobody has taken, and 043 is admin.
+    "sync-run-record.md",                                  # 043 Part 2
+    "tests/test_sync_run_record.py",                       # 043 Part 2
+    "tests/test_sync_never_targets_christoph_done.py",     # 043 Part 1
 }
 
 
