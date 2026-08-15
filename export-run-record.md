@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T09:39:51+02:00
+last_attempt : 2026-08-15T10:06:59+02:00
 
-last_success : 2026-08-15T09:39:52+02:00
+last_success : 2026-08-15T10:07:00+02:00
 
-outcome      : 1 new - momentum-code-handoff/done/038-sessions-levels-units-windows.md
+outcome      : 4 new - momentum-code-handoff/done/041-thirteen-levels-are-rth.md, momentum-code-handoff/inbox/039-for-code-spec-risk-and-trade-classification.md, momentum-code-handoff/inbox/040-for-code-task-readonly-stop-and-accounting-probe.md, momentum-code-handoff/inbox/041-for-code-spec-thirteen-levels-are-rth.md
 
-head         : bebebe4407efa769cf362cecec4a984d9ef3cf35 038 done-note: verify.ps1's run record, and no test count
+head         : be76a43cb56644ef905f7a65cfecb6cf90efb10d 041 done-note, and 041's task file
