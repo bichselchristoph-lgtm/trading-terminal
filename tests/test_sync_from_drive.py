@@ -9,6 +9,7 @@ the source.** Everything else is reporting.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -348,24 +349,63 @@ def test_the_convention_pattern(name: str, ok: bool) -> None:
 
 def test_main_returns_nonzero_when_a_person_must_look(tmp_path: Path) -> None:
     """A scheduled run that reports a collision and exits 0 is a report nobody
-    reads."""
+    reads.
+
+    **`--record` is passed, and OBS-064 is why.** `043` gave `main()` a run
+    record defaulting to the tracked `sync-run-record.md` at the repo root.
+    These two `main()` calls had no `--record`, so **every pytest run overwrote
+    the real record with this fixture's filename** -- `sync-run-record.md` was
+    found reading `outcome : t: 1 new - 031-for-code-thing.md`, a copy into a
+    temp directory, in the one artifact whose job is saying when the real sync
+    last worked. It also left the tree dirty after every suite run.
+
+    Nothing could see it until `verify.ps1` section 6 existed to print it, which
+    is `043`'s own subject arriving inside `043`.
+    """
     pair = make_pair(tmp_path)
     write(Path(pair["from"]), "031-for-code-thing.md", "NEW")
     write(Path(pair["to"]), "031-for-code-thing.md", "OLD")
     cfg = tmp_path / "sync.yaml"
     cfg.write_text(yaml.safe_dump({"pairs": [pair]}), encoding="utf-8")
+    rec = tmp_path / "run-record.md"
 
-    assert main(["--config", str(cfg)]) == 1
+    assert main(["--config", str(cfg), "--record", str(rec)]) == 1
 
     pair2 = make_pair(tmp_path / "clean")
     (tmp_path / "clean").mkdir(exist_ok=True)
     write(Path(pair2["from"]), "031-for-code-thing.md", "body")
     cfg2 = tmp_path / "sync2.yaml"
     cfg2.write_text(yaml.safe_dump({"pairs": [pair2]}), encoding="utf-8")
-    assert main(["--config", str(cfg2)]) == 0
+    assert main(["--config", str(cfg2), "--record", str(rec)]) == 0
 
 
-def test_an_unknown_pair_id_is_an_error_not_a_silent_no_op() -> None:
+def test_an_unknown_pair_id_is_an_error_not_a_silent_no_op(tmp_path: Path) -> None:
     """`--pair typo` matching nothing would run zero pairs and exit 0, which
-    reads exactly like a healthy up-to-date run."""
-    assert main(["--pair", "no-such-pair"]) == 2
+    reads exactly like a healthy up-to-date run.
+
+    `--record` for OBS-064's reason, though this path returns before writing:
+    **the guard belongs on the call, not on the current control flow.** A later
+    edit that moves the record write earlier must not silently re-arm the bug.
+    """
+    assert main(["--pair", "no-such-pair", "--record", str(tmp_path / "r.md")]) == 2
+
+
+def test_no_test_in_this_file_writes_the_tracked_run_record() -> None:
+    """**OBS-064, made structural.** Reviewing every `main()` call by eye is how
+    this was missed the first time.
+
+    Positional and scoped to this file: every `main([...])` literal here must
+    carry `--record`. The real record is a TRACKED artifact at the repo root and
+    a test that overwrites it is a test that forges the evidence.
+    """
+    src = Path(__file__).read_text(encoding="utf-8")
+    calls = re.findall(r"main\(\[[^\]]*\]", src)
+    # The regex above matches its own source line; drop anything without a
+    # string literal in it.
+    calls = [c for c in calls if '"' in c]
+    naked = [c for c in calls if "--record" not in c]
+    assert not naked, (
+        "these main() calls write the tracked sync-run-record.md:\n  "
+        + "\n  ".join(naked)
+        + "\n\nPass --record with a tmp_path. OBS-064: the real record was found "
+          "carrying a fixture filename, and the suite left the tree dirty every run.")

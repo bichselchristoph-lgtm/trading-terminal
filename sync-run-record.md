@@ -18,8 +18,8 @@ parsing.
 The three fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-15T10:42:12+02:00
+last_attempt : 2026-08-15T10:49:50+02:00
 
-last_success : 2026-08-15T10:42:12+02:00
+last_success : 2026-08-15T10:49:50+02:00
 
-outcome      : seeded by 043 -- real syncs overwrite this
+outcome      : christoph_open: 0 new · source folder EMPTY · D:\claude-googledrive-sync\momentum-christoph-open

@@ -223,6 +223,107 @@ comment claiming this let the script run from any checkout. It does the opposite
 
 ---
 
+## 6a — `git worktree list` is not the disk, and the disk is what turns section 1 red
+
+**Found by doing the removals, not by designing the section.** `git worktree remove` and
+`git worktree prune` both deregister a worktree and can leave the directory behind — §5 has three
+of them. **A section built to explain section 1's red cannot ask git alone:**
+`test_every_directory_holding_tests_is_declared` walks the filesystem with `rglob` and neither
+knows nor cares what git thinks is registered.
+
+So section 7 gained a second line, derived from the filesystem and diffed against git:
+
+```
+  on-disk orphans   2 - 017-remote (2d, 0 files), 043-third-pair (0d, 0 files)
+                    directories under .claude/worktrees/ that `git worktree list`
+                    does NOT know about. git deregistered them; the disk kept them.
+                    A file count of 0 is inert. Anything above 0 holds tests that
+                    section 1 collects from the main checkout.
+```
+
+**The file count is the point.** An empty orphan is harmless and a populated one is section 1's
+red; printing them alike would report the failure `OBS-046` is about while looking complete.
+**Still no verdict and still no removal** — `OBS-036`.
+
+---
+
+## 6b — a defect in this task's own first cut, and it is `037`'s bug wearing a new hat
+
+**The inbound record's reader was written STRICTER than the outbound one's, and a test pinned the
+strictness as a feature.**
+
+`037`'s defect was an indented field: the record rendered as a tidy markdown code block, the
+reader anchored on a bare `^`, `last_success` never matched, and **every failed run read the
+previous success as `never` and wrote that back.** `037` fixed it twice over and said why in as
+many words: *"The fields are now at column zero AND the anchor tolerates whitespace; either alone
+would be enough, which is the point."*
+
+**`043`'s first cut kept only the column-zero half** — `_FIELD = r"(?m)^{name}\s*:..."` — and
+added `test_an_indented_field_does_not_parse_and_that_is_the_037_bug`, asserting that an indented
+field must read as `never`. That is the intolerance pinned as intended behaviour. It left the
+inbound record **one reformat away from the outbound record's original bug, with a green suite**,
+and left the two records' parsers disagreeing about a format they share.
+
+**Fixed.** `_FIELD` is now `^\s*` like `037`'s, `verify.ps1` sections 5 and 6 both use `^\s*`, and
+the test was inverted to assert the tolerance. A second test,
+`test_the_committed_records_fields_are_at_column_zero`, holds the other half — so both are
+asserted separately rather than one standing in for the other.
+
+**Why this matters beyond one regex:** two implementations of one write-and-parse contract that
+differ in strictness is precisely the divergence `config/sync.yaml`'s own header warns about, and
+it had appeared inside the task whose subject is that class of failure.
+
+---
+
+## 6c — `OBS-064` is fixed, not just recorded
+
+The note above found the suite overwriting the tracked run record. **It is now fixed rather than
+left as an observation**, because a record any `pytest` run clobbers does not satisfy Part 2 at
+all — the artifact would carry a fixture's filename at exactly the moment somebody consulted it.
+
+- Both `main()` calls in `test_main_returns_nonzero_when_a_person_must_look` pass `--record` into
+  `tmp_path`, and so does `test_an_unknown_pair_id_is_an_error_not_a_silent_no_op` — the last
+  **although that path returns before writing today**, because the guard belongs on the call and
+  not on the current control flow.
+- **Made structural**, since reviewing every `main()` call by eye is how it was missed:
+  `test_no_test_in_this_file_writes_the_tracked_run_record` parses that file's own source and
+  fails on any `main([...])` literal without `--record`.
+
+**Measured, not reasoned about.** The record was stamped with a real `christoph_open` sync, the
+three sync suites were run, and the record still read:
+
+```
+outcome      : christoph_open: 0 new · source folder EMPTY · D:\claude-googledrive-sync\momentum-christoph-open
+```
+
+with `git status` clean of it. **`OBS-064` is `PROMOTED`.** Its unmeasured half — whether
+`export-handoff.ps1` has the same hole through `-RunRecordOverride` — **is not covered and the
+resolution says so.**
+
+---
+
+## 6d — pair 3, exercised, and a fifth outcome nobody specified
+
+```
+christoph_open: 0 new · source folder EMPTY · D:\claude-googledrive-sync\momentum-christoph-open
+  ok source folder byte-for-byte unchanged (0 files hashed before and after)
+exit=0
+```
+
+`christoph/done/` **untouched at 16 files**, checked before and after.
+
+**`043` names four outcomes; the copier has five**, and the fifth is `026`'s, not this task's:
+*source folder EMPTY* is kept distinct from *up to date* because an empty folder is a working
+pipeline with nothing to send and a missing one is a broken path. **That distinction is why the
+first live run of pair 3 says something true rather than `0 new · up to date`.**
+
+**No file was placed in `momentum-christoph-open` to test it end to end.** Writing into a `from`
+folder is forbidden outright — nothing is ever written to, deleted from or renamed in a source —
+so the live path is `c023`'s to settle, and until it runs "the pair works" rests on the shared
+code path and the tmp-directory fixtures, not on an observation of this one.
+
+---
+
 ## 7 — the reds, quoted
 
 **The `christoph/done` guard, seen red by adding a forbidden pair:**
@@ -283,19 +384,67 @@ land immediately.**
 
 ---
 
+## 8a — the collision recorded in §8 then happened again, inside `043`, to `043`'s own rows
+
+**Two sessions worked this task's tree, and both allocated `OBS-062` and `OBS-063` — to the same
+two findings, in the opposite order.**
+
+| id | one session | the other |
+|---|---|---|
+| `OBS-062` | four ledger ids used twice | the Drive folder naming inconsistency |
+| `OBS-063` | the Drive folder naming inconsistency | four ledger ids used twice |
+
+**Both landed. The ledger briefly held 70 rows and 68 distinct ids** — the four from §8, plus two
+new pairs created by the task that was documenting the problem.
+
+**And the first repair attempt made it worse.** Reconciling by swapping the two labels was done
+before checking whether the other rows still existed; they did, so the swap moved one session's
+pair away from the citations in this very note while leaving the other pair untouched. **Reverted
+and redone**: the two rows this session added were removed, the pair the note already cites was
+kept, and `OBS-062`/`OBS-063` are now one row each.
+
+**Removing them is not the ledger's forbidden deletion.** That rule exists so a finding cannot be
+cleared by deleting its row; **both findings remain recorded**, in the other session's wording,
+under the ids this note cites. The `SEEDED_ROWS` floor is 17 and the ledger stands at 68.
+
+**This is `OBS-058`'s prediction, executed twice in one afternoon.** `OBS-058` recorded that git
+caught the `OBS-053` collision *only* because both rows landed on the same line, and that
+otherwise *"both would have merged cleanly and the duplicate would be in the ledger now."* They
+did merge cleanly. Nothing went red. **It was found by counting, and only because §8 had just
+made ids something worth counting.** That is the strongest argument available for §9 item 6.
+
+---
+
 ## 9 — what I could not do
 
-1. **Remove the `024` and `029` worktrees.** §5 — refused by the permission layer, twice. Both
-   verified clean and merged first. **This is the one instruction in `043` left unexecuted.**
-2. **Remove my own `043` worktree directory.** Deregistered but held open by another process.
-3. **Resolve `OBS-044` and `OBS-046`.** §8 — ambiguous while the ids are duplicated.
-4. **Exercise pair 3 against a real file.** `momentum-christoph-open` exists and is **empty**, so
-   the pair is configured and unexercised — the same state `025`'s pair has been in since `026`.
-   **`c023` is the UAT that settles it**, and until it runs, "the pair works" rests on the same
-   code path the other two use and on no observation of this one.
-5. **Check whether `export-handoff.ps1` has the same test-overwrites-the-record hole.** It takes a
+1. **Delete three empty directories under `.claude/worktrees/`** — `029-entry-point`,
+   `017-remote`, `043-third-pair`. All deregistered from git, all holding **zero files**, all held
+   open by an unidentified process. **Inert today and named by `verify.ps1` section 7 on every
+   run**, which is the state §6a exists to make visible rather than to hide.
+   *(Item 1 previously read "remove the `024` and `029` worktrees, refused by the permission
+   layer". That was retried and completed — see §5.)*
+2. **Resolve `OBS-044` and `OBS-046`, which `043` says Parts 2 and 3 close.** §8 — **and this is
+   the one instruction in `043` left unexecuted.** The work is done; only the status field is
+   not moved. `OBS-062` states in the ledger, in as many words, *"do not resolve either `OBS-044`
+   while both exist"*, because marking it `PROMOTED` would equally read as closing *"a
+   `keepUpToDate` subscription dies silently and every health signal stays green"* — a live
+   finding about a value used as a stop level. **That row is committed and exported, and
+   overriding it unilaterally is the move it exists to prevent.** Dating the rows in the
+   Resolutions section was drafted as a workaround and withdrawn: it makes the *resolution*
+   unambiguous and leaves every *citation* — including `043`'s own — as ambiguous as before.
+   **This needs the design session's ruling, and it is cheap either way.**
+3. **Exercise pair 3 against a real file.** §6d — the folder is empty, and nothing may be written
+   into a `from` folder to test it. **`c023` settles it.**
+4. **Check whether `export-handoff.ps1` has the same test-overwrites-the-record hole.** It takes a
    `-RunRecordOverride` and relies on callers passing it — the same gap in the outbound
-   direction. Noted in `OBS-064`, unmeasured.
+   direction. **Named in `OBS-064` and explicitly excluded from its resolution. Still unmeasured.**
+5. **Identify what holds the three empty directories open.** No `handle`/`openfiles` was run; the
+   owner is unknown, and "another process" is all the error says.
+6. **Add the id-uniqueness assertion `OBS-062` calls the cheap half.** A plain uniqueness test is
+   **red on arrival with no legal route to green** — four duplicates exist — which
+   `tests/test_observations_ledger.py` already rules out for itself. The buildable version pins
+   the four known pairs and fails on a **fifth**. Not built here: it is a decision about the
+   ledger's own rules, and §8a is evidence it is needed.
 
 ---
 
@@ -311,6 +460,28 @@ not rename anything, and nothing was renamed.** `OBS-063`.
 
 **`verify.ps1` ran from the main checkout at the time recorded in `verify-output.txt`.** No count
 quoted — `043`'s last action forbids it. **No previously-passing test was made to fail.**
+
+**The standing failures are named rather than counted**, since a name is what a reader can act on
+and `043` forbids the count. **None is from this task and none is new**; every one of them was
+failing before `043` started, and each was checked individually against `main` at `05f8f29`:
+
+| failing test | why it is not `043`'s |
+|---|---|
+| `test_handoff_state_declared::test_every_task_file_declares_a_state` | names inbox files `021`–`038`. `043`'s task file declares `WRITTEN`. |
+| `test_observations_ledger::test_every_retired_uat_has_a_register_row` | three retired UATs — `013`, `014`, `015` — have no register row |
+| `test_observations_ledger::test_refusal_b_a_retired_uat_with_no_destination_is_red` | same cause; it asserts the real folder is fully accounted for |
+| `test_regime_prompt_invariants::test_no_bare_six_of_nine` (×2) | `REGIME-PROMPT.md` / specs, untouched here |
+| `test_regime_snapshot_could_not_do::test_the_format_still_lacks_a_key` | `027`'s tripwire, waiting on the prompt gaining an id |
+| `test_uat_has_a_file::test_every_declared_uat_exists_as_a_file` | done-note `017` names a UAT with no file in `christoph/` |
+
+**`test_pytest_collection::test_every_directory_holding_tests_is_declared` was an eighth and is
+now green** — it is `OBS-046`, and §5 is what cleared it.
+
+**The two `test_observations_ledger` rows above have a legal route to green that was deliberately
+not taken.** The register accepts `NOT REVIEWED` with a review-by date, and adding three such rows
+would turn them green in a minute. **That is a declared backlog asserted on Christoph's behalf
+about UATs this session has not read**, and it is outside `043`. Named here so the choice is
+visible rather than silently inherited by the next task.
 
 **`test_the_shipped_config_has_both_pairs` needed updating and its name deliberately was not
 changed.** It asserted exactly two pairs; it now asserts three. `043` cites it by name, and a test
