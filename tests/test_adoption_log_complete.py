@@ -318,6 +318,14 @@ BOOTSTRAP_ALLOWLIST = {
     # Bootstrap rather than adopted, like `verify.ps1` and `export-handoff.ps1`
     # before it: authored here, for this tree, and it came from nowhere else.
     ".claude/settings.json",                               # 046
+
+    # ---- 046 part 2: the policy has to agree with itself across shells ------
+    # Authored after the policy above nearly shipped a hole. Every `deny` rule
+    # in it read `Bash(git ...)`, so setting CLAUDE_CODE_USE_POWERSHELL_TOOL
+    # would have removed all eleven protections at once -- **without changing a
+    # byte of the reviewed file.** A rule that binds only under the shell tool
+    # that happened to be in use is not a rule.
+    "tests/test_permission_policy_is_shell_symmetric.py",  # 046 part 2
 }
 
 

@@ -12,6 +12,7 @@
       "Bash(C:\\venvs\\trading\\Scripts\\python.exe:*)",
       "PowerShell(C:/venvs/trading/Scripts/python.exe:*)",
       "PowerShell(C:\\venvs\\trading\\Scripts\\python.exe:*)",
+      "PowerShell(& 'C:\\venvs\\trading\\Scripts\\python.exe':*)",
 
       "Bash(pwsh -NoProfile -File ./verify.ps1)",
       "Bash(pwsh -NoProfile -File ./export-handoff.ps1)",
@@ -19,6 +20,9 @@
       "PowerShell(D:\\Dev\\momentum\\verify.ps1)",
       "PowerShell(D:\\Dev\\momentum\\export-handoff.ps1)",
       "PowerShell(D:\\Dev\\momentum\\sync.ps1:*)",
+      "PowerShell(& 'D:\\Dev\\momentum\\verify.ps1':*)",
+      "PowerShell(& 'D:\\Dev\\momentum\\export-handoff.ps1':*)",
+      "PowerShell(& 'D:\\Dev\\momentum\\sync.ps1':*)",
 
       "Bash(git status:*)",
       "Bash(git log:*)",
@@ -36,6 +40,22 @@
       "Bash(git fetch:*)",
       "Bash(git push origin main)",
 
+      "PowerShell(git status:*)",
+      "PowerShell(git log:*)",
+      "PowerShell(git diff:*)",
+      "PowerShell(git show:*)",
+      "PowerShell(git blame:*)",
+      "PowerShell(git ls-files:*)",
+      "PowerShell(git check-ignore:*)",
+      "PowerShell(git rev-parse:*)",
+      "PowerShell(git merge-base:*)",
+      "PowerShell(git worktree list:*)",
+      "PowerShell(git remote -v)",
+      "PowerShell(git add:*)",
+      "PowerShell(git commit:*)",
+      "PowerShell(git fetch:*)",
+      "PowerShell(git push origin main)",
+
       "Bash(ls:*)",
       "Bash(pwd)",
       "Bash(wc:*)",
@@ -48,7 +68,21 @@
       "Bash(dirname:*)",
       "Bash(echo:*)",
       "Bash(sed -n:*)",
-      "Bash(schtasks /query:*)"
+      "Bash(schtasks /query:*)",
+
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-Item:*)",
+      "PowerShell(Get-Location)",
+      "PowerShell(Get-Command:*)",
+      "PowerShell(Test-Path:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Measure-Object:*)",
+      "PowerShell(Compare-Object:*)",
+      "PowerShell(Write-Host:*)",
+      "PowerShell(Write-Output:*)",
+      "PowerShell(ConvertFrom-Json:*)",
+      "PowerShell(schtasks /query:*)"
     ],
 
     "ask": [
@@ -61,19 +95,55 @@
       "Bash(git push:*)",
       "Bash(git rm:*)",
 
+      "PowerShell(git worktree add:*)",
+      "PowerShell(git reset:*)",
+      "PowerShell(git checkout:*)",
+      "PowerShell(git stash:*)",
+      "PowerShell(git branch:*)",
+      "PowerShell(git rebase:*)",
+      "PowerShell(git push:*)",
+      "PowerShell(git rm:*)",
+
       "Bash(rm:*)",
       "Bash(rmdir:*)",
       "Bash(mv:*)",
       "Bash(find:*)",
+
       "PowerShell(Remove-Item:*)",
       "PowerShell(Move-Item:*)",
+      "PowerShell(rm:*)",
+      "PowerShell(ri:*)",
+      "PowerShell(del:*)",
+      "PowerShell(erase:*)",
+      "PowerShell(rd:*)",
+      "PowerShell(rmdir:*)",
+      "PowerShell(mv:*)",
+      "PowerShell(move:*)",
+      "PowerShell(mi:*)",
+
+      "PowerShell(Set-Content:*)",
+      "PowerShell(Add-Content:*)",
+      "PowerShell(Clear-Content:*)",
+      "PowerShell(Out-File:*)",
+      "PowerShell(sc:*)",
+      "PowerShell(ac:*)",
 
       "Bash(pwsh -NoProfile -File ./tools/register-sync-task.ps1:*)",
+      "PowerShell(D:\\Dev\\momentum\\tools\\register-sync-task.ps1:*)",
       "Bash(schtasks /create:*)",
       "Bash(schtasks /delete:*)",
+      "PowerShell(schtasks /create:*)",
+      "PowerShell(schtasks /delete:*)",
+
+      "PowerShell([Environment]::SetEnvironmentVariable:*)",
+      "PowerShell(Set-ItemProperty:*)",
+      "PowerShell(New-ItemProperty:*)",
+      "PowerShell(Remove-ItemProperty:*)",
 
       "Edit(//d/Dev/momentum/.gitignore)",
-      "Write(//d/Dev/momentum/.gitignore)"
+      "Write(//d/Dev/momentum/.gitignore)",
+      "Edit(//d/Dev/momentum/.claude/settings.json)",
+      "Write(//d/Dev/momentum/.claude/settings.json)"
     ],
 
     "deny": [
@@ -81,7 +151,6 @@
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease:*)",
-
       "Bash(git worktree remove:*)",
       "Bash(git worktree prune:*)",
       "Bash(git reset --hard:*)",
@@ -89,6 +158,18 @@
       "Bash(git restore:*)",
       "Bash(git stash drop:*)",
       "Bash(git stash clear:*)",
+
+      "PowerShell(git clean:*)",
+      "PowerShell(git push --force:*)",
+      "PowerShell(git push -f:*)",
+      "PowerShell(git push --force-with-lease:*)",
+      "PowerShell(git worktree remove:*)",
+      "PowerShell(git worktree prune:*)",
+      "PowerShell(git reset --hard:*)",
+      "PowerShell(git checkout --:*)",
+      "PowerShell(git restore:*)",
+      "PowerShell(git stash drop:*)",
+      "PowerShell(git stash clear:*)",
 
       "Edit(//d/Dev/momentum/christoph/done/**)",
       "Write(//d/Dev/momentum/christoph/done/**)",
