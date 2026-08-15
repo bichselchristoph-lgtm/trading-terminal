@@ -488,7 +488,24 @@ changed.** It asserted exactly two pairs; it now asserts three. `043` cites it b
 that moves out from under a citation breaks the reference — the same argument that makes
 `handoff/` copy-and-keep.
 
-**The export ran from the main checkout, not from a worktree** (`OBS-045`, the 2026-08-14 row).
+**The export ran from the main checkout, not from a worktree** (`OBS-045`, the 2026-08-14 row):
+
+```
+momentum-code-handoff: 1 new - done\043-third-pair-and-two-instruments.md
+momentum-christoph-done: 0 new - up to date (16 files unchanged)
+HEAD bfc070fdcbc002042b0081e4764636e43d70677f 043: the record survives the suite, and section 7 reports the disk
+working tree clean
+run record D:\Dev\momentum\export-run-record.md (last_success 2026-08-15T10:57:09+02:00)
+```
+
+**`HEAD` recorded is `bfc070f`, and the tree was clean at export.** The order was: commit the
+work, run `verify.ps1`, run the export, commit the run records — the records are in neither
+export source, so committing them afterwards changes nothing that needed exporting, and
+committing them first is the infinite regress.
+
+**This note is exported at the version above.** The sections added after it — §6a–§6d, §8a, and
+the §5/§6/§9/§11 corrections — are in that copy. **§5 in particular reverses an earlier
+statement**: the `024` and `029` removals were reported as refused, and they succeeded.
 
 ---
 
