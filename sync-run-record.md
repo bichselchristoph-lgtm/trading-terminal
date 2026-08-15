@@ -18,8 +18,8 @@ parsing.
 The three fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-15T10:49:50+02:00
+last_attempt : 2026-08-15T11:30:22+02:00
 
 last_success : 2026-08-15T10:49:50+02:00
 
-outcome      : christoph_open: 0 new · source folder EMPTY · D:\claude-googledrive-sync\momentum-christoph-open
+outcome      : handoff_inbox: 1 new · 044-for-code-spec-colour-links-and-boundaries.md · 2 differing
