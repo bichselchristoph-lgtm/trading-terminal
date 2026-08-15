@@ -156,17 +156,84 @@ INTRADAY_BASIS = SessionBasis(
 #: forward. **Changing it on the strength of a superseded document is exactly the
 #: failure this project keeps having**, so it keeps the RTH basis it already had
 #: and the gap is reported in the done-note rather than closed by inference.
+#:
+#: **041 looked at this again and DELIBERATELY LEFT IT UNRULED.** *"Ruling a
+#: value nothing reads is admin."* It must be ruled **before anything consumes
+#: it** — `OBS-051`, which 041 narrows to the SMA stack alone rather than
+#: closing.
+#:
+#: **041's stated reason for leaving it does not hold in this tree, and the
+#: conclusion survives anyway.** 041 says `OBS-051`'s argument — that an ETH SMA
+#: would put the two sides of the `ext` ratio on different bases — is void
+#: because *"`ext` no longer exists"*. **It does exist**: `ext 10/20/50` are still
+#: in `CONTEXT_ORDER` and still computed by `extension_in_adr`, because the scope
+#: decision of 2026-08-14 is a decision and `S012` has not been built. So the
+#: original argument still stands, and it points the same way: `ADR $` is RTH
+#: under `038`, so an ETH SMA would divide across two bases.
 SMA_BASIS = SessionBasis(
     use_rth=True, label="09:30-16:00 ET",
-    why="UNRULED by 038. Carried unchanged from the pre-038 behaviour; 036 "
-        "proposed ETH and was superseded before that row was adopted.")
+    why="UNRULED by 038 and deliberately left unruled by 041 -- nothing should "
+        "rule a value nothing reads. Must be ruled before anything consumes it.")
 
-#: **NOT RULED BY 038 either.** Same reasoning as `SMA_BASIS`: 52wH/52wL are
-#: levels, but 038's window table does not list them and its ruling is about
-#: which window a *named* level belongs to. Left as found, reported, not guessed.
-YEAR_BASIS = SessionBasis(
+# ---- the thirteen remaining levels — 041, and they are all RTH -------------
+#
+# **Christoph's ruling, 2026-08-15. Closes `OBS-051`.** `038` ruled the day,
+# pre-market, post-market and opening-range levels and left thirteen undeclared;
+# **they kept whatever basis they happened to have, which is not a decision.**
+#
+# **The argument is COMPOSITION, and it is stronger than the thin-print one.**
+# `PWH` is the highest price of the prior week, so it must be the maximum of that
+# week's `PDH`s. `MoMH` must be the maximum of the weeks. `52wH` the maximum of
+# the months. **`038` made `PDH` RTH — so if `PWH` were ETH the chain stops
+# composing**, and you get a week whose high is above every day inside it with no
+# row on the panel able to explain why. Break the chain anywhere and the level
+# rail stops being one structure.
+#
+# **The thin-print argument reaches the same conclusion and is weaker, so it is
+# recorded second:** a handful of odd lots at 03:00 should not set a price a
+# position is sized against.
+#
+# **The cost is real, accepted, and must not be "fixed" later.** `52wH`, `52wL`
+# and `ATH` **will not match Christoph's TradingView chart** on any name whose
+# extreme printed outside regular hours, and he trades with ETH charts enabled.
+# On QQQ they agree today; on a gap-and-fade small cap they will not. **A
+# disagreement there is the ruling working, not a defect** — `OBS-053`.
+
+#: **`HOD` / `LOD`.** This is the `PDL` argument exactly: an ETH `HOD` on a
+#: gap-down morning **is** `PMH` — one price, two names, and no way to tell which
+#: you are looking at. A level that can silently become another level is the
+#: defect `038` exists to remove.
+TODAY_BASIS = SessionBasis(
     use_rth=True, label="09:30-16:00 ET",
-    why="UNRULED by 038. Carried unchanged from the pre-038 behaviour.")
+    why="HOD/LOD are regular-session extremes. On ETH bars a gap-down morning's "
+        "HOD is PMH, which is one price wearing two names.")
+
+#: **`PWH` / `PWL` / `PWO` / `PWC`.** The week composes out of its days.
+#: `PWO` and `PWC` follow automatically — a week's open is its first day's open
+#: and its close is its last day's close, and both are already RTH auction prints
+#: under `038`.
+PRIOR_WEEK_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="A week's high must be the maximum of its days' PDHs. 038 made PDH RTH, "
+        "so an ETH week would sit above every day inside it.")
+
+#: **`MoMH` / `MoML` / `MoMO` / `MoMC`.** The month composes out of the weeks,
+#: for the same reason and by the same chain.
+PRIOR_MONTH_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="A month's high must be the maximum of its weeks. Same composition "
+        "chain as PRIOR_WEEK_BASIS, one level up.")
+
+#: **`52wH` / `52wL` / `ATH`.** The top of the same chain — the year is the
+#: maximum of its months.
+#:
+#: **Renamed from `YEAR_BASIS` under 041**, because `ATH` is not a year and the
+#: old name would have been wrong for a third of what it now serves.
+LONG_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="52wH/52wL/ATH are the top of the composition chain: the year is the "
+        "maximum of its months. RULED RTH by 041, and deliberately divergent "
+        "from an ETH TradingView chart — see OBS-053.")
 
 
 @dataclass(frozen=True)
@@ -584,10 +651,10 @@ def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
         "PMH": pmh, "PML": pml, "ORH": orh, "ORL": orl,
         "VWAP": vwap,
         "52wH": Measured(value=year_high, sample="52 weeks", unit=Unit.DOLLAR,
-                         basis=YEAR_BASIS) if year_high is not None
+                         basis=LONG_BASIS) if year_high is not None
                 else Measured.absent("no 52-week high"),
         "52wL": Measured(value=year_low, sample="52 weeks", unit=Unit.DOLLAR,
-                         basis=YEAR_BASIS) if year_low is not None
+                         basis=LONG_BASIS) if year_low is not None
                 else Measured.absent("no 52-week low"),
         "round": Measured(value=float(len(round_numbers(price, span))),
                           sample=f"half-dollar levels within ±${span:,.2f} "

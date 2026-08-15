@@ -1016,6 +1016,31 @@ Making it uniform would be wrong in both directions, and the fetch code must not
 
 **ADR being RTH does not propagate to `PDL`; ATR being ETH does not either.** Different kinds of object.
 
+##### The remaining thirteen — RTH, ruled 2026-08-15 under `041`
+
+**`038` ruled six windows and left thirteen levels undeclared.** They kept whatever basis they happened to have, **which is not a decision.** Christoph's ruling closes it:
+
+| Group | Levels | Window (ET) |
+|---|---|---|
+| **Today** | `HOD` `LOD` | **09:30–16:00** |
+| **Prior week** | `PWH` `PWL` `PWO` `PWC` | **09:30–16:00** |
+| **Prior month** | `MoMH` `MoML` `MoMO` `MoMC` | **09:30–16:00** |
+| **Long** | `52wH` `52wL` `ATH` | **09:30–16:00** |
+
+**The argument is COMPOSITION, and it is stronger than the thin-print one.** `PWH` is the highest price of the prior week, so **it must be the maximum of that week's `PDH`s**. `MoMH` must be the maximum of the weeks; `52wH` the maximum of the months. **`038` made `PDH` RTH — so if `PWH` were ETH the chain stops composing**, and you get a week whose high is above every day inside it with no row on the panel able to explain why. **Break the chain anywhere and the level rail stops being one structure.**
+
+**`PWO` and `MoMC` follow automatically.** A week's open is its first day's open; a month's close is its last day's close. Both are already RTH auction prints under `038`.
+
+**`HOD`/`LOD` are the `PDL` argument exactly.** An ETH `HOD` on a gap-down morning **is** `PMH` — one price, two names, no way to tell which you are looking at.
+
+**The thin-print argument reaches the same conclusion and is weaker, so it is recorded second:** a handful of odd lots at 03:00 should not set a price a position is sized against.
+
+**Nothing `038` ruled changes and no statistic moves.** `PDH`/`PDL`/`PDO`/`PDC` RTH · `PMH`/`PML` 04:00–09:30 · `AMH`/`AML` 16:00–20:00 · `ORH`/`ORL` RTH by definition · `ADR` RTH · `ATR14` ETH · `VWAP`, `RVOL`, cumulative volume ETH anchored 04:00 — **all unchanged.**
+
+**The cost, recorded so it is not discovered later.** `52wH`, `52wL` and `ATH` **will not match a TradingView chart with extended hours enabled**, on any name whose extreme printed outside regular hours — and Christoph trades with ETH charts on. On QQQ they agree today; on a gap-and-fade small cap they will not. **This is a known and accepted divergence, not a defect. Do not "fix" it later** (`OBS-053`).
+
+**The SMA stack — 10/20/50/200 — remains deliberately unruled.** Ruling a value nothing consumes is admin. **It must be ruled before anything consumes it** (`OBS-051`).
+
 **A seventh window is coming.** The SEC approved Nasdaq's 23/5 proposal on 2026-04-10 targeting December 2026, and NSCC plans 24×5 clearing from 2026-06-28. **Structure the taxonomy so a seventh window can be added; build nothing for it** (`OBS-049`).
 
 #### 4.4a.2 A basis is declared in code, beside the definition — never in `config/`

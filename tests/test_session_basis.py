@@ -23,8 +23,9 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from core.indicators.context import (ADR_BASIS, ATR_BASIS, INTRADAY_BASIS,
-                                     PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
-                                     YEAR_BASIS)
+                                     LONG_BASIS, PRIOR_DAY_BASIS,
+                                     PRIOR_MONTH_BASIS, PRIOR_WEEK_BASIS,
+                                     SMA_BASIS, SessionBasis, TODAY_BASIS)
 from live.attach.attach import Contract
 from live.attach.ibkr import IBKRMarketData
 
@@ -109,9 +110,86 @@ def test_the_intraday_and_year_requests_carry_their_declared_bases() -> None:
         f"close.")
 
     year_flags = ib.use_rth_for(size="1 day", duration="1 Y")
-    assert year_flags == [YEAR_BASIS.use_rth], (
-        f"the 52-week request issued {year_flags}, YEAR_BASIS declares "
-        f"use_rth={YEAR_BASIS.use_rth}.")
+    assert year_flags == [LONG_BASIS.use_rth], (
+        f"the 52-week request issued {year_flags}, LONG_BASIS declares "
+        f"use_rth={LONG_BASIS.use_rth}.")
+
+
+#: **041's thirteen, grouped as Christoph ruled them.** All RTH.
+#:
+#: **Only `52wH`/`52wL` are built.** The other eleven have no computation and no
+#: request, so the strongest available assertion for them is that the constant
+#: they will use declares RTH — see the two tests below, which say plainly which
+#: of them checks a request and which checks a ruling.
+THE_THIRTEEN = (
+    ("HOD LOD", TODAY_BASIS),
+    ("PWH PWL PWO PWC", PRIOR_WEEK_BASIS),
+    ("MoMH MoML MoMO MoMC", PRIOR_MONTH_BASIS),
+    ("52wH 52wL ATH", LONG_BASIS),
+)
+
+
+@pytest.mark.parametrize("levels,basis", THE_THIRTEEN,
+                         ids=[g.replace(" ", "-") for g, _ in THE_THIRTEEN])
+def test_the_thirteen_levels_are_ruled_rth(levels: str, basis: SessionBasis) -> None:
+    """**041's ruling, as a ruling.** Closes `OBS-051` for the level half.
+
+    **This asserts the CONSTANT, not a request, and that is a real limitation
+    rather than a shortcut.** Eleven of the thirteen are not built — there is no
+    `HOD`, no `PWH`, no `MoMC`, no `ATH` anywhere in the tree — so there is no
+    request to inspect. `test_a_long_range_request_carries_the_ruled_basis`
+    below covers the two that do issue one.
+
+    **The composition argument is why they are all the same answer.** `PWH` is
+    the maximum of its week's `PDH`s, `MoMH` of its weeks, `52wH` of its months.
+    `038` made `PDH` RTH, so an ETH level anywhere up that chain sits above every
+    level inside it, and no row on the panel could explain why.
+    """
+    assert basis.use_rth is True, (
+        f"{levels} must be RTH (041). It declares use_rth={basis.use_rth}, "
+        f"which breaks the composition chain: 038 made PDH RTH, so a week, "
+        f"month or year computed on extended hours would be higher than every "
+        f"day inside it.")
+    assert basis.label == "09:30-16:00 ET", (
+        f"{levels} declares the label {basis.label!r}, which does not name the "
+        f"regular session.")
+
+
+def test_a_long_range_request_carries_the_ruled_basis() -> None:
+    """**The two of the thirteen that are built, checked on the wire.**
+
+    `52wH`/`52wL` are the only levels of 041's thirteen with a computation
+    behind them, and they come off `year_high_low`'s own `1 Y` daily request.
+    **041 asks for the request actually issued, not for a constant that exists**
+    — and this is the one place among the thirteen where that is possible.
+    """
+    ib = RecordingIB()
+    IBKRMarketData(ib).year_high_low(QQQ)
+    flags = ib.use_rth_for(size="1 day", duration="1 Y")
+    assert flags == [LONG_BASIS.use_rth] == [True], (
+        f"the 52-week request issued {flags}; LONG_BASIS declares "
+        f"use_rth={LONG_BASIS.use_rth} and 041 rules it True.")
+
+
+def test_the_thirteen_do_not_share_a_request_with_anything_038_settled() -> None:
+    """**041 report item 2**, asserted rather than only checked by eye.
+
+    *"If changing the thirteen would move something `038` settled, stop and
+    report."* The long-range request is issued by `year_high_low` through
+    `_bars` directly — **it does not go through `_context_block`'s
+    `dailies_on()` memo**, which is the one place a shared flag could couple two
+    indicators. So ruling the thirteen cannot move ADR, ATR, PDH or PDL.
+
+    Asserted by count: one `1 Y` request, and no `60 D` request issued by a call
+    that only wanted the long range.
+    """
+    ib = RecordingIB()
+    IBKRMarketData(ib).year_high_low(QQQ)
+    durations = [c["durationStr"] for c in ib.calls]
+    assert durations == ["1 Y"], (
+        f"year_high_low issued {durations}. If it ever shares the 60 D daily "
+        f"request, 041's ruling and 038's would be carried by one flag and "
+        f"neither could move without the other.")
 
 
 def test_no_call_site_passes_a_use_rth_literal() -> None:
@@ -197,7 +275,10 @@ def test_every_basis_says_why_it_is_what_it_is() -> None:
     for name, basis in (("ADR_BASIS", ADR_BASIS), ("ATR_BASIS", ATR_BASIS),
                         ("PRIOR_DAY_BASIS", PRIOR_DAY_BASIS),
                         ("INTRADAY_BASIS", INTRADAY_BASIS),
-                        ("SMA_BASIS", SMA_BASIS), ("YEAR_BASIS", YEAR_BASIS)):
+                        ("SMA_BASIS", SMA_BASIS), ("LONG_BASIS", LONG_BASIS),
+                        ("TODAY_BASIS", TODAY_BASIS),
+                        ("PRIOR_WEEK_BASIS", PRIOR_WEEK_BASIS),
+                        ("PRIOR_MONTH_BASIS", PRIOR_MONTH_BASIS)):
         assert basis.why.strip(), f"{name} declares no reason."
         assert basis.label.strip().endswith("ET"), (
             f"{name}'s label {basis.label!r} does not name a timezone. "
