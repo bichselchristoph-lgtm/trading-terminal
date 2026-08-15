@@ -495,6 +495,53 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
+# 043, found while running 043. **`git worktree list` IS NOT THE DISK, and the
+# disk is what turns section 1 red.**
+#
+# `git worktree remove` and `git worktree prune` both deregister a worktree and
+# can leave the DIRECTORY behind. Measured on 2026-08-15: `.claude/worktrees/`
+# held `017-remote` and `043-third-pair`, neither in `git worktree list`, both
+# still on disk. They were empty, so nothing was red -- but
+# `test_every_directory_holding_tests_is_declared` walks the FILESYSTEM with
+# `rglob`, and it neither knows nor cares what git thinks is registered.
+#
+# So a section built to explain that red cannot ask git alone. Reporting only
+# registered worktrees would under-report the exact failure OBS-046 is about --
+# a directory outliving the task that made it -- and would do it while looking
+# complete, which is this project's most-named shape.
+#
+# STILL NO VERDICT AND STILL NO REMOVAL. An orphan is named, counted, and left
+# exactly where it is.
+$wtRoot = Join-Path $repo '.claude\worktrees'
+if (Test-Path -LiteralPath $wtRoot) {
+    $known = @()
+    if ($null -ne $entries) { $known = @($entries | ForEach-Object { $_.TrimEnd('\') }) }
+
+    $orphans = @()
+    foreach ($d in @(Get-ChildItem -LiteralPath $wtRoot -Directory -ErrorAction SilentlyContinue)) {
+        $full = $d.FullName.TrimEnd('\')
+        if ($known -notcontains $full) {
+            # Counted because an EMPTY orphan is harmless today and a populated
+            # one is section 1's red. The two must not print alike.
+            $files = @(Get-ChildItem -LiteralPath $full -File -Recurse -Force -ErrorAction SilentlyContinue).Count
+            $days  = try { [int]((Get-Date) - $d.CreationTime).TotalDays } catch { $null }
+            $age   = if ($null -ne $days) { "$($days)d" } else { 'age CANNOT COMPUTE' }
+            $orphans += "$($d.Name) ($age, $files files)"
+        }
+    }
+
+    Say ''
+    if ($orphans.Count -eq 0) {
+        Say '  on-disk orphans   0 — every directory under .claude/worktrees/ is registered'
+    } else {
+        Say "  on-disk orphans   $($orphans.Count) — $($orphans -join ', ')"
+        Say '                    directories under .claude/worktrees/ that `git worktree list`'
+        Say '                    does NOT know about. git deregistered them; the disk kept them.'
+        Say '                    A file count of 0 is inert. Anything above 0 holds tests that'
+        Say '                    section 1 collects from the main checkout.'
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Say ''
