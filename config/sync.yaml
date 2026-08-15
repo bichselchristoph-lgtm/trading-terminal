@@ -38,3 +38,29 @@ pairs:
     checks:
       - filename_convention   # NNN-for-code-*.md -- copy anyway, but name it
       - number_collision      # same NNN, different name -- copy neither
+
+  # 043's pair. **The rule that no Claude writes to `christoph/` is amended
+  # NARROWLY, and only this half.**
+  #
+  # `christoph/open/` files are AUTHORED BY THE DESIGN SESSION -- they are its
+  # task files for Christoph. There was never an authorship conflict there, only
+  # a placement convention that cost a manual copy on every UAT. The rule existed
+  # because of a limit and the limit has lifted, which is the same reasoning that
+  # retired the download-and-copy step for `handoff/inbox/`.
+  #
+  # **`christoph/done/` is Christoph's ANSWERS and does not change. Nothing
+  # writes into it, by any channel, ever.** It is copy-verify-retire and he
+  # performs it. `tests/test_sync_never_targets_christoph_done.py` fails on any
+  # configured pair whose destination lands inside it -- because a lock that is
+  # only a sentence in a document is not a lock.
+  #
+  # **No checks.** `filename_convention` and `number_collision` are 026's and
+  # belong to the handoff pair: they encode `NNN-for-code-*.md`, which is the
+  # naming for files addressed to Claude Code. `christoph/open/` uses
+  # `NNN-*.md` addressed to a person, and a convention check calibrated on one
+  # audience would flag every correct file in the other.
+  - id:     christoph_open
+    from:  'D:\claude-googledrive-sync\momentum-christoph-open'
+    to:    'D:\Dev\momentum\christoph\open'
+    glob:  '*.md'
+    checks: []
