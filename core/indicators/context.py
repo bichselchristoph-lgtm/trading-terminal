@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
+from enum import Enum
 from typing import Iterable, Optional, Sequence
 
 #: `SPEC.md` §6b.1a — Kullamägi's convention. **20, not 14.** TradingView's
@@ -39,6 +40,133 @@ ATR_DEFAULT_N = 14
 
 #: §8.4 — the RVOL denominator is a curve over the last N sessions.
 RVOL_SESSIONS = 20
+
+
+# ---- session basis — 038 Part 1 -------------------------------------------
+#
+# **A basis is a definition, not a setting, and that is why it lives here.**
+#
+# `SPEC.md` §4.4 says no setting lives in code — not a threshold, not a window,
+# not `useRTH`. **A session basis is EXEMPT, and the exemption is written down
+# here because an exemption that is not written down is one that gets undone.**
+# `036` proposed putting these in `config/indicators.yaml`; `038` overrules it.
+#
+# The distinction: **a setting is a choice somebody could sensibly make
+# differently. A basis is a fact about what the indicator IS.** ADR is the mean
+# of each session's own high-low with no gap term, so it is the regular session
+# by definition — a config key implying otherwise invites someone to flip it in a
+# hurry, and the number keeps its name while changing what it measures.
+#
+# So the value that reaches the request comes from the constant declared beside
+# the indicator's own definition. **Never a literal at the call site, never
+# `config/`.** `tests/test_session_basis.py` asserts the request actually issued
+# carries the constant's flag, not merely that the constant exists.
+
+
+@dataclass(frozen=True)
+class SessionBasis:
+    """Which bars an indicator is computed over, and why it is those bars.
+
+    `label` is rendered on the row. **That is the point of the type** — 038
+    Part 4: *a value that carries its basis can be compared with something; a
+    value that does not can only be argued about.* ADR and ATR sit four rows
+    apart, are both labelled volatility, and are computed on different sessions
+    **on purpose**; without the label a reader compares them.
+
+    `why` is carried so the reason is reachable from code and from a test, not
+    only from a comment a reader's eye passes over.
+    """
+
+    #: What `reqHistoricalData(useRTH=...)` is given. **No default** — the whole
+    #: defect class here is a flag that acquired one.
+    use_rth: bool
+    #: The window, in ET, as it renders: `09:30-16:00 ET`.
+    label: str
+    #: Why it is this window and not the other.
+    why: str
+
+
+#: **ADR is a STATISTIC and it is RTH by definition.** Average *Day* Range is the
+#: mean of each session's own `High - Low` and **has no gap term** — that is what
+#: distinguishes it from ATR. So it measures the session actually traded.
+#:
+#: **It will NOT match a TWS "ADR" computed over 04:00-20:00 bars, and that is
+#: correct rather than a defect.** TWS has no native ADR at all; anything it
+#: shows comes from a different computation over a different bar set.
+ADR_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="Average DAY Range: the mean of each session's own high-low, with no "
+        "gap term. RTH by definition, not by preference.")
+
+#: **ATR is a STATISTIC and it is ETH.** Average *True* Range is
+#: `max(H-L, |H-Cprev|, |Cprev-L|)` — **the gap across the prior close is part of
+#: the measurement**, so it must be computed on the bar series whose
+#: close-to-close relationship is the real one.
+#:
+#: This is the flag that was wrong. `c015`/`013` measured `ATR14` at `13.14`
+#: against Christoph's TWS daily ATR(14) of ~`15.6` — **-16 %, and ATR feeds the
+#: 3xATR stop floor, which feeds every share count.** A well-formed number with
+#: no flag on it.
+ATR_BASIS = SessionBasis(
+    use_rth=False, label="04:00-20:00 ET",
+    why="Average TRUE Range: the true range spans the prior close, so the gap "
+        "is part of the measurement. ETH.")
+
+#: **PDH/PDL are LEVELS, not statistics, and they are RTH.** 038 Part 1, and this
+#: is the half `036` got wrong.
+#:
+#: **If they were ETH, then on any day the extreme occurred outside 09:30-16:00,
+#: `PDL` IS `AML`** — one number, two names, and no way to tell which you are
+#: looking at. A level that silently changes identity depending on when the
+#: extreme happened is the canonical defect of this project.
+#:
+#: Confirmed on Christoph's own QQQ chart for 2026-08-13: the session low of
+#: `722.34` sits in the early pre-market, so an ETH `PDL` would have been `PML`
+#: that day. **`036` would have pinned `PDL 717.37` — the ETH low, and therefore
+#: the `AML` — into the first externally-checked fixture this project has.**
+#:
+#: **ADR being RTH does not propagate here and ATR being ETH does not either.**
+#: Different kinds of object: a level exists because price traded there, in a
+#: named window, **and the window is part of the name.**
+PRIOR_DAY_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="A prior-day level is the prior REGULAR session's extreme. On ETH bars "
+        "PDL would collapse into AML whenever the low fell after 16:00.")
+
+#: **VWAP, cumulative volume and RVOL: ETH, anchored 04:00.** Settled before 038
+#: and carried forward unchanged — `008b` measured that liquid names do have
+#: pre-market volume, and on a gapper that has done 2M shares before the open the
+#: pre-market VWAP is where the level sits at 09:31.
+#:
+#: **RVOL must match ITSELF**: today's numerator and the 20-session denominator
+#: on the same basis. An RTH curve against an ETH numerator has no key past the
+#: close, which is how the mismatch announced itself rather than rendering a
+#: plausible ratio.
+INTRADAY_BASIS = SessionBasis(
+    use_rth=False, label="04:00-20:00 ET",
+    why="Session VWAP, cumulative volume and the RVOL curve all include "
+        "pre-market and anchor at 04:00 ET. Both sides of RVOL share this.")
+
+#: **NOT RULED BY 038, and left exactly as it was found.** 038 Part 1's table
+#: names PDC, PDO, PDH/PDL, PMH/PML, AMH/AML and ORH/ORL, and its statistic
+#: distinction covers ADR and ATR. **The SMA stack is neither a level nor one of
+#: the two statistics it rules on, so nothing in 038 decides this.**
+#:
+#: `036` said ETH — but `036` is superseded, and `038` did not carry that row
+#: forward. **Changing it on the strength of a superseded document is exactly the
+#: failure this project keeps having**, so it keeps the RTH basis it already had
+#: and the gap is reported in the done-note rather than closed by inference.
+SMA_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="UNRULED by 038. Carried unchanged from the pre-038 behaviour; 036 "
+        "proposed ETH and was superseded before that row was adopted.")
+
+#: **NOT RULED BY 038 either.** Same reasoning as `SMA_BASIS`: 52wH/52wL are
+#: levels, but 038's window table does not list them and its ruling is about
+#: which window a *named* level belongs to. Left as found, reported, not guessed.
+YEAR_BASIS = SessionBasis(
+    use_rth=True, label="09:30-16:00 ET",
+    why="UNRULED by 038. Carried unchanged from the pre-038 behaviour.")
 
 
 @dataclass(frozen=True)
@@ -59,17 +187,60 @@ class Bar:
     wap: Optional[float] = None
 
 
+class Unit(str, Enum):
+    """What kind of quantity a number is. **038 Part 2: all numbers need units.**
+
+    **The producer declares it, not the renderer.** Whether `13.14` is dollars or
+    a multiple is a fact about the indicator, and a renderer that guessed from
+    the row's name would be re-deriving something the computation already knew.
+
+    `live/tui/numbers.py` maps these onto a format; the PRECISION for each comes
+    from `config/formatting.yaml`, per `SPEC.md` §4.0a — *one function, and its
+    precision comes from config.* **Precision is a genuine setting and stays in
+    config; a session basis is not and stays in code** (`SessionBasis`). That is
+    the same distinction 038 Part 3 draws, applied in both directions.
+    """
+
+    #: Prices, distances and dollar ranges. `$` prefix, 2 decimals.
+    DOLLAR = "dollar"
+    #: `%`, 1 decimal. **The referent is named in `sample`** — 038 Part 2:
+    #: `78% of $1.29`, never a bare `78%`.
+    PERCENT = "percent"
+    #: A distance expressed in ADR units. `1.4 ADR`, 1 decimal.
+    ADR = "adr"
+    #: A ratio or multiple. `6.1×`, 1 decimal, **and the baseline named** in
+    #: `sample` — `6.1×` alone is the `12.4M` complaint again.
+    MULTIPLE = "multiple"
+    #: Share counts. `sh` suffix, whole, thousands-separated.
+    SHARES = "shares"
+    #: A count of things. Whole. Renders its noun, because a bare integer on a
+    #: price rail reads as a price — see `round`, 038 Part 6 row 2.
+    COUNT = "count"
+
+
 @dataclass(frozen=True)
 class Measured:
     """A number, **or a named reason there is none.** Never both, never neither.
 
     `sample` is what it was computed over — `20 sessions`, `18.4M sh · 42 min ·
     from 09:30:00`. S010 requires it on every rendered value.
+
+    `unit` and `basis` are 038's additions and they are **required on every value
+    that renders**. A number with neither is the defect 038 exists to close: it
+    took a UAT and four chart screenshots to settle what one field in the detail
+    column answers permanently.
     """
 
     value: Optional[float]
     sample: str = ""
     unavailable: str = ""
+    #: 038 Part 2. Blank only on an absent `Measured`, which renders a reason.
+    unit: Unit = Unit.DOLLAR
+    #: 038 Part 1/4 — the session this was computed over, or a clock anchor for
+    #: a value that is anchored rather than session-scoped. **`None` is legal
+    #: only where the quantity genuinely has no session** (a pure count), and the
+    #: renderer refuses anything else that arrives without one.
+    basis: Optional["SessionBasis"] = None
 
     def __post_init__(self) -> None:
         if (self.value is None) == (not self.unavailable):
@@ -115,7 +286,8 @@ def adr_pct(dailies: Sequence[Bar], n: int = ADR_DEFAULT_N) -> Measured:
             return Measured.absent(f"non-positive low in {b.ts}")
         ratios.append((b.high / b.low - 1) * 100)
     return Measured(value=statistics.fmean(ratios),
-                    sample=f"{n} sessions, excl. today")
+                    sample=f"{n} sessions, excl. today · of each session's low",
+                    unit=Unit.PERCENT, basis=ADR_BASIS)
 
 
 def adr_dollar(adr_percent: Measured, todays_open: float) -> Measured:
@@ -125,7 +297,8 @@ def adr_dollar(adr_percent: Measured, todays_open: float) -> Measured:
     if todays_open <= 0:
         return Measured.absent("no opening print")
     return Measured(value=adr_percent.value * todays_open / 100,
-                    sample=adr_percent.sample)
+                    sample=adr_percent.sample,
+                    unit=Unit.DOLLAR, basis=ADR_BASIS)
 
 
 def adr_used(current: float, todays_open: float, adr_dol: Measured) -> Measured:
@@ -136,7 +309,12 @@ def adr_used(current: float, todays_open: float, adr_dol: Measured) -> Measured:
     if adr_dol.value == 0:
         return Measured.absent("ADR $ is zero")
     return Measured(value=abs(current - todays_open) / adr_dol.value * 100,
-                    sample=adr_dol.sample)
+                    # **The referent, named.** 038 Part 2: never a bare `78%`.
+                    # And 038 Part 6 row 1 asked what this anchors to -- it is
+                    # TODAY'S OPEN, stated here so the row itself answers it.
+                    sample=f"of ${adr_dol.value:,.2f} · from today's open · "
+                           f"{adr_dol.sample}",
+                    unit=Unit.PERCENT, basis=ADR_BASIS)
 
 
 def room_left(current: float, todays_open: float, adr_dol: Measured) -> tuple[Measured, Measured]:
@@ -149,8 +327,12 @@ def room_left(current: float, todays_open: float, adr_dol: Measured) -> tuple[Me
         return Measured.absent(adr_dol.unavailable), Measured.absent(adr_dol.unavailable)
     up = todays_open + adr_dol.value - current
     down = current - (todays_open - adr_dol.value)
-    return (Measured(value=up, sample=adr_dol.sample),
-            Measured(value=down, sample=adr_dol.sample))
+    # **Anchored on TODAY'S OPEN**, which is 038 Part 6 row 1's question. Said
+    # in the sample rather than left for a reader to reverse-engineer from the
+    # arithmetic, which is how it came to be asked.
+    anchor = f"to a full ADR from today's open · {adr_dol.sample}"
+    return (Measured(value=up, sample=anchor, unit=Unit.DOLLAR, basis=ADR_BASIS),
+            Measured(value=down, sample=anchor, unit=Unit.DOLLAR, basis=ADR_BASIS))
 
 
 # ---- ATR — a DIFFERENT quantity, and it says so ---------------------------
@@ -187,7 +369,9 @@ def atr_d14(dailies: Sequence[Bar], n: int = ATR_DEFAULT_N) -> Measured:
     atr = statistics.fmean(trs[:n])
     for tr in trs[n:]:
         atr = (atr * (n - 1) + tr) / n
-    return Measured(value=atr, sample=f"Wilder RMA, n={n}, {len(trs)} true ranges")
+    return Measured(value=atr,
+                    sample=f"Wilder RMA, n={n}, {len(trs)} true ranges",
+                    unit=Unit.DOLLAR, basis=ATR_BASIS)
 
 
 # ---- the SMA stack, and extension in ADR units ----------------------------
@@ -197,7 +381,7 @@ def sma(dailies: Sequence[Bar], n: int) -> Measured:
     if len(dailies) < n:
         return Measured.absent(f"need {n} daily bars, have {len(dailies)}")
     return Measured(value=statistics.fmean(b.close for b in dailies[-n:]),
-                    sample=f"{n}-day SMA")
+                    sample=f"{n}-day SMA", unit=Unit.DOLLAR, basis=SMA_BASIS)
 
 
 def extension_in_adr(price: float, sma_value: Measured, adr_dol: Measured) -> Measured:
@@ -214,7 +398,8 @@ def extension_in_adr(price: float, sma_value: Measured, adr_dol: Measured) -> Me
     if adr_dol.value == 0:
         return Measured.absent("ADR $ is zero")
     return Measured(value=(price - sma_value.value) / adr_dol.value,
-                    sample=f"{sma_value.sample} / ADR $")
+                    sample=f"{sma_value.sample} / ADR $",
+                    unit=Unit.ADR, basis=sma_value.basis)
 
 
 # ---- VWAP — ONE basis, per S010 part 0 ------------------------------------
@@ -248,14 +433,18 @@ def vwap_from_bars(minutes: Sequence[Bar]) -> Measured:
         return Measured.absent("no volume yet")
     span = f"{minutes[0].ts} to {minutes[-1].ts}" if minutes else "no bars"
     return Measured(value=total_pv / total_v,
-                    sample=f"bar-derived · {total_v:,.0f} sh · {len(minutes)} min · {span}")
+                    sample=f"bar-derived · {total_v:,.0f} sh · {len(minutes)} min "
+                           f"· 04:00 anchor · {span}",
+                    unit=Unit.DOLLAR, basis=INTRADAY_BASIS)
 
 
 def cumulative_volume(minutes: Sequence[Bar]) -> Measured:
     if not minutes:
         return Measured.absent("no bars")
     return Measured(value=sum(b.volume for b in minutes),
-                    sample=f"{len(minutes)} min from {minutes[0].ts}")
+                    sample=f"{len(minutes)} min · 04:00 anchor · "
+                           f"from {minutes[0].ts}",
+                    unit=Unit.SHARES, basis=INTRADAY_BASIS)
 
 
 # ---- RVOL — SPEC.md §8.4, exactly two ------------------------------------
@@ -304,7 +493,8 @@ def rvol_at(today: Sequence[Bar], curve: dict[str, float],
         return Measured.absent(f"zero reference volume at {t}")
     cum = sum(b.volume for b in today)
     return Measured(value=cum / ref,
-                    sample=f"{t} · {sessions_used}d median")
+                    sample=f"vs {sessions_used}d median at {t}h ET",
+                    unit=Unit.MULTIPLE, basis=INTRADAY_BASIS)
 
 
 def rvol_rel(symbol: Measured, sector: Optional[Measured]) -> Measured:
@@ -325,7 +515,8 @@ def rvol_rel(symbol: Measured, sector: Optional[Measured]) -> Measured:
     if sector.value == 0:
         return Measured.absent("sector RVOL is zero")
     return Measured(value=symbol.value / sector.value,
-                    sample=f"vs sector · {symbol.sample}")
+                    sample=f"vs sector RVOL · {symbol.sample}",
+                    unit=Unit.MULTIPLE, basis=INTRADAY_BASIS)
 
 
 # ---- the level rail -------------------------------------------------------
@@ -354,27 +545,53 @@ def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
     **Every entry that cannot be computed names why.** A rail with silent gaps
     is worse than a short rail, because the gap looks like open space.
     """
-    def hi_lo(bars: Sequence[Bar], what: str) -> tuple[Measured, Measured]:
+    def hi_lo(bars: Sequence[Bar], what: str,
+              window: str) -> tuple[Measured, Measured]:
+        """**A clock-defined window states which bars it sliced** (038 Part 1).
+
+        `PMH/PML` and `ORH/ORL` are defined by wall-clock time, not by the RTH
+        flag — but they are sliced out of the ETH minute series, and *which
+        series* is exactly what `034` got wrong when UTC stamps put the opening
+        range at 05:30 ET. So the window and the basis both render.
+        """
         if not bars:
             return Measured.absent(f"no {what} bars"), Measured.absent(f"no {what} bars")
-        return (Measured(value=max(b.high for b in bars), sample=f"{len(bars)} {what} bars"),
-                Measured(value=min(b.low for b in bars), sample=f"{len(bars)} {what} bars"))
+        sample = f"{len(bars)} {what} bars · {window}"
+        return (Measured(value=max(b.high for b in bars), sample=sample,
+                         unit=Unit.DOLLAR, basis=INTRADAY_BASIS),
+                Measured(value=min(b.low for b in bars), sample=sample,
+                         unit=Unit.DOLLAR, basis=INTRADAY_BASIS))
 
-    pmh, pml = hi_lo(premarket, "pre-market")
-    orh, orl = hi_lo(opening_range, "opening-range")
+    pmh, pml = hi_lo(premarket, "pre-market", "04:00-09:30 ET, today")
+    orh, orl = hi_lo(opening_range, "opening-range", "09:30-09:35 ET, today")
     span = adr_dol.value if adr_dol.ok else 0.0
+    # **`round` is a COUNT, and 038 Part 6 row 2 is right that the label does not
+    # say so.** The row computes `len(round_numbers(...))` — how MANY half-dollar
+    # levels fall within +/-ADR$ of price — and rendered it through the same
+    # 2-decimal price formatter as every other rail row, producing `47.00` on a
+    # 733 instrument. Nothing near 47 is a round level for QQQ.
+    #
+    # **Fixed here by making the unit honest rather than by renaming the row** —
+    # 038 puts panel layout out of scope. `Unit.COUNT` renders `47 levels`, which
+    # cannot be misread as a price. The label question is reported, not decided.
     return {
-        "PDH": Measured(value=prev_day.high, sample="prior session") if prev_day
+        "PDH": Measured(value=prev_day.high, sample="prior session",
+                        unit=Unit.DOLLAR, basis=PRIOR_DAY_BASIS) if prev_day
                else Measured.absent("no prior session bar"),
-        "PDL": Measured(value=prev_day.low, sample="prior session") if prev_day
+        "PDL": Measured(value=prev_day.low, sample="prior session",
+                        unit=Unit.DOLLAR, basis=PRIOR_DAY_BASIS) if prev_day
                else Measured.absent("no prior session bar"),
         "PMH": pmh, "PML": pml, "ORH": orh, "ORL": orl,
         "VWAP": vwap,
-        "52wH": Measured(value=year_high, sample="52 weeks") if year_high is not None
+        "52wH": Measured(value=year_high, sample="52 weeks", unit=Unit.DOLLAR,
+                         basis=YEAR_BASIS) if year_high is not None
                 else Measured.absent("no 52-week high"),
-        "52wL": Measured(value=year_low, sample="52 weeks") if year_low is not None
+        "52wL": Measured(value=year_low, sample="52 weeks", unit=Unit.DOLLAR,
+                         basis=YEAR_BASIS) if year_low is not None
                 else Measured.absent("no 52-week low"),
         "round": Measured(value=float(len(round_numbers(price, span))),
-                          sample=f"±{span:.2f} of {price:.2f}") if span > 0
+                          sample=f"half-dollar levels within ±${span:,.2f} "
+                                 f"of ${price:,.2f}",
+                          unit=Unit.COUNT, basis=None) if span > 0
                  else Measured.absent("no ADR $ to span"),
     }

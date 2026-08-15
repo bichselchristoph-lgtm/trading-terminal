@@ -81,6 +81,7 @@ from ..attach.ibkr import IbkrConfig, connect
 from .day_record import Attached, DayRecord, empty_record
 from .grammar import Cell
 from .layout import Layout
+from .numbers import NO_BASIS, basis_label, format_value, needs_basis
 
 #: Session logic is US/Eastern via `zoneinfo`, never machine locale — the
 #: workspace convention, applied to the one clock this module reads.
@@ -361,8 +362,21 @@ def measured_cell(m) -> str:
     """
     if not getattr(m, "ok", False):
         return Cell.absent(getattr(m, "unavailable", "") or "absent").render()
-    text = Cell.value(f"{m.value:,.2f}").render()
-    return f"{text}  · {m.sample}" if m.sample else text
+
+    # **A value with no declared basis REFUSES.** 038's exit test, and it is a
+    # refusal rather than a blank label on purpose: an unlabelled number on this
+    # panel is the whole defect 038 exists to close. ADR and ATR sit four rows
+    # apart, are both labelled volatility, and are computed on different sessions
+    # deliberately — a reader who cannot see that compares them.
+    if needs_basis(m) and basis_label(m) is None:
+        return Cell.absent(NO_BASIS).render()
+
+    text = Cell.value(format_value(m)).render()
+    # **Basis last, after the sample.** The sample says what it was computed
+    # OVER — `20 sessions, excl. today` — and the basis says WHICH BARS those
+    # sessions were, which is the qualifier on everything before it.
+    detail = " · ".join(x for x in (m.sample, basis_label(m)) if x)
+    return f"{text}  · {detail}" if detail else text
 
 
 def _as_of_clock(ts: str) -> str:

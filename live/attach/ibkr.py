@@ -22,9 +22,22 @@ order, and in this workspace only `tws_order` may.
 just a different number. That is the worst available failure mode, so the
 parameter is never omitted and never defaulted:
 
-* **daily bars → `useRTH=True`.** ADR% and the SMA stack are RTH-only
-  *structurally*, not by choice: both come off daily bars, and neither
-  TradingView nor TC2000 permits anything else on a daily chart.
+**038 changed this and the change is the point.** The flag is no longer decided
+here at all: **every request takes its `use_rth` from the `SessionBasis` constant
+declared beside the indicator's own definition** in `core.indicators.context`.
+There is no literal `use_rth=` anywhere in this module, and
+`tests/test_session_basis.py` asserts the request actually issued carries the
+constant's flag.
+
+* **daily bars are requested ONCE PER DISTINCT BASIS.** `ADR%`, the SMA stack and
+  `PDH`/`PDL` are RTH; **`ATR14` is ETH**, because the true range spans the prior
+  close and the gap IS the measurement. Before 038 one RTH request served all
+  four and `ATR14` read `13.14` against a true ~`15.6` — **-16 %, straight into
+  the 3xATR stop floor and therefore into every share count.**
+* **`SPEC.md:999` asserted that `useRTH` cannot alter a daily bar** — *"excluded,
+  unchangeably — ETH cannot alter a daily bar."* **That is factually wrong and
+  038 corrects it**; IBKR returns different daily highs, lows and volumes for the
+  two flags, which is the whole reason any of this matters.
 * **today's minutes → `useRTH=False`.** Session VWAP includes pre-market and
   anchors at 04:00 ET or first print, whichever is later. On a gapper that has
   done 2M shares before the open, **the pre-market VWAP is where the level sits
@@ -43,7 +56,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from core.indicators.context import Bar
+from core.indicators.context import (Bar, INTRADAY_BASIS, SessionBasis,
+                                     YEAR_BASIS)
 from .attach import Contract
 
 REPO = Path(__file__).resolve().parents[2]
@@ -219,9 +233,16 @@ class IBKRMarketData:
 
     # ---- step 3: the three requests, and nothing else --------------------
 
-    def daily_bars(self, c: Contract) -> Sequence[Bar]:
+    def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]:
+        """**The caller passes the indicator's own basis constant.**
+
+        Not a literal, and not a default. 038 Part 3: the value that reaches the
+        request comes from the constant declared beside the definition, so a
+        reader who wants to know which bars `ATR14` is built on reads `ATR_BASIS`
+        and is done.
+        """
         self._note_fetch(c.symbol)
-        return self._bars(c, DAILY_DURATION, "1 day", use_rth=True)
+        return self._bars(c, DAILY_DURATION, "1 day", use_rth=basis.use_rth)
 
     def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]:
         """20 sessions of 1-minute bars, split into sessions by date.
@@ -242,15 +263,17 @@ class IBKRMarketData:
         # that refuses is the lucky version of this bug** -- the same mismatch
         # one minute earlier would have divided a pre-market-inclusive
         # numerator by an RTH-only denominator and rendered a plausible number.
-        bars = self._bars(c, INTRADAY_DURATION, "1 min", use_rth=False)
+        bars = self._bars(c, INTRADAY_DURATION, "1 min",
+                          use_rth=INTRADAY_BASIS.use_rth)
         by_day: dict[str, list[Bar]] = {}
         for b in bars:
             by_day.setdefault(b.ts[:10], []).append(b)
         return [by_day[k] for k in sorted(by_day)]
 
     def today_minutes(self, c: Contract) -> Sequence[Bar]:
-        # useRTH=False -- pre-market is IN. See the module docstring.
-        return self._bars(c, "1 D", "1 min", use_rth=False)
+        # Pre-market is IN, and the flag comes from INTRADAY_BASIS rather than
+        # from a literal here. See the module docstring.
+        return self._bars(c, "1 D", "1 min", use_rth=INTRADAY_BASIS.use_rth)
 
     def sector_today_minutes(self, c: Contract) -> Optional[Sequence[Bar]]:
         if not c.sector_etf:
@@ -271,7 +294,10 @@ class IBKRMarketData:
         return ""          # no playbook binding in this slice
 
     def year_high_low(self, c: Contract) -> tuple[Optional[float], Optional[float]]:
-        bars = self._bars(c, "1 Y", "1 day", use_rth=True)
+        # **YEAR_BASIS is UNRULED by 038** and carries the flag this call always
+        # had. Named rather than left as a literal so the next ruling has one
+        # place to land.
+        bars = self._bars(c, "1 Y", "1 day", use_rth=YEAR_BASIS.use_rth)
         if not bars:
             return (None, None)
         return (max(b.high for b in bars), min(b.low for b in bars))
