@@ -40,8 +40,9 @@ which is this project's recurring defect.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 
 class TradeClass(Enum):
@@ -65,28 +66,42 @@ class TradeClass(Enum):
 #: choice, and `tests/test_risk_config_matches_core.py` pins the two together.
 COMMISSION_BASIS = "net"
 
-#: **A boundary tolerance, and it is a limit-correctness fix rather than
-#: tidiness.** `039` states the bands closed at their edges -- `BE` is
-#: `-0.05R <= R <= +0.05R`. In binary floating point a trade that is exactly on
-#: an edge usually is not: a $10.00 fill exiting at $10.05 against a $9.00 stop
-#: gives `0.05000000000000071`, which is greater than `0.05`.
+#: **`R_closed` is quantised to four decimal places before anything compares
+#: it, and the same rounded number is what gets stored and rendered.** 044 Part
+#: 2, replacing a float tolerance.
 #:
-#: **At the upper edge that misfiles a scratch as a Partial, and neither counts
-#: against anything. At the LOWER edge it misfiles a scratch as a LOSER** --
-#: and `L` is the one class that feeds `losses_max_day`, `losses_max_month` and
-#: the R-lost caps. Untreated, this is a limit firing on a rounding error, on a
-#: trade that made no money and lost none.
+#: `039` states the bands closed at their edges -- `BE` is `-0.05R <= R <=
+#: +0.05R` -- and never said what arithmetic that comparison happens in. In
+#: binary floating point a trade exactly on an edge usually is not::
 #:
-#: Found by `test_each_class_at_and_around_its_boundary`, which is why the
-#: parametrisation names the exact edges rather than only values either side of
-#: them. Comparisons are widened by `_EDGE` so that an on-the-edge value always
-#: lands in the *more conservative* class: `BE` rather than `L`, `W` rather
-#: than `P`.
+#:     (9.95 - 10.0) / 1.0  ==  -0.050000000000000710
 #:
-#: 1e-9 is far below any real R -- 1R is hundreds of dollars, so a nanoR is a
-#: fraction of a cent -- and far above the ~1e-16 relative error of the
-#: arithmetic that produces it.
-_EDGE = 1e-9
+#: **That is a trade which made nothing and lost nothing, classifying as `L`** --
+#: the only class feeding `losses_max_day` and both R-lost caps. **A limit firing
+#: on a rounding error, indistinguishable on screen from a bad day.**
+#:
+#: **The previous fix widened every comparison by `_EDGE = 1e-9`.** It worked and
+#: it was the wrong shape: it tolerated the float at each comparison instead of
+#: removing it at the source, so the number *stored* on the record still
+#: disagreed with the number that classified it. **A record reading `-0.0500`
+#: beside a class of `L` is exactly the pair 044 forbids.**
+#:
+#: Four places is chosen because 1R is hundreds of dollars, so 0.0001R is a
+#: fraction of a cent -- below anything a fill can express -- while being far
+#: above the ~1e-16 relative error of the arithmetic that produced the problem.
+R_PLACES = Decimal("0.0001")
+
+#: **Banker's rounding**, so a long run of exact halves does not drift one way.
+R_ROUNDING = ROUND_HALF_EVEN
+
+#: Prices, quantities and commissions arrive as `float` from the broker and from
+#: config. **`Decimal(str(x))` is deliberate and `Decimal(x)` is wrong here**:
+#: the latter faithfully preserves the binary artefact -- `Decimal(0.05)` is
+#: `0.05000000000000000277...` -- which is the very thing being removed. `str()`
+#: goes through repr's shortest round-trip form, so `0.05` becomes exactly
+#: `Decimal("0.05")`.
+def _dec(x: Union[int, float, Decimal]) -> Decimal:
+    return x if isinstance(x, Decimal) else Decimal(str(x))
 
 
 @dataclass(frozen=True)
@@ -159,7 +174,7 @@ class Classified:
     never a number and never a class.
     """
 
-    r_closed: Optional[float]
+    r_closed: Optional[Decimal]
     trade_class: Optional[TradeClass]
     unavailable: Optional[str] = None
 
@@ -168,7 +183,7 @@ class Classified:
         return self.unavailable is None
 
 
-def r_closed(trade: ClosedTrade) -> Optional[float]:
+def r_closed(trade: ClosedTrade) -> Optional[Decimal]:
     """R net of commissions, or `None` if the denominator does not exist.
 
     `039` Part 2 states the per-share form::
@@ -189,14 +204,21 @@ def r_closed(trade: ClosedTrade) -> Optional[float]:
     $11, exit $9: `(-1.00 * -100) / |(-1.00) * -100|` = +1R. **The absolute value
     on the denominator is load-bearing** -- without it a short's risk is negative
     and every short classifies as its own mirror image.
+
+    **Computed in `Decimal` and quantised to `R_PLACES` before it is returned**
+    (044 Part 2). The rounded value is what classifies, what is stored and what
+    is rendered -- there is no unrounded form anywhere for the three to disagree
+    about.
     """
     if trade.stop_at_entry is None:
         return None
-    risk = abs((trade.avg_fill - trade.stop_at_entry) * trade.quantity)
+    fill, stop = _dec(trade.avg_fill), _dec(trade.stop_at_entry)
+    qty = Decimal(trade.quantity)
+    risk = abs((fill - stop) * qty)
     if risk == 0:
         return None
-    net = (trade.avg_exit - trade.avg_fill) * trade.quantity - trade.commissions
-    return net / risk
+    net = (_dec(trade.avg_exit) - fill) * qty - _dec(trade.commissions)
+    return (net / risk).quantize(R_PLACES, rounding=R_ROUNDING)
 
 
 def classify(
@@ -221,12 +243,15 @@ def classify(
         # reason.
         return Classified(None, None, "entry stop equals fill — no risk to divide by")
 
-    band = thresholds.breakeven_band_r
-    if r >= thresholds.winner_min_r - _EDGE:
+    # **Exact comparisons, no tolerance.** `r` is already quantised and the
+    # thresholds are converted the same way, so an on-the-edge value IS on the
+    # edge and the closed bands `039` specifies mean what they say.
+    band = _dec(thresholds.breakeven_band_r)
+    if r >= _dec(thresholds.winner_min_r):
         return Classified(r, TradeClass.WINNER)
-    if r > band + _EDGE:
+    if r > band:
         return Classified(r, TradeClass.PARTIAL)
-    if r >= -band - _EDGE:
+    if r >= -band:
         return Classified(r, TradeClass.BREAK_EVEN)
     return Classified(r, TradeClass.LOSER)
 
@@ -291,7 +316,7 @@ def tally(results: list[Classified]) -> Counters:
     )
 
 
-def r_lost(results: list[Classified]) -> float:
+def r_lost(results: list[Classified]) -> Decimal:
     """The R that counts toward `r_max_loss_day` / `r_max_loss_month`.
 
     **LOSSES ONLY, NEVER NET, and this is the whole point of the function
@@ -303,13 +328,14 @@ def r_lost(results: list[Classified]) -> float:
     break-even band governs this too: a -0.03R scratch is not a loss.
     """
     return sum(
-        res.r_closed
-        for res in results
-        if res.trade_class is TradeClass.LOSER and res.r_closed is not None
+        (res.r_closed
+         for res in results
+         if res.trade_class is TradeClass.LOSER and res.r_closed is not None),
+        Decimal("0"),
     )
 
 
-def r_net(results: list[Classified]) -> float:
+def r_net(results: list[Classified]) -> Decimal:
     """Every classified trade summed. **Information only -- no limit reads it.**
 
     `039` Part 5 renders it with no ceiling, and the absence of a ceiling has to
@@ -317,4 +343,5 @@ def r_net(results: list[Classified]) -> float:
     tell you how close you are until it stops you*, so a row that has no limit
     must be distinguishable from one whose limit was forgotten.
     """
-    return sum(res.r_closed for res in results if res.r_closed is not None)
+    return sum((res.r_closed for res in results if res.r_closed is not None),
+               Decimal("0"))
