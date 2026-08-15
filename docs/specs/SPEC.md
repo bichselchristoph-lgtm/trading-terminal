@@ -1806,11 +1806,25 @@ Cost: US Securities Snapshot bundle $10 (waived at $30 commissions) + three netw
 
 Rendered as **mockup-07**. This is not the sizing calculator of the original §12; it is the surface where the account, the invalidation, the regime and the plan meet before anything is staged.
 
-### 7b.1 Risk comes from the account, not the chart
+### 7b.1 ~~Risk comes from the account, not the chart~~ Risk comes from config, not from the account
+
+> **REVERSED 2026-08-14 under `039`, by Christoph's ruling, stated twice.** Everything from *"Where `risk_pct` lives"* down to the end of this subsection is the **superseded** argument for percentage-of-NLV sizing. It is kept rather than deleted for the reason this document keeps giving: a reader who remembers the old rule must be able to see that it *changed*, not wonder which of two statements is current. **Where the struck text and the text below disagree, the text below is current.**
 
 ```
-1R  = risk_pct × NetLiquidation          risk_pct default 0.50%, cap 2.00%
+1R  = risk_usd_per_trade                 declared in config/risk.yaml. Does not move with NLV.
 ```
+
+~~`1R = risk_pct × NetLiquidation`, risk_pct default 0.50%, cap 2.00%~~
+
+**The ruling.** *"`1R` is a fixed dollar amount declared in config. It does not move with NLV."*
+
+**The rationale, recorded because it is not obvious and because §7b.1 below argues the opposite well.** A risk figure that tracks the account grows position size on a good run and shrinks it on a bad one, **automatically and invisibly**. Christoph wants that behaviour to come later from an explicit rules engine keyed to *sequences of days won and lost* — not from a number that drifts every time the account marks to market. `c015` §Risk 3: *"Risk should not change daily. It should change after N days won, and get reduced when Y days lost in sequence."* **That engine is a requirement for a later version, not core.**
+
+**So the disagreement is not about whether drift happens — the struck text is right that it does, and right that it compounds. It is about whether drift should be a side effect of marking to market or an explicit decision.** `039` makes it explicit and defers the decision.
+
+`risk_pct_default` and `risk_pct_cap` are **removed from the sizing path** and are absent from `config/risk.yaml` rather than present and ignored. If a percentage-of-NLV sanity check is ever retained anywhere, **it warns and never sizes.**
+
+**`tws_order/sizing.py` is NOT changed by this and must not be.** It enforces NLV-based sizing today — `risk_pct ≤ 0` is a hard `ConfigError`, the cap warns rather than silently clamping, the account is never guessed — and that behaviour is correct and tested. It is a separate repository by standing decision. **The terminal must not compute share counts independently: two sizing implementations that disagree is worse than either being wrong.** What an absolute-risk mode there requires is reported in `handoff/done/039-risk-and-trade-classification.md` and is not built here.
 
 **NLV, never buying power** — this is already enforced in `tws_order/sizing.py`. `risk_pct ≤ 0` is a hard `ConfigError`; the cap warns rather than silently clamping; the account is never guessed.
 
@@ -1927,6 +1941,131 @@ Items 1 and 2 are the clearest illustration of §4.2: they are the two most *jus
 **The direction control is a toggle, not a mirror** (Amendment 2 §A2.5). Long and short are separate registrations. The toggle changes which rules apply, which levels matter most, and which prediction variants load — **the rail itself does not flip**, because price structure is direction-agnostic and the interpretation is not. Its stated reason is worth keeping verbatim: *"taking a short while reading a long panel is a plausible and expensive error."*
 
 Downstream, `entry_construction.trigger_side` (§5b) carries the same declaration into the detector cluster, so one flag inverts polarity rather than requiring a mirrored detector set.
+
+### 7b.1b Every closed trade is exactly one of four things
+
+**New under `039` Part 2. Nothing in this document classified a closed trade before.**
+
+```
+R_closed = net P&L ÷ risk at entry          net of commissions, in R
+```
+
+| Class | Condition | Counts against a limit |
+|---|---|---|
+| **Winner** `W` | `R_closed ≥ +1.00R` | **no** |
+| **Partial** `P` | `+0.05R < R_closed < +1.00R` | **no** |
+| **Break even** `BE` | `−0.05R ≤ R_closed ≤ +0.05R` | **no** |
+| **Loser** `L` | `R_closed < −0.05R` | `losses` cap |
+
+**All four count toward `trades`. Only `L` counts toward anything else.** `trades = W + P + L + BE` is asserted in code, not assumed — `core/risk/classify.py`.
+
+**THE DENOMINATOR IS `stop_at_entry` AND IT IS FROZEN.** Christoph moves stops up during a trade. Using the *live* stop makes a trailed winner divide by nearly zero, and makes a trailed loser read as a full −1R when a quarter was lost. **`stop_at_entry` is an immutable field on the trade record and is the only denominator.** Every later stop is management, not risk. The record type carries no other stop at all, so the wrong one is unreachable rather than merely discouraged.
+
+**THE BAND IS IN R, NEVER IN PERCENT OF PRICE.** An earlier draft used 1% of entry price. On QQQ at $733 that is $7.33 per share — **on a 480-share position, $3,518, seven times 1R, classified as break even.** `0.05R` bounds it at $25 whatever the instrument costs. Same reasoning as §4.4a's ADR-based band: a threshold in price units does not transfer between a $4 name and a $700 one.
+
+**CLASSIFICATION IS NET OF COMMISSIONS.** A $25 gross scratch that cost $2 to trade is a small loss. Gross-versus-net is an unstated basis, which is this document's most-repeated defect.
+
+> **Note on the formula.** `039` Part 2 states the per-share form `(avg_exit − avg_fill) ÷ (avg_fill − stop_at_entry)` **and** requires classification net of commissions. The per-share form has nowhere to put a commission, so the implementation computes the dollar form, which **reduces to the stated one exactly when commissions are zero** — pinned by a test. Signed quantity carries the direction, so there is no side branch.
+
+**`W`, `P` and `BE` exist as record fields, not as limits.** They are what makes *am I cutting winners short?* answerable later. A month of `P` values clustered near +0.6R says something specific; folded into `W` it would be invisible.
+
+**A trade with no `stop_at_entry` renders `unavailable (no entry stop recorded)` and is never classified.** Never break even — that is the one class counting against nothing, so defaulting to it turns a missing field into a silently free trade. **It also counts toward no limit, which is a gap rather than a decision** — see `OBS-055`.
+
+**`0.05R` and `1.00R` are UNFITTED and render as such.** They gate nothing — no limit depends on either — so they are classification only. Answer them from the record. Tenet 6: thresholds do not transfer.
+
+### 7b.1c Five limits, and every one of them is a loss limit
+
+**New under `039` Part 3.**
+
+| # | Limit | Config key | Window |
+|---|---|---|---|
+| 1 | Total trades | `trades_max_day` | day |
+| 2 | Losing trades | `losses_max_day` · `losses_max_month` | day · month |
+| 3 | R lost | `r_max_loss_day` · `r_max_loss_month` | day · month |
+| 4 | Dollar safety | `daily_loss_usd` · `monthly_loss_usd` | day · month |
+
+**Reaching any one empties the TRADE panel with the reason and the config key that set it.**
+
+**THERE IS NO CAP ON WINNING TRADES, AND NONE ON GAINS.** An earlier draft carried `winners_max_day: 2`; a later one proposed a gain-based stop, `r_gain_stop_day`. **Both are removed.**
+
+> **Christoph, 2026-08-14:** *"Some trades run 1:15, especially wins, and closing this trade first thing on open might lock me out of a good day."*
+
+**A count cap cannot tell a 15R morning from a lucky scratch** — one 15R winner is `1W`, and a second ordinary trade reaches `2/2`. **A gain cap fails the same way from the other side**: +15R by 09:35 would stop trading for the day. A rule intended to prevent giving back profit would instead fire on the best morning of the quarter. `trades_max_day` still catches overtrading on a good day, so the case is not unprotected — **it is simply not protected by a rule that cannot distinguish a good day from a busy one.**
+
+**Whether Christoph is cutting winners short is a reconciliation question, not a terminal one.** A month of closed trades carrying `R_closed` and `stop_at_entry` answers it directly. The rule cannot be set before the data exists, **and once it exists the answer may be that no rule is wanted.**
+
+**Consequence, stated plainly: every remaining limit stops Christoph when it is going badly and never when it is going well.** That is the whole of the risk model and it fits in one sentence, which is the test for whether it belongs in core.
+
+**THE R LIMITS COUNT LOSSES ONLY, NEVER NET.** A +10R swing closing today must not buy back two losing trades and defer the cap. **Losses accumulate; gains buy no room.** Net R renders alongside as information, with no ceiling:
+
+```
+R lost   −1.5R of −2.0R today · −3.5R of −6.0R month
+R net    +8.5R today          ← information only, no limit
+```
+
+**This also removes any need for the terminal to know whether a trade was intraday or swing.** A swing position may be open for weeks; because its eventual gain masks nothing, the distinction never enters the arithmetic.
+
+**One trade is one round trip.** A trade opens when the position leaves zero and closes when it returns to zero. **Partial exits are position changes that do not reach zero and are therefore not trades.** This requires no side logic and no short-versus-sell classification — the sign of the position carries the direction, and IBKR reports position quantity without the terminal interpreting it. **The terminal does not close positions**; this definition exists so counting is unambiguous, not so the terminal acts.
+
+**Reset is 09:30h ET, not midnight.** A trade at 20:00h belongs to the day that is ending. US/Eastern via `zoneinfo`, never machine locale.
+
+### 7b.1d The lock
+
+**The lock blocks staging and nothing else.** No disconnect. No account change. No interference with an open position. **Every other panel renders normally** — ATTACHED, LEVELS, TAPE, WATCHING, CONNECTION.
+
+`c015` carries two earlier readings — §Risk 3 *"terminal freezes and exits with error"* and §Risk 7 *"other functionality will disconnect"*. **Both are superseded** by Christoph's ruling of 2026-08-14, and this is the record of that.
+
+**The lock outlives the process.** Trades, classification counts, R and dollar totals persist to disk, keyed to the session date — otherwise closing a window clears the limit.
+
+**Open positions are read from the broker, never from disk.** The count is remembered; the position is read. **When the two disagree, the broker wins and the disagreement is surfaced** — Christoph can take a trade directly in TWS and the terminal must not silently under-count.
+
+**Paper is a launch flag.** `--paper` at launch, and **there is no runtime switch, deliberately** — so no order can reach an account other than the one on screen when the terminal started. Relaunching without the flag shows a locked live account and **still renders live data**: open positions, tape, levels, watchlist. **The lock is on staging, not on data.** `PAPER` renders on every panel border and on the submit line — a single corner label is a label that stops being seen. Paper keeps its own counters against the same config limits.
+
+### 7b.1e The dollar safety limit is a bug detector
+
+`daily_loss_usd` and `monthly_loss_usd` already existed above as hard blocks. **Their purpose is now recorded, because it is not what it looks like.**
+
+**It is not a second risk rule.** Limits 1–3 already govern trading. **The dollar limit catches the cases where the R arithmetic above it is no longer true:**
+
+1. **Christoph moves a stop in TWS and the terminal never sees it.** A stop moved 10× wider produces a 10R loss the R counter records as 1R.
+2. **A fill lands badly on a volatile name** and 1R is really 1.3R.
+3. **A defect** — in the terminal, the OS, the network or the broker. *Something that should not happen, happening anyway.*
+
+**If it fires, the finding is that the R accounting is wrong, not that Christoph traded badly.** **A safety net that only catches anticipated errors is not a net.**
+
+Task `040` establishes whether case 1 is closable. **Neither answer is assumed here.**
+
+### 7b.1f The TRADE panel — content, not layout
+
+```
+account  LIVE *1234
+open     2R · 384 sh
+trades   3/5 today  ·  1W 1P 1L 0BE
+losses   1/2 today · 4/12 month
+R lost   −1.0R of −2.0R today · −3.5R of −6.0R month
+R net    +8.5R today
+safety   −$180 of −$2,000 today · −$3,110 of −$5,000 month
+risk     $500 per trade (config)
+```
+
+**Every limit renders its ceiling.** A number with no ceiling on screen cannot tell you how close you are until it stops you. **`R net` has no ceiling because it has no limit — and that difference must be visible, not inferred.**
+
+**Dollars appear on the `safety` row and the `risk` row only.** `c015` §Risk 2: *"Seeing dollars made and lost encourages overtrading and/or revenge trading."* **Dollar P&L is recorded for data collection and never rendered.**
+
+`open 2R · 384 sh` — two open positions totalling 384 shares.
+
+**The record fields this requires** (`039` Part 6), none of which exist yet:
+
+| Field | Why |
+|---|---|
+| `stop_at_entry` | **Immutable. The R denominator.** Expensive to add later |
+| `avg_fill` · `avg_exit` | Classification inputs |
+| `commissions` | Classification is net |
+| `class` | `W` · `P` · `L` · `BE`, derived and stored |
+| `session_date` | The key the daily counters reset on |
+| `ema9` · `ema21` at entry | `c015` §5b, *"new requirement for trade data collection"*. **Never rendered** |
+
+**`ema9` and `ema21` are the one requirement here with no screen presence at all**, which is exactly the kind that gets lost. Held open as `OBS-054`.
 
 ### 7b.2 Every stop level priced at once
 

@@ -245,6 +245,27 @@ BOOTSTRAP_ALLOWLIST = {
     ".claude/agents/test-author.md",                       # 024
     "tests/test_subagent_roster.py",                       # 024
     "tests/test_claude_dir_stays_ignored.py",              # 024
+
+    # ---- 039: five more -----------------------------------------------------
+    # `core/risk/` is the second tree under core/ and it is born the same way
+    # `core/indicators/` was under S010 -- authored here, no adoption row, an
+    # allowlist entry each. That is five entries for one slice, against S009's
+    # prediction of ~11, and the prediction has now held across six slices.
+    #
+    # `config/risk.yaml` lands like `config/ibkr.yaml` did under 034 and
+    # `config/layout.yaml` under S009: config/ is not a code tree, but it has no
+    # native-prefix carve-out and MUST NOT GET ONE -- a config file is where a
+    # value arrives with no provenance and is then read as a decision somebody
+    # took. That risk is live here rather than theoretical: `risk_usd_per_trade`
+    # is the number every position size will be computed from and NOTHING READS
+    # THE FILE YET (OBS-056).
+    #
+    # OBS-008 still stands and is now the longest-open row in the ledger.
+    "core/risk/__init__.py",                               # 039 Part 2
+    "core/risk/classify.py",                               # 039 Part 2
+    "core/tests/test_trade_classification.py",             # 039 Part 2
+    "config/risk.yaml",                                    # 039 Part 1
+    "tests/test_risk_config_matches_core.py",              # 039 Part 1
 }
 
 
