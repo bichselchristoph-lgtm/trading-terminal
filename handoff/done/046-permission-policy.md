@@ -283,11 +283,12 @@ reporting it.** Ids read from the ledger, not inferred — highest was `OBS-064`
 | **OBS-065** | **`ask` does not bind in auto mode; `deny` does.** Measured, three probes |
 | **OBS-066** | **Prefix matching leaves reachable gaps** — `git reset HEAD~1 --hard`, `git checkout <file>` — covered by `classifyAllShell`, not by a rule |
 | **OBS-067** | **A `Bash`-only policy is one environment variable from no policy**, and the file reads unchanged either way |
+| **OBS-068** | **`verify.ps1` does not parse under Windows PowerShell 5.1** — found while running `046`'s own verification, §11 |
 
-**Two of the three were named in the instruction for this note. `OBS-067` was not, and I added
-it** — it is a durable finding about the system, it is named in this note, and the convention
-requires a row for anything named here. **If the design session disagrees it exits by `DROPPED`
-with a reason**, which is the correct route and costs nothing.
+**Two of the four were named in the instruction for this note. `OBS-067` and `OBS-068` were not,
+and I added them** — both are durable findings about the system, both are named in this note, and
+the convention requires a row for anything named here. **If the design session disagrees either
+exits by `DROPPED` with a reason**, which is the correct route and costs nothing.
 
 ---
 
@@ -328,6 +329,46 @@ self-reporting instrument.
 
 ---
 
+## 11 — found in passing: `verify.ps1` does not parse under Windows PowerShell 5.1
+
+**Not `046`'s subject. Found by running `046`'s own closing verification and reported because
+`045` made this exact class of thing its business.**
+
+The first attempt at the closing `verify.ps1` was invoked as `powershell -File verify.ps1` and
+**died before running a single test**, with ten parser errors and visible mojibake:
+
+```
+Say '  on-disk orphans   0 �?" every directory under .claude/ ...'
+                              ^^^ this was an em-dash
+```
+
+**Measured under both editions:**
+
+```
+Windows PowerShell 5.1    parse errors: 10    first: Unexpected token 'files' in expression or statement.
+PowerShell 7.6.4          parse errors: 0
+```
+
+**The cause is encoding, not syntax.** `verify.ps1` is UTF-8 **without a BOM** and contains **78
+non-ASCII bytes** — em-dashes and `·` in its section headers. Windows PowerShell 5.1 reads a
+BOM-less file as ANSI, so each multi-byte character becomes mojibake, a `"` lands inside a string
+literal, and the quoting unbalances for the rest of the file. **PowerShell 7 defaults to UTF-8 and
+never sees it.**
+
+**Why it has not bitten before, and why that is the worrying part:** `sync.ps1` and
+`export-handoff.ps1` contain **zero** non-ASCII bytes and run identically under both. **Only
+`verify.ps1` is exposed**, and only when invoked through `powershell` rather than `pwsh` — which
+is what `powershell` still means on a default Windows shortcut. **`045` documented `verify.ps1` as
+a one-word command runnable from a cold terminal; whether that terminal is `pwsh` is not stated
+anywhere and was, until now, unmeasured.**
+
+**Not fixed here.** The fix is one of three — add a BOM, replace 78 characters with ASCII, or
+document `pwsh` as required — and choosing among them is `045`'s territory, not `046`'s. **The
+failure is loud rather than silent**, which is the one thing in its favour: it refuses to run, and
+does not run and report wrongly. Recorded as `OBS-068`.
+
+---
+
 ## Exit tests
 
 | test | who | what |
@@ -336,6 +377,23 @@ self-reporting instrument.
 | **Refusal** | Claude Code | four guards, each seen red against the exact mutation — §7 |
 | **Measured** | Claude Code | the three probes of §1, as observed |
 | **UAT** | Christoph | **None.** `.claude/settings.json` governs a Claude Code session's own permissions; **it renders nothing and computes nothing, so there is no screen to read.** A UAT here would be Christoph re-running a probe, which is a test and is in §1 |
+
+---
+
+---
+
+## The closing sequence
+
+**`sync.ps1` first, then `verify.ps1`, then the commit, then `export-handoff.ps1`, then the
+push** — all from the main checkout, no worktree.
+
+- **`sync.ps1` ran.** 0 new. **Exit 1**, on the two pre-existing refusals: `040` and `043` differ
+  between Drive and the tree. **Unchanged from `045` §5 and not resolvable from this side.**
+- **`verify.ps1` ran** at the time recorded in `verify-output.txt`, HEAD in section 3, tree clean.
+- **`export-handoff.ps1` runs after the commit that contains this note**, so the manifest HEAD it
+  records is that commit. **Section 5 of the next `verify.ps1` is where to check that**, and it
+  named `046`'s two files as *newer than export* before it ran.
+- **Pushed to `origin` (`trading-terminal`).** A commit is local; only a push survives the disk.
 
 ---
 
