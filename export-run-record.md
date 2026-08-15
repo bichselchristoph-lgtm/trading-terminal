@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T12:40:46+02:00
+last_attempt : 2026-08-15T12:49:59+02:00
 
-last_success : 2026-08-15T12:40:46+02:00
+last_success : 2026-08-15T12:49:59+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/046-permission-policy.md, momentum-code-handoff/inbox/046-for-code-task-permission-policy.md
+outcome      : 1 new - momentum-code-handoff/inbox/048-for-code-task-the-ask-audit.md
 
-head         : 11ca125535f6ecb4111e205013b01bbbc06e3835 046 part 4: verify.ps1 does not parse under Windows PowerShell 5.1
+head         : 447b211d585274d2c0a0f8ab4205ff22a47b5662 048: the ask audit, written and deliberately not run
