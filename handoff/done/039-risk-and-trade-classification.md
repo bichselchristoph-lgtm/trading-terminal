@@ -281,14 +281,23 @@ every mechanism involved was built in the last three days.
 
 ## 10 — test results, verbatim
 
-**Before, in `D:\Dev\momentum` at `79e95f4`:**
+**After the merge, in `D:\Dev\momentum`:**
 
 ```
-8 failed, 406 passed, 1 warning
+8 failed, 414 passed, 1 warning in 37.60s
 ```
 
-**After the merge, in `D:\Dev\momentum`:** see §11 — `verify.ps1` ran as the last action and its
-output is not pasted, per `039`'s instruction.
+**422 collected, of which 35 are this task's** — `pytest --collect-only` on the two new files.
+So the tree stood at **387 collected, 8 failed, 379 passed** before `039`, and stands at 422 / 8
+/ 414 after. **The failure count did not move.**
+
+*(That before-figure is arithmetic on two measurements taken here — 422 total and 35 mine — not
+a suite run at `79e95f4`. Stated that way deliberately: an earlier draft of this note asserted
+"8 failed, 406 passed" as an observed baseline and it was neither observed nor right. Quoting a
+count you did not run is the defect this project names most often, and it very nearly went into
+the note that says so.)*
+
+`verify.ps1` ran as the last action and its output is not pasted, per `039`'s instruction.
 
 **The same eight pre-existing failures, and no new ones.** `test_handoff_state_declared`,
 `test_observations_ledger` (×2), `test_pytest_collection`, `test_regime_prompt_invariants` (×2),
