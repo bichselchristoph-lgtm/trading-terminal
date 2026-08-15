@@ -245,20 +245,39 @@ does is his own chart comparison, not a measurement made from this tree.** `c018
 
 ## 7 — the tests
 
-**12 failed, 369 passed.** The baseline at `f2b05c2` in the same worktree was **12 failed, 342
-passed** — so **27 tests added, no regression, and the 12 failures are pre-existing and
-untouched.** They are: `test_evidence_carry_intact` (2), `test_export_scope_is_derived`,
-`test_handoff_state_declared`, `test_observations_ledger` (2, the UAT register missing rows for
-`013`/`014`/`015`), `test_regime_prompt_invariants` (2), `test_regime_snapshot_could_not_do`,
-`test_spec_pointers`, `test_sync_from_drive`, `test_uat_has_a_file`.
+**`verify.ps1` ran at 2026-08-15 09:35:28 +02:00, from `D:\Dev\momentum` at `03a94d8`.**
 
-**`037`'s done-note recorded 8 failed / 346 passed. Four more were already red before I touched
-anything**, and I did not diagnose them — they are outside `038` and several read state outside
-the repo. **Flagging the drift rather than absorbing it.**
+**No count is quoted here, deliberately** — `038`'s last action says not to, and the reason is
+sound: the design session reads `verify-output.txt` directly, and a number transcribed into this
+note is a second copy that can disagree with the first. **This departs from `CLAUDE.md`'s
+standing rule that the test result belongs in the done-note verbatim**, and it departs from it
+because the task file is more specific and the transport that made the general rule necessary now
+exists. Stated rather than done silently.
+
+**What I will assert, because it is a claim about my change rather than a summary of that
+output: no previously-passing test was made to fail.** The failures `verify.ps1` names are the
+same ones `037` recorded, and every one of them predates this task.
+
+**Two of them are worth a sentence each, because both are actionable and neither is mine:**
+
+- **`test_pytest_collection` is red on two stale worktrees**, `.claude/worktrees/024-subagent-roster`
+  and `.claude/worktrees/029-entry-point`, left behind by `024` and `029`. **I checked both: each
+  has a clean working tree and each branch is already merged into `main`**, so
+  `git worktree remove` on the pair destroys nothing and would turn this test green. **I did not
+  remove them** — they belong to other tasks, and removing another session's checkout is not
+  `038`'s business. `038` warns about exactly this and my own worktree is removed.
+- **`test_observations_ledger` wants UAT register rows for `013`, `014` and `015`.** `015` is
+  Christoph's `c015`, answered and retired. The register is `018`'s mechanism, not this task's.
 
 **The adoption gate fired on commit**, on all four new files plus the amended core module, and it
 was right to: a file that arrives by any route other than adoption or evidence carry goes red,
-including one this session wrote itself. Six rows added to `ADOPTION-LOG.md`.
+**including one this session wrote itself.** Six rows added to `ADOPTION-LOG.md`.
+
+**One measurement worth carrying**, since it is about method rather than about the suite: the
+worktree at `f2b05c2` and the main checkout disagree about which tests fail, because four checks
+read on-disk state that is gitignored — `records/`, the evidence files, the Drive mirrors. **A
+baseline taken in a worktree is not the baseline `verify.ps1` reports.** I took one in each, and
+the first reading of the difference was that four tests had newly broken. They had not.
 
 ---
 

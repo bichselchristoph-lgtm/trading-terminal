@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-14T14:08:01+02:00
+last_attempt : 2026-08-15T09:33:55+02:00
 
-last_success : 2026-08-14T14:08:01+02:00
+last_success : 2026-08-15T09:33:57+02:00
 
-outcome      : 0 new - up to date
+outcome      : 1 new - momentum-code-handoff/done/038-sessions-levels-units-windows.md
 
-head         : 03fb24ce94a7881ba1a3cb4e5902b04855476ad5 Track inbox 038, which arrived while 037 was being worked
+head         : 03a94d8ef9af9a15966cc4ad543590ef2b63d60d 038 done-note, plus the four inbox files the Drive sync landed
