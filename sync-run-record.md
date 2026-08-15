@@ -18,7 +18,7 @@ parsing.
 The three fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-15T12:02:04+02:00
+last_attempt : 2026-08-15T12:33:49+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
