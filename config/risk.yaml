@@ -1,0 +1,72 @@
+# config/risk.yaml — 039. The only place these numbers are declared.
+#
+# THE HEADLINE, AND IT REVERSES SPEC.md §7b.1 AS WRITTEN:
+#
+#   1R IS A FIXED DOLLAR AMOUNT DECLARED HERE. IT DOES NOT MOVE WITH NLV.
+#
+# §7b.1 argued the opposite at length -- "a fixed dollar risk would be the
+# defect", "drift is the entire function" -- and Christoph overruled it on
+# 2026-08-14, stated twice. The struck reasoning is kept in SPEC.md rather than
+# deleted, because a reader who remembers the old rule must be able to see that
+# it CHANGED rather than wonder which of two documents is current.
+#
+# The reason for the reversal is not that drift is harmless. It is that
+# Christoph wants sizing to change on SEQUENCES OF DAYS WON AND LOST, from an
+# explicit rules engine -- not from a number that drifts every time the account
+# marks to market. c015 §Risk 3. That engine is a later version and is not core.
+#
+# EVERY VALUE HERE IS A NAMED PARAMETER CARRYING ITS SOURCE. Nothing in this
+# file is fitted; every one of them is a preference or a ruling, and the two
+# classification thresholds render `unfitted` on screen.
+#
+# NOTHING READS THIS FILE YET, deliberately and visibly. 039 does no panel work
+# and builds no limit enforcement, so this is a declaration ahead of its
+# consumer. `tests/test_risk_config_matches_core.py` pins the classification
+# values against `core/risk/classify.py`'s defaults so the two cannot drift
+# apart while nobody is looking -- which is the failure mode of a config file
+# with no reader.
+
+# ---- 1R ---------------------------------------------------------------------
+# source: christoph_ruling_2026-08-14 (039 Part 1)
+risk_usd_per_trade:   500      # THE declaration. 1R. Does not move with NLV.
+
+# `risk_pct_default` and `risk_pct_cap` are REMOVED from the sizing path and are
+# deliberately absent from this file rather than present and ignored. A key that
+# is read by nothing but still sits in config is a key somebody sets, watches do
+# nothing, and then distrusts the whole file over.
+#
+# tws_order/ keeps its own percentage-of-NLV sizing and MUST NOT lose it -- that
+# behaviour is correct, tested, and belongs to a separate repo by standing
+# decision. See 039's done-note for what an absolute-risk mode there requires.
+
+# ---- classification (039 Part 2) --------------------------------------------
+# source: christoph_ruling_2026-08-14. UNFITTED -- both render as such.
+# They gate nothing: no limit depends on either, so they are classification
+# only. Answer them from the record, per Tenet 6.
+breakeven_band_r:     0.05     # ±this many R around zero is break even
+winner_min_r:         1.00     # at least this many R to count as a winner
+commissions:          net      # classification is net of commissions
+
+# ---- limits (039 Part 3) ----------------------------------------------------
+# EVERY ONE OF THESE IS A LOSS LIMIT. There is no cap on winning trades and none
+# on gains -- v1.0 of 039 carried `winners_max_day: 2` and a later draft
+# proposed `r_gain_stop_day`; BOTH ARE REMOVED. A count cap cannot tell a 15R
+# morning from a lucky scratch, and a gain cap would stop trading for the day
+# after +15R by 09:35. Christoph, 2026-08-14: "Some trades run 1:15, especially
+# wins, and closing this trade first thing on open might lock me out of a good
+# day."
+#
+# Reaching any one empties the TRADE panel with the reason AND the config key
+# that set it. The lock blocks staging and nothing else.
+trades_max_day:       5        # total trades, all four classes
+losses_max_day:       2        # class L only
+losses_max_month:     12       # class L only
+r_max_loss_day:       -2.0     # R. LOSSES ONLY -- gains buy no room
+r_max_loss_month:     -6.0     # R. LOSSES ONLY
+daily_loss_usd:       -2000    # the safety net, not a second risk rule
+monthly_loss_usd:     -5000    # rolling calendar month
+
+# ---- reset ------------------------------------------------------------------
+# 09:30h ET, NOT midnight. A trade at 20:00h belongs to the day that is ending.
+# US/Eastern via zoneinfo, never machine locale -- the workspace convention.
+session_reset_et:     "09:30"
