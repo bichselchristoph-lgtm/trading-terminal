@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T12:05:03+02:00
+last_attempt : 2026-08-15T12:40:46+02:00
 
-last_success : 2026-08-15T12:05:03+02:00
+last_success : 2026-08-15T12:40:46+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/045-workflow-engine.md, momentum-code-handoff/inbox/045-for-code-task-workflow-engine.md
+outcome      : 2 new - momentum-code-handoff/done/046-permission-policy.md, momentum-code-handoff/inbox/046-for-code-task-permission-policy.md
 
-head         : 3c5301bdf119ea00af3d786396986061191b1342 045: do not backtick a generated path in CLAUDE.md
+head         : 11ca125535f6ecb4111e205013b01bbbc06e3835 046 part 4: verify.ps1 does not parse under Windows PowerShell 5.1
