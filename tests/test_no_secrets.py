@@ -322,6 +322,28 @@ def test_no_account_identifiers(label: str, pattern: re.Pattern) -> None:
     )
 
 
+#: 046. The one config file under `.claude/` that may be tracked: the shared
+#: permission policy, which has to be committed or a clone does not inherit it.
+#:
+#: **Restated here rather than imported from
+#: `tests/test_claude_dir_stays_ignored.py`, deliberately.** That file owns the
+#: SCOPE rule (*only these paths may be tracked*); this one owns the CREDENTIAL
+#: rule (*no config file is tracked*). The docstring below says in as many words
+#: that they are not duplicates and neither should be quietly removed — and
+#: importing the constant would make one depend on the other, so relaxing the
+#: scope rule would silently relax this one too. Two guards, two literals.
+CLAUDE_POLICY_FILE = ".claude/settings.json"
+
+
+def _is_claude_config(path: str) -> bool:
+    """A tracked path under `.claude/` that is a config file, and not the one
+    exempt policy. **Case-insensitive on the extension AND on the exemption** —
+    `settings.LOCAL.json` must not slip past a lowercase comparison."""
+    if path.lower() == CLAUDE_POLICY_FILE.lower():
+        return False
+    return path.lower().endswith((".json", ".yaml", ".yml", ".env"))
+
+
 def test_no_claude_config_file_is_tracked() -> None:
     """**No `.json` under `.claude/` is committed, at any depth.** M001 §6.
 
@@ -348,13 +370,42 @@ def test_no_claude_config_file_is_tracked() -> None:
     import subprocess
     tracked = subprocess.run(["git", "ls-files", "--", ".claude"], cwd=REPO,
                              capture_output=True, text=True, check=True).stdout.split()
-    configs = [p for p in tracked if p.lower().endswith((".json", ".yaml", ".yml", ".env"))]
+    configs = [p for p in tracked if _is_claude_config(p)]
     assert not configs, (
         f"config files are tracked under .claude/: {configs}\n\n"
         "That is the shape that held a live Databento key in the predecessor tree. "
         ".gitignore\ndoes not untrack a file already in the index -- use `git rm "
         "--cached`, and if it ever\nheld a credential, rotate it: it is in the "
-        "history and on the remote.")
+        "history and on the remote.\n\n"
+        f"The ONLY exempt path is {CLAUDE_POLICY_FILE} (046), and the exemption is "
+        "an exact\nfilename. If you are trying to commit settings.local.json, that "
+        "is the file the\nrule exists for.")
+
+
+def test_the_config_rule_still_catches_the_file_it_exists_for() -> None:
+    """**046's exemption, shown not to have opened a hole.**
+
+    One exact filename was exempted above so the shared permission policy could
+    be committed. **`settings.local.json` differs from it by one word**, it is
+    where a machine-local secret naturally goes, and it is the file that held the
+    predecessor's live Databento key.
+
+    Asserted against the same predicate the real check calls, so this cannot
+    drift from it.
+    """
+    assert not _is_claude_config(CLAUDE_POLICY_FILE), (
+        f"{CLAUDE_POLICY_FILE} is not exempt, so 046's policy cannot be committed")
+    for caught in (".claude/settings.local.json",
+                   ".claude/settings.LOCAL.json",
+                   ".claude/agents/settings.json",
+                   ".claude/nested/settings.json",
+                   ".claude/mcp.json",
+                   ".claude/config.yaml",
+                   ".claude/config.yml",
+                   ".claude/.env"):
+        assert _is_claude_config(caught), (
+            f"{caught} is NOT caught by the config rule. 046 exempted exactly one "
+            f"filename;\nanything broader readmits the shape that held a live key.")
 
 
 def test_the_walk_reaches_a_planted_key_in_the_roster(tmp_path: Path) -> None:
