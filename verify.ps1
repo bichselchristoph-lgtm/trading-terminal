@@ -231,8 +231,13 @@ if (-not (Test-Path $runRecord)) {
     Say ("                    outcome      " + $(if ($rOut.Success) { $rOut.Groups[1].Value } else { 'CANNOT COMPUTE: no outcome line' }))
 
     if ($rSuc.Success -and $rSuc.Groups[1].Value -ne 'never') {
-        [datetimeoffset]$tmp = [datetimeoffset]::MinValue
-        if ([datetimeoffset]::TryParse($rSuc.Groups[1].Value, [ref]$tmp)) { $lastSuccessAt = $tmp }
+        # **Renamed from $tmp under 045.** verify.ps1 used that one name for two
+        # unrelated things -- a temp SCRIPT path in section 4 and this datetime
+        # scratch -- so a guard asserting that every $tmp* comes from the system
+        # temp directory read this line as a violation. One name, two meanings,
+        # in a script whose own test inspects it by name.
+        [datetimeoffset]$parsedAt = [datetimeoffset]::MinValue
+        if ([datetimeoffset]::TryParse($rSuc.Groups[1].Value, [ref]$parsedAt)) { $lastSuccessAt = $parsedAt }
     }
     Say ''
 }
@@ -433,6 +438,35 @@ if (-not (Test-Path $syncConfig)) {
     }
 }
 
+
+# 045 Part 5. **`waiting in Drive` is the point, and it is deliberately NOT a
+# clock.**
+#
+# "Last success two hours ago" is unalarming, and it reads the same on a Sunday
+# as on a Thursday. **"Four files are in Drive that are not in the tree" means
+# the same thing on both days, and it goes to zero exactly when the problem is
+# gone.** On 2026-08-15 four UAT files sat in `momentum-christoph-open` while
+# `christoph/open/` held one `.gitkeep`, and the age of the last success said
+# nothing about it -- the sync had run, successfully, over a pair that had
+# nothing waiting at the time.
+#
+# **AN UNREACHABLE SOURCE IS ITS OWN LINE AND MUST NEVER READ AS `0 waiting`.**
+# Those are opposite facts: one says the pipe is clear, the other says the pipe
+# is gone.
+$syncCfg = Join-Path $repo 'config\sync.yaml'
+$waitTool = Join-Path $repo 'tools\waiting.py'
+if (-not (Test-Path $syncCfg)) {
+    Say '  waiting in Drive  CANNOT COMPUTE: config/sync.yaml is missing'
+} elseif (-not (Test-Path $waitTool)) {
+    Say '  waiting in Drive  CANNOT COMPUTE: tools/waiting.py is missing'
+} else {
+    # **The count lives in tools/waiting.py so it can be tested by RUNNING it.**
+    # 045: a static check would pass forever against a verify.ps1 that had
+    # stopped counting, which is this defect exactly. Embedding the logic here
+    # would have made it unreachable from pytest.
+    & $python $waitTool $syncCfg 2>&1 | ForEach-Object { Say "  $_" }
+}
+
 # --- 7. worktrees -----------------------------------------------------------
 Section 7 'WORKTREES — what is still checked out beside the main tree'
 
@@ -542,6 +576,40 @@ if (Test-Path -LiteralPath $wtRoot) {
     }
 }
 
+# --- 8. NOW.md, rewritten from the tree ------------------------------------
+Section 8 'NOW — rewritten from the tree'
+
+# 045 Part 3. **THE SECOND WRITE THIS SCRIPT MAKES, and it is named here for the
+# same reason `verify-output.txt` is: a reader who finds an unexplained write is
+# right to distrust the rest of the file.**
+#
+# `claude/NOW.md` is GITIGNORED, like `verify-output.txt`, and that is a decision
+# rather than an oversight. A tracked generated file would dirty the tree on
+# every verify run -- section 2 would report it forever -- and three sessions
+# regenerating it would collide on a file whose entire content is derivable.
+# **Nothing is lost: it can be rebuilt from the tree at any moment, which is the
+# whole claim it makes about itself.**
+$nowTool = Join-Path $repo 'tools\now.py'
+if (-not (Test-Path $nowTool)) {
+    Say '  CANNOT COMPUTE: tools/now.py is missing'
+} else {
+    $nowOut = & $python $nowTool $repo 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        # A `depends:` cycle refuses rather than rendering. Printed, not swallowed.
+        Say '  NOT REWRITTEN — the derivation refused:'
+        @($nowOut) | ForEach-Object { Say "    $_" }
+    } else {
+        $nowFile = Join-Path $repo 'claude\NOW.md'
+        if (Test-Path $nowFile) {
+            $inBlock = $false
+            foreach ($line in (Get-Content -LiteralPath $nowFile)) {
+                if ($line -match '^```') { $inBlock = -not $inBlock; continue }
+                if ($inBlock) { Say "  $line" }
+            }
+        }
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Say ''
@@ -561,7 +629,7 @@ if ($null -ne $suiteSeconds) {
     }
 }
 Say ''
-Say 'verify.ps1 states seven facts and draws no conclusion from them.'
+Say 'verify.ps1 states eight facts and draws no conclusion from them.'
 Say 'The reading belongs to the design session.'
 
 # --- the file ---------------------------------------------------------------

@@ -13,6 +13,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import re
+
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -80,13 +82,38 @@ def test_verify_ps1_still_modifies_nothing_else(forbidden: str) -> None:
     script = (REPO / "verify.ps1").read_text(encoding="utf-8")
     code = "\n".join(l for l in script.splitlines() if not l.lstrip().startswith("#"))
     if forbidden == "Remove-Item":
-        # The section-4 temp file is removed from the SYSTEM temp directory, not
-        # from the tree. Allowed, and pinned to that one call so a second one
-        # cannot hide behind this exemption.
-        assert code.count("Remove-Item") == 1, (
-            "more than one Remove-Item in verify.ps1. The only permitted one clears "
-            "the section-4 rehash script from the system temp directory.")
-        assert "Remove-Item $tmp" in code
+        # Temp scripts are removed from the SYSTEM temp directory, not from the
+        # tree. Allowed — **and asserted by SHAPE rather than by count.**
+        #
+        # This used to read `code.count("Remove-Item") == 1`, pinned to the
+        # section-4 rehash cleanup. 045 added a second temp script for the
+        # `waiting in Drive` count and the test went red on a change that broke
+        # nothing it exists to protect. **A count is the wrong assertion twice
+        # over**: it blocks a legitimate second temp cleanup, and it would happily
+        # permit a single `Remove-Item` pointed at a repo path.
+        #
+        # What matters is the TARGET. Every removal must name a `$tmp*` variable,
+        # which is only ever assigned from `[System.IO.Path]::GetTempPath()`.
+        removals = [l.strip() for l in code.splitlines() if "Remove-Item" in l]
+        assert removals, "the temp-file cleanup has gone missing"
+        for line in removals:
+            assert re.search(r"Remove-Item \$tmp\w*", line), (
+                f"verify.ps1 removes something that is not a temp script: "
+                f"{line!r}. The exemption is for files this script wrote to the "
+                f"SYSTEM temp directory, never for anything in the tree.")
+        # And every temp path this script builds comes from the system temp
+        # directory. **Asserted over the ASSIGNMENTS that build a temp script
+        # path**, matched on `Join-Path` so the check cannot be satisfied by an
+        # unrelated variable that merely starts with the same three letters —
+        # which is what an earlier cut of this check did, reporting a false
+        # failure against a correct script.
+        builds = [l.strip() for l in code.splitlines()
+                  if re.search(r"\$tmp\w*\s*=", l)]
+        assert builds, "no temp script path is built; the removals above have no source"
+        for line in builds:
+            assert "GetTempPath" in line, (
+                f"a temp path is built outside the system temp directory: "
+                f"{line!r}")
         return
     assert forbidden not in code, (
         f"verify.ps1 contains {forbidden!r}. It reports on the tree and must not "

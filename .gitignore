@@ -86,3 +86,8 @@ secrets.yaml
 
 .DS_Store
 Thumbs.db
+
+# 045 Part 3. Derived from the tree by tools/now.py on every verify.ps1 run.
+# Tracked would mean a dirty tree after every run and three sessions colliding
+# on a file whose whole content is recomputable.
+claude/NOW.md
