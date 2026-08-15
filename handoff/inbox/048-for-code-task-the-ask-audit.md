@@ -68,6 +68,59 @@ session.** A task file exists to route a decision to whoever may take it, and he
 
 ---
 
+## Deletion cannot be scoped by path — MEASURED — so the fix is upstream
+
+**The obvious way to settle half this audit is to stop classifying `rm` and `Remove-Item` by
+command and start scoping them by path: deny deletion under `records/`, `.claude/worktrees/`,
+`christoph/` and outside `D:\Dev\momentum`, allow it everywhere else in the repo. That is the
+right shape and the settings format cannot express it.**
+
+**Two probes, 2026-08-15, against the live session:**
+
+| rule placed in `deny` | command run | result |
+|---|---|---|
+| `Bash(rm -f D:/Dev/momentum/.probe-deny/a.txt)` — **exact command string** | that exact command | **BLOCKED**, file survived |
+| `Bash(rm //d/Dev/momentum/.probe-deny/**)` — **path glob** | `rm -f D:/Dev/momentum/.probe-deny/b.txt` | **RAN. File deleted.** |
+
+**Both rules were in the same `deny` array, in the same well-formed file, in the same session.
+One blocked and one matched nothing.** A `Bash(...)` specifier is a **command-string prefix**;
+only the file tools — `Read`, `Edit`, `Write` — take **path patterns**. A path written inside a
+`Bash(...)` rule is read as literal command text, so it matches a command that begins with those
+characters and nothing else.
+
+**This is `OBS-067`'s shape a third time: the rule reads as a protection and is absent.** It
+would sit in the policy looking exactly like the rule beside it that works.
+
+**And three further reasons it could not work even if the syntax existed**, worth stating so
+nobody re-attempts it: a relative path defeats it, `cd` first defeats it, and **`allow` already
+contains a general-purpose interpreter** — `Bash(C:/venvs/trading/Scripts/python.exe:*)` — which
+can delete anything on the disk and which no command-string rule can see into.
+
+### So the fix is not a rule. It is to stop creating the paths.
+
+**Most `Remove-Item` prompts today are for temp directories created inside `D:\Dev\momentum`.**
+The prompt is not protecting anything — it is the cost of scratch having been put somewhere it
+should never have been, and every one of those prompts trains the habit of approving a deletion
+inside the repo.
+
+> **Tools and probes write scratch to `$env:TEMP`. Never into the repository.**
+
+**Applies to `tools/*.py`, every test that materialises a directory, every ad-hoc probe, and this
+audit's own probes.** If nothing creates a temp path inside the tree, deletion inside the tree
+stops being routine — and the `ask` prompts that remain are about real files, which is the only
+state in which a prompt carries information.
+
+**The session that wrote this task demonstrated the anti-pattern while measuring it**, creating
+`.probe-deny/` inside the repo rather than under `$env:TEMP`. That is the evidence, not an
+apology: the wrong location is the path of least resistance even for someone writing the rule
+against it.
+
+**What to do in the audit:** leave `rm`, `rmdir`, `mv`, `Remove-Item`, `Move-Item` and the
+aliases in `ask` — that is the fallback and it is already in place — **and check the tree for
+tools and tests that create scratch inside it.** Anything found is the real finding.
+
+---
+
 ## The work
 
 **Go through `.claude/settings.json`'s `ask` list entry by entry.** For each, answer one question
