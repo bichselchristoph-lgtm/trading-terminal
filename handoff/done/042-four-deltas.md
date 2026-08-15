@@ -197,8 +197,18 @@ widened by whoever next needs a colour, and that is how §4.1's predecessor fill
 
 ## 7 — test results
 
-**Full suite in `D:\Dev\momentum` after the merge:** see §8 — `verify.ps1` ran as the last
-action and its output is not pasted, per `042`.
+**Full suite in `D:\Dev\momentum` after the merge:**
+
+```
+8 failed, 423 passed, 1 warning in 31.72s
+```
+
+**431 collected, of which 9 are this task's** — 8 in `core/tests/test_opening_range_windows.py`
+and 1 added to `test_rendered_rows_declare_basis_and_unit.py`, all parametrised cases counted.
+The tree stood at 422 / 8 / 414 after `039`. **The failure count did not move**, and the eight
+are the tree's standing failures, unchanged.
+
+`verify.ps1` ran as the last action and its output is not pasted, per `042`.
 
 **In the worktree, before the merge: `11 failed, 420 passed`.** Eight are the tree's standing
 failures and **three are worktree artefacts** — `test_evidence_carry_intact` (×2, the CRLF
