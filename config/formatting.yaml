@@ -1,0 +1,69 @@
+# Number formatting — `SPEC.md` §4.0a, *"one function, and its precision comes
+# from config"*. 038 Part 2 adds the UNITS; the precisions below are §4.0a's own
+# table, moved out of the renderer where they were hardcoded.
+#
+# **Precision is a SETTING and belongs here. A session basis is NOT and does
+# not** — it is a fact about what an indicator is, and it lives as a constant
+# beside the indicator's definition in `core/indicators/context.py`. 038 Part 3
+# rules on that explicitly, and the two halves of the distinction are deliberately
+# visible from both sides: this file says what a reader may sensibly change, and
+# that file says what they may not.
+#
+# Before 038 every context value went through one hardcoded `f"{value:,.2f}"`,
+# which is why `ADR used` and `round` rendered `67.00` and `47.00` where §4.0a
+# requires one digit for a ratio and none for a count.
+
+units:
+
+  dollar:
+    decimals: 2
+    prefix: "$"
+    # §4.0a: prices carry 2 decimals, and **4 below $1.00** — a sub-dollar name
+    # moves in increments that 2 decimals cannot show at all.
+    decimals_below_one: 4
+    note: >-
+      Prices, distances and dollar ranges. 038 Part 2 requires the `$` prefix:
+      a bare 48.07 on a panel that also carries ADR units and multiples is a
+      number whose kind the reader has to infer.
+
+  percent:
+    decimals: 1
+    suffix: "%"
+    note: >-
+      §4.0a, one decimal. **The referent is named in the row's sample, never
+      omitted** — 038 Part 2: `78% of $1.29`, because a bare percentage is a
+      ratio with its denominator hidden.
+
+  adr:
+    decimals: 1
+    suffix: " ADR"
+    note: >-
+      A distance in ADR units. §4.0a groups this with ratios at one decimal.
+      ADR normalises by the name's own daily range, which is what makes two
+      symbols comparable where a percentage would not.
+
+  multiple:
+    decimals: 1
+    suffix: "×"
+    note: >-
+      Ratios and multiples. §4.0a, one decimal. **The baseline is named in the
+      sample** — 038 Part 2 is explicit that `6.1×` alone repeats the `12.4M`
+      complaint.
+
+  shares:
+    decimals: 0
+    suffix: " sh"
+    # §4.0a: *whole, thousands-separated; abbreviated above 1M*.
+    abbreviate_above: 1000000
+    abbreviated_decimals: 1
+    note: >-
+      Share counts. The pre-038 renderer produced `18,119,366.00` — decimals on
+      a share count, and unabbreviated where §4.0a calls for `18.1M sh`.
+
+  count:
+    decimals: 0
+    suffix: " levels"
+    note: >-
+      A count of things, whole. Carries its noun because a bare integer on a
+      price rail reads as a price: `round` rendered `47.00` beside PDH and ORL
+      on a 733 instrument, and 47 is not a round level for anything near 733.

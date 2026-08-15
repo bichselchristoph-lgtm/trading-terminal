@@ -984,11 +984,146 @@ Making it uniform would be wrong in both directions, and the fetch code must not
 | Indicator | Extended hours? | Why |
 |---|---|---|
 | **Session VWAP, cumulative volume, volume profile, cumulative delta** | **included** | The pre-market participants set the level |
-| **ADR%, the 10/20/50 SMA stack** | **excluded — and structurally, not by choice** | These come off **daily** bars, and on TradingView the extended-hours toggle is labelled *"Extended Hours (Intraday only)"* — it provably cannot affect a daily bar. TC2000, Kullamägi's own platform, is the same: *"extended hours data only appears on intraday charts."* **The convention is RTH-only because both platforms make anything else impossible**, so do not expect a rationale for it to exist ([TradingView](https://www.tradingview.com/pine-script-docs/v4/essential/extended-and-regular-sessions/) · [TC2000](https://help.tc2000.com/m/69401/l/861229-how-to-shade-pre-post-market-session-on-charts)) |
+| **ADR%, ADR $** | **excluded — 09:30–16:00 ET, and DEFINITIONALLY so** (`038`) | These come off **daily** bars, and on TradingView the extended-hours toggle is labelled *"Extended Hours (Intraday only)"* — it provably cannot affect a daily bar. TC2000, Kullamägi's own platform, is the same: *"extended hours data only appears on intraday charts."* **The convention is RTH-only because both platforms make anything else impossible**, **`038` supersedes the reasoning while keeping the conclusion.** The platform argument above is wrong on its facts — a daily bar *is* altered by the flag — but ADR is RTH for a better reason: **Average *Day* Range is the mean of each session's own `High − Low` and has NO gap term**, which is precisely what distinguishes it from ATR. So it measures the session actually traded. It will **not** match a TWS figure computed over 04:00–20:00 bars, and that is correct rather than a defect ([TradingView](https://www.tradingview.com/pine-script-docs/v4/essential/extended-and-regular-sessions/) · [TC2000](https://help.tc2000.com/m/69401/l/861229-how-to-shade-pre-post-market-session-on-charts)) |
+| **The 10/20/50 SMA stack** | **UNRULED by `038`; currently excluded** | `038` Part 1 rules on levels, on ADR and on ATR. **The SMA stack is none of those and nothing in `038` decides it**, so it keeps the RTH basis it already had. `036` proposed ETH and was superseded before that row was adopted — **changing it on the strength of a superseded document is the failure this project keeps having.** Declared as `SMA_BASIS` so a future ruling has one place to land |
 | **ATR — see §6b.1b-ATR below** | **depends on the timeframe it is computed on, and must be named** | ATR has *no session logic of its own.* It consumes the high/low/close of whatever bars it is given |
 | **Opening range (ORH/ORL)** | **excluded by definition** | The opening range is a regular-session object |
 | **RVOL(t) and its 20-session median curve** | **must match itself** | Whichever is chosen, today and the 20-session reference must use the same basis, or the ratio compares two different quantities |
 | **PMH / PML** | **pre-market only** | That is what they are |
+
+### 4.4a Sessions, levels, units and windows — the `038` rulings
+
+**Added 2026-08-14 under `038`, which supersedes `035`, `035a` and `036`.** Christoph's rulings, and they follow from what each object *is* rather than from preference. `036` reached the right answer for ADR and ATR and **the wrong one for `PDH`/`PDL`**; the reasoning below is the durable part.
+
+#### 4.4a.1 Six windows, and a level carries its window
+
+| Level | Window (ET) | |
+|---|---|---|
+| **PDC** | 16:00 closing auction | prior day close |
+| **PDO** | 09:30 opening auction | prior day open |
+| **PDH / PDL** | **09:30–16:00, prior day** | prior **regular** session extremes |
+| **PMH / PML** | 04:00–09:30, today | pre-market extremes |
+| **AMH / AML** | 16:00–20:00, prior day | post-market extremes |
+| **ORH / ORL** | 09:30–09:35, today | opening range |
+
+**Why `PDH`/`PDL` are RTH, and this is the part to record.** If they were ETH, then on any day the extreme occurred after 16:00, **`PDL` *is* `AML`** — one number, two names, and no way to tell which you are looking at. **A level that silently changes identity depending on when the extreme occurred is the canonical defect of this project.** Confirmed on Christoph's own QQQ chart for 2026-08-13: the session low of `722.34` sits in the early pre-market, so an ETH `PDL` would have been `PML` that day.
+
+**The distinction that makes the table consistent:**
+
+- **ADR is a statistic** — mean of session ranges, no gap term. **RTH, definitionally.**
+- **ATR is a statistic** — its true range spans the prior close, so the gap is the measurement. **ETH 04:00–20:00.**
+- **PDH/PDL/PMH/PML/AMH/AML are not statistics. They are levels.** They exist because price traded there, in a named window, **and the window is part of the name.**
+
+**ADR being RTH does not propagate to `PDL`; ATR being ETH does not either.** Different kinds of object.
+
+**A seventh window is coming.** The SEC approved Nasdaq's 23/5 proposal on 2026-04-10 targeting December 2026, and NSCC plans 24×5 clearing from 2026-06-28. **Structure the taxonomy so a seventh window can be added; build nothing for it** (`OBS-049`).
+
+#### 4.4a.2 A basis is declared in code, beside the definition — never in `config/`
+
+**This is the correction that supersedes `036`**, which put `use_rth` into a config file. **Do not.**
+
+**A setting is a choice. A basis is a fact about what the indicator is.** ADR is RTH by definition; a config key implies it could sensibly be otherwise and invites someone to flip it in a hurry. **Christoph's ruling: this is not a user setting in the terminal, now or in this slice.**
+
+Each indicator carries its basis as a **constant declared beside its own definition** — `core/indicators/context.py`, the `SessionBasis` type — and the value that reaches the request comes from that constant: **never from a literal at the call site, never from config.**
+
+**§4.4 says every setting lives in `config/`, once. A session basis is EXEMPT because it is not a setting**, and that exemption is stated here and in the code so that the next person does not move it into config for consistency and quietly turn a definition back into a preference. **An exemption that is not written down is an exemption that gets undone.**
+
+**Number PRECISION is a genuine setting and stays in config** — `config/formatting.yaml`, per §4.0a. The two halves of the distinction are deliberately visible from both sides.
+
+#### 4.4a.3 Every rendered value prints its basis or its anchor
+
+```
+    ADR%      1.6%  · 20 sessions, excl. today · 09:30-16:00 ET
+    ADR $     $11.83  · 20 sessions, excl. today · 09:30-16:00 ET
+    ATR14     $15.61  · Wilder RMA, n=14 · 04:00-20:00 ET
+    PDH       $727.25  · prior session · 09:30-16:00 ET
+    PDL       $723.55  · prior session · 09:30-16:00 ET
+    VWAP      $730.68  · bar-derived · 566 min · 04:00 anchor · 04:00-20:00 ET
+```
+
+**Without this the panel shows two volatility numbers four rows apart, on different sessions, and a reader compares them.** It took a UAT and four chart screenshots to settle what one field in the detail column answers permanently.
+
+**A value that carries its basis can be compared with something. A value that does not can only be argued about.**
+
+**A row whose basis is missing renders `— (no basis declared)`, never an unlabelled number.**
+
+#### 4.4a.4 Every value renders its unit
+
+**Christoph's ruling: all numbers need units. Always.**
+
+| Kind | Rule |
+|---|---|
+| Prices, distances, dollar ranges | **`$` prefix** |
+| Share counts | **`sh` suffix** |
+| Ratios / multiples | **`×` suffix, and the baseline named** — `6.1×` alone is the `12.4M` complaint again |
+| ADR distances | **both** — `+$0.25 · 0.19 ADR`. ADR is a dollar quantity used as a ratio |
+| Percentages | **name the referent** — `78% of $1.29`, not bare `78%` |
+| Times | **`HH:MMh` 24-hour, and `ET`** |
+
+**`ET` is not optional.** Christoph is in Cape Town, the levels mean nothing except in exchange time, and `034` lost four values to a UTC/ET slicing defect. **A bare clock time on this panel is the same defect wearing a different hat.**
+
+Precisions come from `config/formatting.yaml` (§4.0a). **One wording difference, recorded rather than silently resolved:** §4.0a's example renders a percentage as `2.8 %` with a space and `038` renders `78%` without. The implementation follows `038`.
+
+#### 4.4a.5 A level has a state, not only a distance
+
+**Distance says where it is. State says what happened to it.**
+
+| State | Meaning |
+|---|---|
+| `untested` | Price has not reached it today |
+| `gapped over` | **Price crossed it without trading through it** |
+| `traded through` | Price crossed it with trades at the level |
+| `reclaimed` | Crossed back from below to above |
+| `lost` | Crossed back from above to below |
+
+**`gapped over` is the strongest of these and the reason the row exists.** Nobody got the chance to exit there, so positions taken before the gap are still held. **A level traded through on volume is spent; a level jumped over is loaded.** `PDC` most of all — being above or below the institutional print is a different day.
+
+##### `clear for` — distance to the next claimed level
+
+```
+BREAKING  $48.55  flag high · yours 10:11h ET
+  overhead   $48.80  ORH     +$0.25   0.19 ADR
+             $49.60  PDH     +$1.05   0.81 ADR
+  underfoot  $48.20  PML     −$0.35   0.27 ADR
+  ▸ clear for 0.19 ADR
+```
+
+**One number: how far the move runs before it meets something.** 0.19 ADR clear is a muted breakout; 1.2 ADR clear is a different trade at the same entry price. **Symmetric, because a level just under a stop is a stop that gets run and then reverses.**
+
+**This REPLACES `room up` / `room down` rather than joining them.** Those measure room in the ADR *budget*; `clear for` measures room to the next obstacle. **Having both invites reading one as the other**, which is the defect this section is mostly about.
+
+**The lookahead cap is a threshold and renders `unfitted`** — suggested first three levels or 1.5 ADR, whichever comes first, but nothing is fitted until Christoph has watched it.
+
+**Specified, not built.** `038` changes no panel layout, so `room up` / `room down` are still rendered today.
+
+#### 4.4a.6 A window is a definition, and there are two of them
+
+**Specification only — tape components are not in core and `038` builds none of this.**
+
+**A tape reading states its window, its step, and its band, or it has no defined meaning.**
+
+**The rolling window — what is happening now.** At each step, every trade whose **exchange timestamp** falls in the interval from `now − W` to `now`, classified buyer- or seller-aggressive, summed per side. **Default `W = 60s`, stepped `5s`.**
+
+**Why stepped.** A 10 Hz repaint cap solves CPU and not readability. **A number changing ten times a second is unreadable even when it is cheap to draw** — that is Time and Sales in a smaller box. A 60s window stepped at 5s is twelve stable readings of the same measurement.
+
+- **The row states the step** — `60s window · stepped 5s`. It is up to 5s stale by construction and that must not be silent.
+- **Counts step; events do not.** A sweep is discrete and its *arrival* is the thing you want immediately. Sweep arrivals are exempt from the step.
+- **The step size is empirical and unfitted.** Answer it by replaying a captured session at 1s, 5s and 10s. **Research, not a slice.**
+
+**The anchored window — who has been winning, and for how long.** Anchored at the moment price **first entered the band around a level**, and running until it leaves.
+
+```
+at level since 09:52h ET · 19min · buyers 4.2M sh · sellers 4.1M sh · price +$0.02 · within ±0.02 ADR
+```
+
+**This is what absorption actually is.** Real absorption runs for many minutes; a 60s window is exactly the wrong length to see it. **The rolling window says the level is under pressure now; the anchored one says who has been winning.**
+
+- **The band is stated and is ADR-based**, not cents — `±0.02 ADR` transfers between a $4 name and a $700 one; `±$0.03` does not.
+- **Resets when price leaves the band beyond a threshold; re-anchors on return.** The reset threshold is unfitted.
+
+**What neither window can see, and the panel must not imply otherwise:** anything before the window opened; order *within* the window (340k buy then 95k sell renders identically to the reverse); and, for the rolling window, whether the volume was at the level at all — **which is precisely why the anchored window states its band.**
+
+**Bars are not units of time.** A window expressed in bars declares its bar size **and** its session, or it has no defined length — a 20-period MA spans three sessions on RTH bars and 1.25 on ETH. **Prefer the clock form wherever the quantity is really about time.** Nothing currently rendered is exposed to this (`OBS-050`).
 
 #### ATR is two different numbers, and the spec must name which
 
@@ -996,7 +1131,7 @@ Making it uniform would be wrong in both directions, and the fetch code must not
 
 | Name | Bars | Extended hours | Where it is used here |
 |---|---|---|---|
-| **`atr_d14`** | daily | **excluded, unchangeably** — ETH cannot alter a daily bar | The **3×ATR stop floor** for daily-close entries (§7b.2) · the tight-stop rule (0.25 ATR) |
+| **`atr_d14`** | daily | **INCLUDED — 04:00–20:00 ET.** ~~excluded, unchangeably — ETH cannot alter a daily bar~~ **Corrected 2026-08-14 under `038`, and the struck text was factually wrong**: IBKR returns different daily highs, lows and volumes for `useRTH=True` and `False`. Measured, not argued — Christoph's `013` UAT read `ATR14 13.14` against TWS's own daily ATR(14) of ≈`15.6`, **−16 %**. The true range spans the prior close, so **the gap IS the measurement** and it must come off the series whose close-to-close relationship is the real one | The **3×ATR stop floor** for daily-close entries (§7b.2) · the tight-stop rule (0.25 ATR) |
 | **`atr_i14`** | intraday, playbook timeframe | **included when extended hours is on** | Not currently consumed by any rule. Available, and must be requested with `useRTH=False` if it is wanted |
 
 **Both are legitimate; they are simply not interchangeable, and neither may be called "ATR" unqualified.** Pre-market bars have small individual ranges and large gaps *between* them, so an intraday ATR with ETH on moves in both directions relative to the RTH-only version depending on which effect dominates — **which is exactly why it cannot be substituted silently.**

@@ -456,9 +456,14 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         assert row in body, (
             f"the ATTACHED panel does not render {row!r}. attach() computed it "
             f"and the record dropped it, which is 034.\nATTACHED renders:\n{body}")
-    assert re.search(r"ADR%\s+[\d,]+\.\d\d", body), (
+    # **One decimal and a `%`, not two decimals and nothing** (038 Part 2 and
+    # Part 6 row 3). `SPEC.md` §4.0a puts percentages at one decimal; this
+    # assertion previously required `\.\d\d`, which is the pre-038 renderer's
+    # hardcoded `f"{value:,.2f}"` written into a test — so the test was holding
+    # the defect in place rather than catching it.
+    assert re.search(r"ADR%\s+[\d,]+\.\d%", body), (
         f"ADR% rendered without a number — a refusal where a value was "
-        f"measured:\n{body}")
+        f"measured, or without its unit:\n{body}")
     assert "· " in body, (
         f"a value rendered with no sample beside it. S010 requires the sample "
         f"on every rendered value, and a bare number is the defect this "

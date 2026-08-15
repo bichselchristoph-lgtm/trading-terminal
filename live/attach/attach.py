@@ -41,11 +41,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, Sequence
 
-from core.indicators.context import (Bar, Measured, adr_dollar, adr_pct,
-                                     adr_used, atr_d14, cumulative_volume,
-                                     extension_in_adr, level_rail, room_left,
-                                     rvol_at, rvol_curve, rvol_rel, sma,
-                                     vwap_from_bars)
+from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar, Measured,
+                                     PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
+                                     adr_dollar, adr_pct, adr_used, atr_d14,
+                                     cumulative_volume, extension_in_adr,
+                                     level_rail, room_left, rvol_at, rvol_curve,
+                                     rvol_rel, sma, vwap_from_bars)
 
 #: The three origins, recorded from day one **even though only `typed` exists.**
 #: `scanner` and `watchlist` arrive in later slices; recording the field now
@@ -79,7 +80,7 @@ class MarketData(Protocol):
     def resolve(self, symbol: str) -> Sequence[Contract]: ...
     def tick_slots_in_use(self) -> int: ...
     def cooldown_remaining_s(self, symbol: str) -> int: ...
-    def daily_bars(self, c: Contract) -> Sequence[Bar]: ...
+    def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]: ...
     def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]: ...
     def today_minutes(self, c: Contract) -> Sequence[Bar]: ...
     def sector_today_minutes(self, c: Contract) -> Optional[Sequence[Bar]]: ...
@@ -180,29 +181,75 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     intraday request must not blank ADR, which came from a different call."""
     out: dict[str, Measured] = {}
 
-    # --- request 1: dailies ------------------------------------------------
-    try:
-        dailies = list(md.daily_bars(c))
-    except Exception as exc:                       # noqa: BLE001
-        dailies = []
-        why = _reason(exc)
-        for k in ("ADR%", "ADR $", "ADR used", "room up", "room down",
-                  "ATR14", "ext 10", "ext 20", "ext 50"):
-            out[k] = Measured.absent(why)
+    # --- request 1: dailies, ONCE PER DISTINCT BASIS -----------------------
+    #
+    # **038 Part 1. This used to be one request at `use_rth=True` feeding ADR,
+    # the SMA stack, PDH/PDL and ATR14 alike** — and that is precisely how
+    # `ATR14` came to read `13.14` against a true ~`15.6`. ATR's true range
+    # spans the prior close, so the gap is the measurement, so it needs the ETH
+    # series; ADR has no gap term at all and is RTH by definition.
+    #
+    # **Memoised on the flag, not on the indicator.** Two indicators sharing a
+    # basis share the request — IBKR's pacing budget is ~60 historical requests
+    # per 10 minutes (§6b.1b) and an attach that issued one per indicator would
+    # spend it. But each indicator still ASKS with its own constant, so flipping
+    # one basis moves that indicator alone and cannot silently drag another with
+    # it.
+    _daily_cache: dict[bool, list[Bar]] = {}
+    _daily_failed: dict[bool, str] = {}
 
-    if dailies:
-        todays_open = dailies[-1].open
-        price = dailies[-1].close
-        pct = adr_pct(dailies)
+    def dailies_on(basis: SessionBasis) -> list[Bar]:
+        if basis.use_rth in _daily_cache:
+            return _daily_cache[basis.use_rth]
+        if basis.use_rth in _daily_failed:
+            return []
+        try:
+            bars = list(md.daily_bars(c, basis))
+        except Exception as exc:                   # noqa: BLE001
+            _daily_failed[basis.use_rth] = _reason(exc)
+            return []
+        _daily_cache[basis.use_rth] = bars
+        return bars
+
+    def daily_why(basis: SessionBasis) -> str:
+        return _daily_failed.get(basis.use_rth, "no daily bars")
+
+    rth_dailies = dailies_on(ADR_BASIS)
+    eth_dailies = dailies_on(ATR_BASIS)
+
+    # **ADR, ADR $, ADR used, room up/down — RTH.** Each row still refuses on
+    # its own; a failure on the ETH request must not blank ADR and vice versa.
+    if rth_dailies:
+        todays_open = rth_dailies[-1].open
+        price = rth_dailies[-1].close
+        pct = adr_pct(rth_dailies)
         dol = adr_dollar(pct, todays_open)
         up, down = room_left(price, todays_open, dol)
         out["ADR%"] = pct
         out["ADR $"] = dol
         out["ADR used"] = adr_used(price, todays_open, dol)
         out["room up"], out["room down"] = up, down
-        out["ATR14"] = atr_d14(dailies)
+    else:
+        why = daily_why(ADR_BASIS)
+        for k in ("ADR%", "ADR $", "ADR used", "room up", "room down"):
+            out[k] = Measured.absent(why)
+        dol = Measured.absent(why)
+        price = 0.0
+
+    # **The SMA stack is UNRULED by 038** and keeps the RTH basis it had. It asks
+    # with `SMA_BASIS` rather than reusing `rth_dailies` directly, so a future
+    # ruling changes one constant and nothing else.
+    sma_dailies = dailies_on(SMA_BASIS)
+    if sma_dailies:
+        sma_price = sma_dailies[-1].close
         for n in (10, 20, 50):
-            out[f"ext {n}"] = extension_in_adr(price, sma(dailies, n), dol)
+            out[f"ext {n}"] = extension_in_adr(sma_price, sma(sma_dailies, n), dol)
+    else:
+        for n in (10, 20, 50):
+            out[f"ext {n}"] = Measured.absent(daily_why(SMA_BASIS))
+
+    # **ATR14 — ETH.** The one value 038 moves.
+    out["ATR14"] = atr_d14(eth_dailies) if eth_dailies         else Measured.absent(daily_why(ATR_BASIS))
 
     # --- request 3: today, from the open -----------------------------------
     try:
@@ -242,13 +289,18 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
         yh, yl = md.year_high_low(c)
     except Exception:                              # noqa: BLE001
         yh = yl = None
-    prev_day = dailies[-2] if len(dailies) >= 2 else None
+    # **PDH/PDL come from the RTH dailies** (038 Part 1). On ETH bars `PDL`
+    # would be the prior session's extended-hours low — which is `AML`, a
+    # different level wearing PDL's name. Confirmed on QQQ 2026-08-13, where the
+    # ETH low of 717.37 sat in the early pre-market.
+    prior = dailies_on(PRIOR_DAY_BASIS)
+    prev_day = prior[-2] if len(prior) >= 2 else None
     premarket = [b for b in today if _clock(b.ts) < "09:30"]
     opening = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
     rail = level_rail(prev_day=prev_day, premarket=premarket, opening_range=opening,
                       vwap=out.get("VWAP", Measured.absent("no session bars")),
                       year_high=yh, year_low=yl,
-                      price=today[-1].close if today else (dailies[-1].close if dailies else 0.0),
+                      price=today[-1].close if today else (prior[-1].close if prior else 0.0),
                       adr_dol=out.get("ADR $", Measured.absent("no ADR $")))
     return out, rail
 

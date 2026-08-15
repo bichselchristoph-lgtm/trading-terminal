@@ -56,6 +56,10 @@ class Fake:
         self.contracts, self.slots, self.cooldown = list(contracts), slots, cooldown
         self.fail, self.sector, self.playbook = set(fail), sector, playbook
         self.calls: list[str] = []
+        #: Every `SessionBasis` a daily request was made with. 038's test 1
+        #: asserts against **the request actually issued**, not against the
+        #: constant merely existing.
+        self.basis_asked: list = []
 
     def _maybe(self, name: str) -> None:
         self.calls.append(name)
@@ -66,7 +70,21 @@ class Fake:
     def resolve(self, symbol): self._maybe("resolve"); return self.contracts
     def tick_slots_in_use(self): return self.slots
     def cooldown_remaining_s(self, symbol): return self.cooldown
-    def daily_bars(self, c): self._maybe("daily"); return dailies()
+
+    def daily_bars(self, c, basis):
+        """**Answers a DIFFERENT series per basis, on purpose** (038 Part 1).
+
+        A fake that returned the same bars for `use_rth=True` and `False` would
+        let the whole ADR-RTH/ATR-ETH split pass while the request carried the
+        wrong flag — the fixture would be agreeing with itself. The ETH series
+        carries a wider high/low, which is what extended hours actually does to a
+        daily bar and what `SPEC.md:999` wrongly said was impossible.
+        """
+        self._maybe("daily")
+        self.basis_asked.append(basis)
+        if basis.use_rth:
+            return dailies()
+        return dailies(hi=104.0, lo=98.0)
     def intraday_sessions(self, c): self._maybe("intraday"); return [minutes(30) for _ in range(20)]
     def today_minutes(self, c): self._maybe("today"); return minutes(30)
     def sector_today_minutes(self, c): return minutes(30) if self.sector else None
