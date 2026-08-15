@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T10:16:55+02:00
+last_attempt : 2026-08-15T10:31:27+02:00
 
-last_success : 2026-08-15T10:16:56+02:00
+last_success : 2026-08-15T10:31:27+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/039-risk-and-trade-classification.md, momentum-code-handoff/inbox/042-for-code-spec-four-deltas.md
+outcome      : 2 new - momentum-code-handoff/done/042-four-deltas.md, momentum-code-handoff/inbox/043-for-code-task-third-pair-and-two-instruments.md
 
-head         : 590519938316fecc4f81f840b849d1570046f30f 039 done-note: the real before-count, and how it was obtained
+head         : 4555500d34649297ef79152904e39678c75d2763 042 done-note: the after-count
