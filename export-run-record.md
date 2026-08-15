@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T12:49:59+02:00
+last_attempt : 2026-08-15T13:21:58+02:00
 
-last_success : 2026-08-15T12:49:59+02:00
+last_success : 2026-08-15T13:21:58+02:00
 
 outcome      : 1 new - momentum-code-handoff/inbox/048-for-code-task-the-ask-audit.md
 
-head         : 447b211d585274d2c0a0f8ab4205ff22a47b5662 048: the ask audit, written and deliberately not run
+head         : 272e2c4a8bf9ef4cb146ffeceb6ff91a1aa69498 048: path-scoped deletion denies do not bind, so the fix moves upstream
