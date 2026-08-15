@@ -12,6 +12,8 @@ class deliberately, which `test_the_sum_can_actually_fail` does.
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from core.risk.classify import (
@@ -81,9 +83,16 @@ def test_an_exact_edge_scratch_is_not_a_loser() -> None:
     because the parametrisation reads as coverage and this reads as the reason.
     """
     scratch = long_trade(9.95)
-    assert r_closed(scratch) < -0.05          # the raw arithmetic IS outside the band
+
+    # **UPDATED BY 044, and the change is the fix.** This line used to read
+    # `assert r_closed(scratch) < -0.05` with the comment *"the raw arithmetic
+    # IS outside the band"* — it asserted the DEFECT'S SYMPTOM as a standing
+    # fact, and it was true only because the arithmetic was float. 044 removes
+    # the float at the source, so the value is now exactly on the edge and the
+    # band's closure is what puts it in BE, not a tolerance bolted on afterwards.
+    assert r_closed(scratch) == Decimal("-0.0500")
     assert classify(scratch).trade_class is TradeClass.BREAK_EVEN
-    assert r_lost([classify(scratch)]) == 0.0
+    assert r_lost([classify(scratch)]) == 0
     assert tally([classify(scratch)]).losers == 0
 
 
@@ -131,15 +140,15 @@ def test_commissions_move_a_gross_scratch_into_a_loss() -> None:
     assert classify(gross).trade_class is TradeClass.BREAK_EVEN
 
     net = long_trade(10.05, commissions=2.0)
-    assert classify(net).r_closed == pytest.approx(0.03)
+    assert classify(net).r_closed == Decimal("0.0300")
     assert classify(net).trade_class is TradeClass.BREAK_EVEN  # 0.03R still inside
 
     heavier = long_trade(10.05, commissions=7.0)
-    assert classify(heavier).r_closed == pytest.approx(-0.02)
+    assert classify(heavier).r_closed == Decimal("-0.0200")
     assert classify(heavier).trade_class is TradeClass.BREAK_EVEN
 
     heaviest = long_trade(10.05, commissions=12.0)
-    assert classify(heaviest).r_closed == pytest.approx(-0.07)
+    assert classify(heaviest).r_closed == Decimal("-0.0700")
     assert classify(heaviest).trade_class is TradeClass.LOSER
 
 
@@ -155,9 +164,14 @@ def test_zero_commission_reduces_to_the_formula_039_states() -> None:
     implemented and this pins the two together at the point where they must
     agree.
     """
-    for exit_price in (8.5, 9.7, 10.0, 10.4, 11.9):
-        stated = (exit_price - 10.0) / (10.0 - 9.0)
-        assert r_closed(long_trade(exit_price)) == pytest.approx(stated)
+    # **The stated form evaluated in Decimal too.** Computing `stated` in float
+    # and comparing with `approx` would re-admit the very arithmetic 044 removed,
+    # and would pass whether or not the implementation had been fixed.
+    for exit_price in ("8.5", "9.7", "10.0", "10.4", "11.9"):
+        stated = ((Decimal(exit_price) - Decimal("10.0"))
+                  / (Decimal("10.0") - Decimal("9.0")))
+        assert r_closed(long_trade(float(exit_price))) == stated.quantize(
+            Decimal("0.0001"))
 
 
 # ---- the refusal -----------------------------------------------------------

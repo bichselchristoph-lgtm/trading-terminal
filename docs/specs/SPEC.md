@@ -288,6 +288,60 @@ A cell that is fresh, present and full-confidence renders as a plain number. **A
 
 The distinction is **falsifiable now vs. fitted later**. `stop 1.4 ADR · ceiling 1.0` is a rule against a declared threshold with the measurement shown — checkable today. `RISK-OFF`, `A+`, `HALF SIZE`, a `TRUE` on `PullbackDefending` — each is a claim that a cut point predicts something, and **no cut point in this system has been fitted on this trader's data**. Three of the six grader ladders were fitted on synthetic tape; the rest are practitioner lore (§6.5).
 
+### 4.1a Link colour — a claim about two things, never about one
+
+**Added 2026-08-15 under `044`. Christoph's ruling. §4.1 is unchanged, and nothing is bound to `gapped over`, to `clear for`, or to any other state.**
+
+> **A link colour ties a value to the line that explains it. It says these two are the same thing. It says nothing about whether either is good.**
+
+**Why this survives the no-verdict conviction.** §4.1 binds each colour to a *kind* — a level state and a distance are none of them, so the rule offered them **zero** colours rather than one, and `042` correctly stopped rather than taking one. **A verdict is a claim about ONE thing. A link is a claim about TWO**, and it cannot be read as a judgment because **it never appears alone.**
+
+#### Three constraints, and they are the rule
+
+1. **The link colour carries no meaning on its own.** Seeing it tells you only that there is more below.
+2. **It is always used in pairs or groups. A linked token with no partner on screen is a defect** — `live/tui/links.py` refuses the render, and `live/tests/test_link_colour_never_appears_alone.py` holds it.
+3. **It never replaces a kind colour.** A refusing row stays amber. The link colours only the token that names *which* row the explanation belongs to.
+
+#### What it replaces
+
+**Footnote marks, everywhere.** No `*`, no dagger, no numbered footnotes, in any panel. **The shared token is the legend.**
+
+```
+▲ above  PMH [PML] · ORL5 · LOD · [PDL] PDO [PDC] [PDH] · PWL PWO
+         ▸ clear for 1.4ADR
+         [PML] $722.80 gapped over
+         [PDL] $722.92 reclaimed 11:04:12h ET
+         [PDC] $726.80 gapped over
+         [PDH] $727.25 lost 13:38:40h ET
+```
+
+*(square brackets stand for the link colour; they are not rendered)*
+
+**Notes appear in the same order as the entries they belong to.** Nothing depends on it — the repeated token already pairs them — but it removes a scan.
+
+> **The illustration above uses square brackets and the implementation does not.** `[ NOT BUILT ]` is already a rendered refusal in `live/tui/grammar.py`, so taking the notation literally made the grammar's own marker read as an orphaned link — measured, on the first run of the guard. The internal marker is `U+27E6`/`U+27E7`; **the brackets here stay illustrative, exactly as this section says they are.**
+
+#### It applies to every panel, not only the rail
+
+Any value with an explanation line: a basis note, a caveat, a refusal reason, a window definition.
+
+```
+TRADE      [LCC5] the current candle is still forming — this stop
+                  can only widen, and the share count only fall
+ATTACHED   [VWAP] bar-derived, anchored 04:00h ET — tick-derived is
+                  unavailable (splice unverified)
+TAPE   [at level] anchored when price first entered ±0.02ADR of
+                  $733.39; resets if it leaves by more than that
+```
+
+**`unavailable (splice unverified)` stays amber. Only `[VWAP]` is linked.**
+
+#### The hue
+
+**Violet.** It is unused by §4.1. **One hue for all pairs on a panel** — four linked pairs share it. **If that proves too many to read, the fix is fewer notes, not more colours**: a second link hue would immediately mean something, and meaning is the thing a link is forbidden to carry.
+
+**`c024` confirms it is legible at 209×54 in Christoph's palette. If violet is not legible, that is a finding and a question — not a licence to reuse green.**
+
 #### The four-colour grammar
 
 An earlier draft used green for *inside a declared threshold* and red for both *rule failed* and *system refusing*. **That merged two different questions under one colour and overloaded a third.** Compliance with a preference you invented is not the same event as a claim about the market coming true, and neither is the same as a value being missing. The grammar separates them, and it maps onto the component kinds (§4.2) rather than onto how alarming something feels:
