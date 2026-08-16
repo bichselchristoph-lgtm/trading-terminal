@@ -39,6 +39,44 @@ VALID_STATUSES = ("CURRENT", "SUPERSEDED", "HISTORICAL")
 STATUS_LINE = re.compile(r"\*\*STATUS\*\*\s+(\w+)")
 BY_LINE = re.compile(r"\*\*by\*\*\s+`([^`]+)`")
 
+#: How many lines of a spec the STATUS header must appear within.
+HEAD_LINES = 10
+
+
+def head(text: str, n: int = HEAD_LINES) -> str:
+    """The first `n` lines a *reader* sees, which is not the first `n` lines of
+    the file.
+
+    **Added 2026-08-16 under 052.** That task prepends a 21-line HTML comment to
+    every dev spec -- the ruling that product behaviour is owned by the product
+    spec set in Drive, not by this document. The comment renders as nothing, so
+    the STATUS header is still the first thing on screen; counted as raw lines
+    it had moved to line 23, and both this test and
+    `test_resupplied_docs_are_repaired.py::test_invariant_1` went red.
+
+    **The window is widened by skipping leading comment blocks, not by raising
+    the number.** Raising it to 40 would let a spec bury its STATUS under 39
+    lines of prose, which is the thing the header exists to prevent. A document
+    that arrives with no STATUS at all still fails exactly as before -- that is
+    the invariant, and nothing here relaxes it.
+
+    Only *leading* comments are skipped, and only until the first line of real
+    content. A comment further down the file does not extend the window.
+    """
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip():
+            i += 1
+            continue
+        if lines[i].lstrip().startswith("<!--"):
+            while i < len(lines) and "-->" not in lines[i]:
+                i += 1
+            i += 1  # consume the closing line
+            continue
+        break
+    return "\n".join(lines[i:i + n])
+
 
 def spec_docs() -> list[Path]:
     return sorted((REPO / "docs" / "specs").rglob("*.md"))
@@ -79,8 +117,8 @@ def test_every_spec_declares_status() -> None:
     missing, bad = [], []
     for p in spec_docs():
         rel = p.relative_to(REPO).as_posix()
-        head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:10])
-        m = STATUS_LINE.search(head)
+        hd = head(p.read_text(encoding="utf-8"))
+        m = STATUS_LINE.search(hd)
         if not m:
             missing.append(rel)
         elif m.group(1) not in VALID_STATUSES:
@@ -96,17 +134,44 @@ def test_every_spec_declares_status() -> None:
     )
 
 
+def test_the_head_window_skips_only_comments() -> None:
+    """The 052 widening must not become a way to bury a STATUS header.
+
+    Three cases, and the third is the one that matters: **prose does not extend
+    the window.** A spec with 21 lines of text before its STATUS is still red,
+    exactly as it was before 2026-08-16. Only a leading HTML comment -- which
+    renders as nothing, so the header is still first on screen -- is skipped.
+    """
+    header = "> **STATUS** CURRENT · **date** 2026-08-16"
+
+    plain = f"# Title\n\n{header}\n"
+    assert STATUS_LINE.search(head(plain)), "an ordinary spec head must still be found"
+
+    commented = "<!--\n" + "ruling\n" * 19 + "-->\n\n" + plain
+    assert STATUS_LINE.search(head(commented)), (
+        "a leading HTML comment must not push the STATUS header out of the window; "
+        "that is the whole point of the 052 widening"
+    )
+
+    buried = "# Title\n" + "filler prose\n" * 21 + header + "\n"
+    assert not STATUS_LINE.search(head(buried)), (
+        "PROSE MUST NOT EXTEND THE WINDOW. If this passes, the header can be buried "
+        "under twenty lines of text and nobody reading the top of the file sees it -- "
+        "which is the failure the STATUS convention exists to prevent."
+    )
+
+
 def test_every_superseded_spec_names_a_resolving_by() -> None:
     """`SUPERSEDED` requires `by`, and the `by` must resolve. A supersession
     pointing at nothing is indistinguishable from an unexplained deletion."""
     problems = []
     for p in spec_docs():
         rel = p.relative_to(REPO).as_posix()
-        head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:10])
-        m = STATUS_LINE.search(head)
+        hd = head(p.read_text(encoding="utf-8"))
+        m = STATUS_LINE.search(hd)
         if not m or m.group(1) != "SUPERSEDED":
             continue
-        b = BY_LINE.search(head)
+        b = BY_LINE.search(hd)
         if not b:
             problems.append(f"{rel}: SUPERSEDED with no **by**")
         elif not (REPO / b.group(1)).exists():

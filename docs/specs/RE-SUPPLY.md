@@ -1,3 +1,25 @@
+<!--
+DEV SPEC — authoritative for implementation.
+
+This document is NOT the product specification. Product behaviour — what a panel
+shows, what a number means, which basis a statistic takes, what refuses and how —
+is owned by the product spec set:
+
+  Google Drive folder: Trading Terminal
+  https://drive.google.com/drive/folders/1rHQ9_46N2yhyKJg6Qd6iCnDTDx2Y8TCN
+
+  Documents are referenced BY NAME, never by document link. The current version of
+  each carries "- LATEST" in its title; superseded copies carry "- OLD" and live in
+  Old spec versions/. Start at SPEC-INDEX, which names which spec owns which fact.
+
+A dev spec is DERIVED FROM a product spec. The derivation runs one way only.
+Where this document and a product spec disagree about product behaviour, the
+product spec wins and this document is corrected. Where they disagree about
+implementation, this document wins.
+
+Ruled 2026-08-16. See PROCESS-SPEC section 8a. Bug row B-085.
+-->
+
 # RE-SUPPLY — what a document loses when it comes back from outside
 
 > **STATUS** CURRENT · **date** 2026-08-10
@@ -58,6 +80,21 @@ instead.**
    `D:\Dev\momentum\`. And sheets **02**, **04** and **05** each carry their
    `NOT THE CURRENT DESIGN` banner as the **first element inside `<body>`**, because each
    still renders a panel `SPEC.md` §3.1 resolves by deletion. *Applied under H9 v3 §3d.*
+
+5. **`SPEC.md`, `BUILD-PLAN.md` and this file each carry the product-spec ruling** as an HTML
+   comment above the title: *DEV SPEC — authoritative for implementation*, naming the product
+   spec set in the `Trading Terminal` Drive folder as the owner of product behaviour.
+   *Applied under 052.*
+
+   **This is the invariant most likely to be dropped, because it cannot be seen.** The comment
+   renders as nothing. An author re-supplying one of these documents from outside the tree is
+   looking at rendered text and has no way to know the block is there — so a faithful,
+   well-formed re-supply silently un-rules the document, and the only signal is
+   `tests/test_resupplied_docs_are_repaired.py::test_invariant_5_dev_specs_keep_the_product_spec_ruling`.
+
+   **`REGIME-PROMPT.md` and `HANDOFF-PROTOCOL.md` are deliberately not in the set** — one
+   instructs a scheduled run, the other is protocol, and neither is a dev spec. Adding them
+   later is a decision, not a tidy-up.
 
 ## Adjacent invariants, enforced elsewhere
 

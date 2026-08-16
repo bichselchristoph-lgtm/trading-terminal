@@ -1,3 +1,25 @@
+<!--
+DEV SPEC — authoritative for implementation.
+
+This document is NOT the product specification. Product behaviour — what a panel
+shows, what a number means, which basis a statistic takes, what refuses and how —
+is owned by the product spec set:
+
+  Google Drive folder: Trading Terminal
+  https://drive.google.com/drive/folders/1rHQ9_46N2yhyKJg6Qd6iCnDTDx2Y8TCN
+
+  Documents are referenced BY NAME, never by document link. The current version of
+  each carries "- LATEST" in its title; superseded copies carry "- OLD" and live in
+  Old spec versions/. Start at SPEC-INDEX, which names which spec owns which fact.
+
+A dev spec is DERIVED FROM a product spec. The derivation runs one way only.
+Where this document and a product spec disagree about product behaviour, the
+product spec wins and this document is corrected. Where they disagree about
+implementation, this document wins.
+
+Ruled 2026-08-16. See PROCESS-SPEC section 8a. Bug row B-085.
+-->
+
 # Trading Terminal — Consolidated Spec
 
 > **STATUS** CURRENT · **date** 2026-08-10

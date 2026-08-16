@@ -54,9 +54,35 @@ def _path_module():
 
 def _legacy_path() -> str:
     return _path_module().FORBIDDEN
+
+
+def _pointers_module():
+    """Loaded BY PATH, for the same reason as `_path_module` above: `tests/` has
+    no `__init__.py`. `test_spec_pointers.py` owns the definition of *how far
+    into a file the STATUS header may be*; a second copy of that rule here would
+    be a second place for it to drift."""
+    import importlib.util, sys
+    src = Path(__file__).with_name("test_spec_pointers.py")
+    spec = importlib.util.spec_from_file_location("_pointers_src", src)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_pointers_src"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 EXEMPT_FROM_LEGACY_PATH = ("docs/specs/DRIVE-ARCHIVE-LIST.md",)
 BANNERED_SHEETS = ("mockup-02-regime.html", "mockup-04-size-stage.html",
                    "mockup-05-live-context.html")
+
+#: Invariant 5. The dev specs carrying 052's product-spec ruling. Each is a DEV
+#: spec: `REGIME-PROMPT.md` (an instruction to a scheduled run) and
+#: `HANDOFF-PROTOCOL.md` (protocol) are deliberately excluded, per 052.
+DEV_SPECS_WITH_RULING = ("SPEC.md", "BUILD-PLAN.md", "RE-SUPPLY.md")
+
+#: The load-bearing first line of that comment, not the whole block: a re-supply
+#: that drops the ruling drops this line, while matching the whole block would go
+#: red on a faithful copy that had merely been reflowed.
+RULING_MARK = "DEV SPEC — authoritative for implementation."
 
 
 def spec_docs() -> list[Path]:
@@ -64,15 +90,46 @@ def spec_docs() -> list[Path]:
 
 
 def test_invariant_1_every_spec_still_declares_a_status() -> None:
+    """**The window skips a leading HTML comment, and nothing else.** 052 put a
+    21-line ruling comment above the title of three dev specs; it renders as
+    nothing, so the STATUS header is still the first thing on screen. See
+    `test_spec_pointers.head`, which owns that rule and pins it."""
+    head = _pointers_module().head
     missing = []
     for p in spec_docs():
-        head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:10])
-        m = re.search(r"\*\*STATUS\*\*\s+(\w+)", head)
+        m = re.search(r"\*\*STATUS\*\*\s+(\w+)", head(p.read_text(encoding="utf-8")))
         if not m or m.group(1) not in VALID_STATUSES:
             missing.append(p.relative_to(REPO).as_posix())
     assert not missing, (
         "docs/specs files with no valid STATUS header in their first 10 lines:\n  "
         + "\n  ".join(missing) + CAUSE
+    )
+
+
+def test_invariant_5_dev_specs_keep_the_product_spec_ruling() -> None:
+    """**The newest tree-side repair, and the one most likely to be dropped.**
+
+    Ruled 2026-08-16 under 052: product behaviour is owned by the product spec
+    set in Drive, and these documents are dev specs derived from it. The ruling
+    lives in an HTML comment at the very top of each -- invisible when rendered,
+    and therefore invisible to an author re-supplying the document from outside
+    this tree, who will hand back a file that silently un-rules it.
+
+    Without this assertion nothing in the tree would notice.
+    """
+    missing = []
+    for name in DEV_SPECS_WITH_RULING:
+        p = SPECS / name
+        if not p.exists():
+            missing.append(f"{name}: file is absent")
+        elif RULING_MARK not in p.read_text(encoding="utf-8"):
+            missing.append(f"docs/specs/{name}: no product-spec ruling comment")
+    assert not missing, (
+        "dev specs that have lost 052's product-spec ruling:\n  "
+        + "\n  ".join(missing)
+        + "\n\nThe comment is invisible when rendered, so an author re-supplying the "
+          "document\ncannot see it and will not carry it. Re-apply the block from "
+          "handoff/inbox/052-for-code-task-product-spec-pointer.md, Part 1." + CAUSE
     )
 
 
