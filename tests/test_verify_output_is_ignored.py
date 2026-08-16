@@ -18,7 +18,14 @@ import re
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-OUTPUT = "verify-output.txt"
+#: 053 Part 2 moved this out of the repository root and into `handoff/`, which
+#: IS an export source. At the root it was unreachable by the export, so the
+#: REVIEWED gate that depends on it could never be satisfied from the file.
+#: 054 Part 4: the folder move alone was not enough. `export-handoff.ps1`
+#: filters to `.md` only, confirmed by reading the export manifest directly.
+#: The extension is now `.md` so the artifact is inside the exported TYPE,
+#: not only the exported folder.
+OUTPUT = "handoff/verify-output.md"
 
 
 def check_ignore(rel: str) -> bool:
@@ -56,13 +63,13 @@ def test_the_check_can_actually_fail() -> None:
 
 
 def test_the_rule_is_anchored_to_the_repo_root() -> None:
-    """Unanchored rules match at any depth. `verify-output.txt` is written to the
-    root and nowhere else, and an unanchored rule would silently swallow a file
+    """Unanchored rules match at any depth. `verify-output.md` is written to
+    `handoff/` and nowhere else, and an unanchored rule would silently swallow a file
     of that name inside `handoff/` or `docs/` — the failure the whole `.gitignore`
     was rewritten to avoid under M001."""
-    assert not check_ignore(f"docs/{OUTPUT}"), (
-        f"a nested docs/{OUTPUT} is also ignored, so the rule is unanchored. "
-        "Write it as `/verify-output.txt`.")
+    assert not check_ignore("docs/verify-output.md"), (
+        "a nested docs/verify-output.md is also ignored, so the rule is "
+        "unanchored. Write it as `/handoff/verify-output.md`.")
 
 
 def test_verify_ps1_writes_the_path_this_test_guards() -> None:
@@ -70,7 +77,8 @@ def test_verify_ps1_writes_the_path_this_test_guards() -> None:
     this file keeps asserting an ignore rule for a path nothing produces, and the
     real output becomes committable."""
     script = (REPO / "verify.ps1").read_text(encoding="utf-8")
-    assert f"'{OUTPUT}'" in script or f'"{OUTPUT}"' in script, (
+    needle = OUTPUT.replace("/", chr(92))
+    assert needle in script or OUTPUT in script, (
         f"verify.ps1 no longer names {OUTPUT}. Either it writes elsewhere -- in "
         "which case that path is not ignored -- or it stopped writing a file at all.")
 

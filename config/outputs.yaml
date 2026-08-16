@@ -1,0 +1,111 @@
+# DECLARED OUTPUTS -- every artifact the handoff protocol says must reach the
+# design session, and what produces it.
+#
+# 053 Part 5. **Prose cannot be tested; a list can.**
+#
+# WHY THIS FILE EXISTS. `verify-output.txt` was written to the repository root
+# for every run between 023 and 053. The root is not a source of any export
+# pair, so the one artifact `HANDOFF-PROTOCOL.md` names as the evidence for
+# `REVIEWED` could never travel, and `REVIEWED` was unreachable by its own
+# definition. Nobody noticed for weeks because the failure is silent: the file
+# is written, the script exits 0, and the gap is visible only if you compare two
+# documents nobody reads together.
+#
+# `tests/test_declared_outputs_are_exported.py` asserts every entry below sits
+# inside an exported path. **That catches the NEXT instance, not only this one**
+# -- which is the whole reason the fix is a declared list rather than a one-line
+# path change.
+#
+# THIS IS NOT A LIST OF EVERY FILE THE TREE WRITES. It is the list of artifacts
+# the protocol OWES to the other half of the loop. A file nobody outside this
+# tree needs does not belong here, and adding one would make the test demand an
+# export that no rule requires.
+
+outputs:
+  - id:       verify_output
+    path:     handoff/verify-output.md
+    produced: verify.ps1, on every run, overwritten never appended
+    why: >-
+      The evidence for the REVIEWED state. HANDOFF-PROTOCOL.md rule 3: Claude
+      Code's own report of success is a claim, and must be checkable against
+      something Claude Code did not write as prose. Moved into handoff/ by 053
+      Part 2, which was NOT sufficient on its own: export-handoff.ps1 filters
+      to .md only, deliberately, and the file was .txt. Being inside an
+      exported folder does not help without also being inside the exported
+      type. 054 Part 4 renamed it to .md rather than widening the filter for
+      one file. Confirmed reachable by reading the export manifest directly.
+
+  - id:       done_notes
+    path:     handoff/done/
+    produced: this session, one per completed task
+    why: >-
+      The report itself. Readable cold, by someone with no session context.
+
+  - id:       questions
+    path:     handoff/questions/
+    produced: this session, when a fork needs a decision rather than a choice
+    why: >-
+      The channel 044 routed around by instructing a paste into chat. See
+      CLAUDE.md, ROUTING IS PROTOCOL, NOT TASK CONTENT.
+
+  - id:       task_files
+    path:     handoff/inbox/
+    produced: the design session; arrives inbound via config/sync.yaml
+    why: >-
+      Exported back out so both halves can see which version of a task file
+      actually reached the tree. 053 exists because they had diverged and
+      nothing compared them.
+
+  - id:       allocations
+    path:     handoff/ALLOCATIONS.md
+    produced: this session, appended once per task number allocated
+    why: >-
+      Append-only allocation log. 053 Part 6a.
+
+  - id:       christoph_answers
+    path:     christoph/done/
+    produced: Christoph only, copy-verify-retire
+    why: >-
+      His results. Nothing else in this tree may write there.
+
+# ---------------------------------------------------------------------------
+# DELIBERATELY NOT DECLARED. Each is a considered exclusion, recorded so that a
+# later reader does not "fix" it by adding it.
+
+exclusions:
+  - path:   export-run-record.md
+    reason: >-
+      Sits at the repository root, outside every export source, ON PURPOSE. A
+      record whose only copy lands in the destination cannot report having
+      FAILED to reach the destination. Declaring it here would make the test
+      demand exactly the thing that destroys its function.
+
+  - path:   sync-run-record.md
+    reason: >-
+      Same reason, for the inbound copier. 043 Part 3 / OBS-044 (2026-08-14).
+
+  - path:   christoph/open/
+    reason: >-
+      Answers "what is still outstanding" BY BEING EMPTY, and an additive
+      export cannot represent empty -- a retired item would sit in the mirror
+      forever saying the opposite, convincingly. Representing it needs a
+      mirroring export that deletes, a separate decision. The INBOUND pair in
+      config/sync.yaml is a different direction and does not contradict this.
+
+  - path:   docs/observations/OBSERVATIONS.md
+    reason: >-
+      Not exported today. Recorded as an observation rather than fixed in
+      passing: the ledger is the durable record of findings, the design session
+      acts on it at done-note review, and it currently reaches that session only
+      by being quoted into a done-note. Whether it should travel is a decision,
+      not a defect, and it is not 053's to take.
+
+  - path:   docs/specs/
+    reason: >-
+      Drive is archive, not the record. The tree is authoritative. Exporting
+      specs back would let a superseded copy walk back in wearing the shape of
+      current work.
+
+# Questions export via handoff/ by convention — no dedicated destination
+
+# Questions export via handoff/ by convention — no dedicated destination

@@ -7,6 +7,8 @@ task: 044
 ---
 
 **Status** RUNNING
+**Raised by** 044
+**Blocks** no
 
 # `044` Part 3's rule and its reason point in opposite directions
 

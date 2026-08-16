@@ -33,6 +33,10 @@ STATES = ("WRITTEN", "HANDED OFF", "RUNNING", "REVIEWED", "DONE")
 #: is a hiding place, and a rule about WHERE the claim must appear does not.
 HEADER_LINES = 20
 
+#: A leading YAML frontmatter block, skipped before the window is measured.
+#: See `declared_state`. 053 Part 4 made frontmatter length variable by design.
+_FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.S)
+
 #: `**Status**` followed by the value. Captures greedily to the end of the
 #: state-ish token so `IN PROGRESS` is captured whole and reported, rather than
 #: matching `IN` and reporting something the file does not say.
@@ -135,8 +139,56 @@ def test_guard_2_no_natively_authored_file_is_exempt() -> None:
     )
 
 
+#: **053: from this task number on, the state header is read from the BODY.**
+#:
+#: Two things forced this, and the second is the interesting one.
+#:
+#: 1. Part 4 requires every done-note to carry a `bugs:` block in frontmatter. A
+#:    note reporting six findings has ~100 lines of it, which pushes `**Status**`
+#:    past line 20. Counting from the top of the FILE would make the header rule
+#:    depend on how many bugs a task happened to find.
+#:
+#: 2. **Measured while fixing (1): this test was being satisfied by the
+#:    frontmatter `status:` KEY, not by the `**Status**` header at all.**
+#:    `handoff/inbox/021-...md` carries `status: READY` in frontmatter and has no
+#:    body header whatsoever, and it passed. CLAUDE.md is explicit that these are
+#:    different things -- *"A done-note's frontmatter is a separate thing and may
+#:    say what it likes: it describes the work, while the header describes the
+#:    handoff."* The check had been conflating them.
+#:
+#: **A WATERMARK, not an allowlist.** Files below it keep the old behaviour:
+#: they are pre-convention documents the other half of the loop authored and has
+#: already read, and editing them now would rewrite a record rather than fix a
+#: defect. Files at or after it must carry a real body header. **The exemption
+#: cannot grow, because a new task file is always numbered above the line.**
+STATE_HEADER_FROM = 49
+
+_TASK_NUM = re.compile(r"(?:^|/)(\d+)")
+
+
+def _at_or_after_watermark(path: Path) -> bool:
+    m = _TASK_NUM.search(path.name)
+    return bool(m) and int(m.group(1)) >= STATE_HEADER_FROM
+
+
 def declared_state(path: Path) -> str | None:
-    head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:HEADER_LINES])
+    """The state header, read from the first HEADER_LINES lines OF THE BODY.
+
+    **053: the frontmatter is skipped before the window is measured.** Part 4
+    requires every done-note to carry a `bugs:` block in frontmatter, and a note
+    reporting six findings has a hundred lines of it -- which pushed `**Status**`
+    past line 20 and turned this test red on a file that declares its state
+    correctly.
+
+    Counting from the top of the FILE would make the header rule depend on how
+    many bugs a task happened to find. **The rule is "near the top of what a
+    reader reads", and frontmatter is not that.** The window itself is unchanged.
+    """
+    text = path.read_text(encoding="utf-8")
+    if _at_or_after_watermark(path):
+        # 053: the BODY header only. See STATE_HEADER_FROM note above.
+        text = _FRONTMATTER.sub("", text, count=1) if _FRONTMATTER.match(text) else text
+    head = chr(10).join(text.splitlines()[:HEADER_LINES])
     m = STATUS_RE.search(head)
     return m.group(1).strip() if m else None
 
