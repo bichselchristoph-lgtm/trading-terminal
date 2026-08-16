@@ -8,6 +8,9 @@
       "Edit(//d/Dev/momentum/**)",
       "Write(//d/Dev/momentum/**)",
 
+      "Edit(//d/Dev/_worktrees/**)",
+      "Write(//d/Dev/_worktrees/**)",
+
       "Bash(C:/venvs/trading/Scripts/python.exe:*)",
       "Bash(C:\\venvs\\trading\\Scripts\\python.exe:*)",
       "PowerShell(C:/venvs/trading/Scripts/python.exe:*)",

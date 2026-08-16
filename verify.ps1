@@ -546,10 +546,51 @@ if ($LASTEXITCODE -ne 0) {
 #
 # STILL NO VERDICT AND STILL NO REMOVAL. An orphan is named, counted, and left
 # exactly where it is.
-$wtRoot = Join-Path $repo '.claude\worktrees'
-if (Test-Path -LiteralPath $wtRoot) {
-    $known = @()
-    if ($null -ne $entries) { $known = @($entries | ForEach-Object { $_.TrimEnd('\') }) }
+#
+# --- 2026-08-16: THE SCAN FOLLOWS THE WORKTREES, AND SCANS BOTH ROOTS --------
+#
+# Worktrees moved OUT of `.claude/worktrees/` on 2026-08-16. They had to: the
+# permission policy denies `Edit`/`Write` on `.claude/worktrees/**`, and
+# EnterWorktree creates there and only there, so every task told to work in a
+# worktree landed in a directory it could not write to. The two rules were
+# mutually exclusive and neither had ever been exercised.
+#
+# **THIS SCAN IS WHY THAT MOVE IS NOT ALSO A BLINDING.** A scanner left pointing
+# at the old root would report `on-disk orphans 0` forever -- not because there
+# are none, but because it is looking where they no longer appear. That is
+# OBS-034's shape with a green light on top, and it is worse than the defect it
+# replaced: the old failure was visible, this one reads as success.
+#
+# So BOTH roots are scanned and each prints its own line, named.
+#
+# **The former root is not dropped**, because three orphan directories are still
+# in it today and history does not relocate itself. It stops being scanned when
+# it stops existing, which the `Test-Path` per root already handles.
+#
+# The new root is DERIVED from the repo's own location -- the sibling of the
+# checkout, beside `_adopt/`, outside every repo and outside every sync pair.
+# Hardcoding `D:\Dev\_worktrees` would be a second place for the path to live.
+$wtRoots = [ordered]@{
+    "$((Split-Path -Parent $repo))\_worktrees" = 'the current worktree root'
+    "$repo\.claude\worktrees"                  = 'the FORMER root, kept because orphans remain in it'
+}
+
+$known = @()
+if ($null -ne $entries) { $known = @($entries | ForEach-Object { $_.TrimEnd('\') }) }
+
+Say ''
+foreach ($wtRoot in $wtRoots.Keys) {
+    $why = $wtRoots[$wtRoot]
+
+    # **PRINTED EVEN WHEN THE ROOT DOES NOT EXIST, and that is a fix rather than
+    # noise.** Until now the whole orphan block sat inside `if (Test-Path)`, so a
+    # missing root printed NOTHING AT ALL -- indistinguishable, in the output,
+    # from a section that had run and found nothing. A reader cannot tell silence
+    # from zero, and this script's one job is to state facts a reader can act on.
+    if (-not (Test-Path -LiteralPath $wtRoot)) {
+        Say "  on-disk orphans   n/a — $wtRoot does not exist ($why)"
+        continue
+    }
 
     $orphans = @()
     foreach ($d in @(Get-ChildItem -LiteralPath $wtRoot -Directory -ErrorAction SilentlyContinue)) {
@@ -564,13 +605,12 @@ if (Test-Path -LiteralPath $wtRoot) {
         }
     }
 
-    Say ''
     if ($orphans.Count -eq 0) {
-        Say '  on-disk orphans   0 — every directory under .claude/worktrees/ is registered'
+        Say "  on-disk orphans   0 — every directory in $wtRoot is registered"
     } else {
-        Say "  on-disk orphans   $($orphans.Count) — $($orphans -join ', ')"
-        Say '                    directories under .claude/worktrees/ that `git worktree list`'
-        Say '                    does NOT know about. git deregistered them; the disk kept them.'
+        Say "  on-disk orphans   $($orphans.Count) in $wtRoot"
+        Say "                    $($orphans -join ', ')"
+        Say '                    directories git deregistered and the disk kept.'
         Say '                    A file count of 0 is inert. Anything above 0 holds tests that'
         Say '                    section 1 collects from the main checkout.'
     }
