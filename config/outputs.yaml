@@ -29,7 +29,10 @@ outputs:
       The evidence for the REVIEWED state. HANDOFF-PROTOCOL.md rule 3: Claude
       Code's own report of success is a claim, and must be checkable against
       something Claude Code did not write as prose. Moved here from the
-      repository root by 053 Part 2.
+      repository root by 053 Part 2. STILL NOT REACHABLE: export-handoff.ps1
+      filters to .md only, deliberately, and this is .txt. Being inside an
+      exported folder is not sufficient without also being inside the exported
+      type. Confirmed by reading the export manifest. See 053's bugs: block.
 
   - id:       done_notes
     path:     handoff/done/

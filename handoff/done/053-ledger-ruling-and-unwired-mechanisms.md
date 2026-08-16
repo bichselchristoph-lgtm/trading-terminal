@@ -36,6 +36,25 @@ bugs:
     action: raise
     status: NEW
     priority: 1
+    title: verify-output.txt still does not reach Drive after Part 2's fix
+    spec: PROCESS-SPEC
+    summary: >-
+      export-handoff.ps1 filters to .md files only, deliberately (line 262).
+      handoff/verify-output.txt is .txt, so moving it inside an exported FOLDER
+      was not sufficient - it also needed to be inside the exported TYPE.
+    actual: >-
+      Confirmed by reading MANIFEST-momentum-code-handoff.md directly after
+      running verify.ps1 then the export: verify-output.txt is listed under
+      "not exported (non-.md)". REVIEWED remains unreachable by its own
+      definition even after Part 2.
+    expected: >-
+      Either rename the artifact to end in .md, or add a named exception to the
+      export filter. Not decided here - both are protocol-shape decisions Part
+      2 did not authorize and 053 did not ask for.
+  - id: NEW
+    action: raise
+    status: NEW
+    priority: 1
     title: The worktree guard blocks all writes and its own remedy is unreachable
     spec: PROCESS-SPEC
     summary: >-
@@ -188,6 +207,30 @@ arrived by Christoph pasting a terminal into chat — the one thing the protocol
 **Now `handoff/verify-output.txt`.** One path change, no new pair. `.gitignore` follows it, and
 `tests/test_verify_output_is_ignored.py` was retargeted — including its anchoring probe, which
 must test a *different* nesting depth to still mean anything.
+
+### Measured after moving it: the folder was not the whole gap
+
+**`REVIEWED` is still unreachable, for a second and independent reason.** `verify.ps1` and the
+export were both run, per the last-action instruction, and **the manifest — read directly, not
+inferred from config — says the file did not travel:**
+
+```
+D:\claude-googledrive-sync\momentum-code-handoff\MANIFEST-momentum-code-handoff.md:
+**not exported** 3 non-`.md` file(s) present in the source and deliberately skipped:
+`A1-connector-from-scheduled-run.txt`, `accepted\.gitkeep`, `verify-output.txt`
+```
+
+**`export-handoff.ps1:262` filters to `.md` only, deliberately** (`# 262: the Extension test is the
+one that actually decides`). `handoff/verify-output.txt` is a `.txt` file, so **being inside an
+exported folder was never sufficient** — it needed to also be inside the exported *type*, and it
+is not. Part 2's fix corrects the path and does not correct this; the two are independent gaps
+that happened to look like one from `verify.ps1`'s side alone.
+
+**Not extended here.** The `.md`-only filter is described in the script as deliberate, and
+widening it is a design decision — rename the artifact to a `.md` extension, or add a named
+exception to the filter — that `053` did not ask for and that changes what "every file in
+`handoff/` is `.md`" means elsewhere in the protocol. **Reported as a bug below, not fixed in
+passing.**
 
 ---
 
