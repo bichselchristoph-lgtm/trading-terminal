@@ -197,6 +197,11 @@ orders a re-draw of `mockup-01-ingest.html`. **The inbox has since reached `052`
 **The question for Christoph is not about mockups: are `006` and `007` still owed, or were they
 overtaken?** Nothing in the tree distinguishes an abandoned task from a pending one.
 
+> **Corroborated by this task's own closing `verify.ps1`, section 8**, which was not looking for
+> it: `ready now  006 007 025 031 033 040 048`. **`NOW.md` is offering both as the next thing to
+> build**, and a session that took one would be building against sheets that were retired on
+> 2026-08-16.
+
 ---
 
 ## 5 — Classification findings in `docs/specs/`
