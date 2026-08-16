@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-16T13:50:28+02:00
+last_attempt : 2026-08-16T13:52:50+02:00
 
-last_success : 2026-08-16T13:50:28+02:00
+last_success : 2026-08-16T13:52:51+02:00
 
-outcome      : 4 new - momentum-code-handoff/ALLOCATIONS.md, momentum-code-handoff/done/053-ledger-ruling-and-unwired-mechanisms.md, momentum-code-handoff/inbox/053-for-code-task-ledger-ruling-and-verify-export.md, momentum-code-handoff/questions/044-duplicate-ledger-ids.md
+outcome      : 1 new - momentum-code-handoff/done/053-ledger-ruling-and-unwired-mechanisms.md
 
-head         : b0467668d783ff775c6f4afe08f70393550f0805 053: the ledger ruling, and four mechanisms that were never wired
+head         : 3cc0d49c698780d9175946224bc15d35aed2428a 053: correct Part 2 -- verify-output.txt still doesn't reach Drive
