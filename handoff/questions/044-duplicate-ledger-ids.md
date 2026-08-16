@@ -1,42 +1,14 @@
 ---
 id: 044-q1
 title: Which set of duplicate ledger ids gets reallocated — the rule or the reason?
-status: ANSWERED
-answered_by: 053
-answered_on: 2026-08-16
+status: OPEN
 raised_by: claude-code
 task: 044
 ---
 
-**Status** DONE
-
-> ## ANSWERED by `053` Part 1, 2026-08-16
->
-> **Apply the reason, not the rule. `021`'s three rows moved forward; `037`'s rows keep
-> `OBS-044`, `OBS-045` and `OBS-046`.**
->
-> `044`'s rule -- *the earlier allocation keeps the number* -- was only ever a means to the end
-> **do not change what an exported done-note appears to have said**, and it was written under a
-> false belief about which set came first. **When a means and its end separate, the end is the
-> durable half.** The arithmetic settles it: the letter would have retargeted twenty citations
-> across nine exported files; the reason breaks nothing, because `021`'s done-note cites none of
-> the three. That was verified in the tree, not assumed.
->
-> **Stopping was correct.** `044`'s own clause -- *if any reallocation would change what an
-> exported done-note appears to have said, stop and report* -- is triggered by the literal
-> reading. That is the clause working, not the task failing.
->
-> **The ids actually allocated: `OBS-073`, `OBS-074`, `OBS-075`**, read from the ledger at
-> execution time. **Not `OBS-065`-`067` as this file proposed** -- those were free when this
-> question was written two days ago and were taken by the time it was answered, as were
-> `OBS-070`-`072`. *The question was right about the action and could not be right about the
-> numbers.*
->
-> **And the count was wrong in both directions.** `B-030` said five, `053` said three; **the
-> ledger holds four**, and `OBS-062` had already recorded that. The fourth, **`OBS-047`, is a
-> PERMANENT collision and was not reallocated**: both of its rows are cited by exported
-> done-notes, so moving either breaks the very end the ruling exists to protect. It is
-> documented in `docs/observations/OBSERVATIONS.md` and disambiguated by date.
+**Status** RUNNING
+**Raised by** 044
+**Blocks** no
 
 # `044` Part 3's rule and its reason point in opposite directions
 

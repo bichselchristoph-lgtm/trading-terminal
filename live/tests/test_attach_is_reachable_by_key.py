@@ -411,8 +411,18 @@ def no_broker_socket():
     `ib_async` builds an asyncio event loop, and on Windows that calls
     `socket.socketpair()`, which is a loopback connect. A blanket assertion
     fails on that, gets deleted for being noisy, and then catches nothing.
+
+    **054 Part 2 / 040 Part 0 (OBS-040).** `socket.socket.connect` ALONE IS
+    NOT ENOUGH: on Windows asyncio runs a ProactorEventLoop, and
+    `loop.create_connection` reaches the socket through `ConnectEx` without
+    ever calling the method patched above -- measured directly by `034`
+    (`test_launches_as_a_program.py`'s `SOCKET_GUARD`), whose two-part shape
+    this mirrors. Patched on `BaseEventLoop` so it covers the selector and
+    proactor loops both. This was the second site of the hole `040` named:
+    found here by grepping for every copy, not by 040 naming it.
     """
     real = socket.socket.connect
+    real_create = asyncio.base_events.BaseEventLoop.create_connection
 
     def guard(self, addr, *a, **k):
         port = addr[1] if isinstance(addr, tuple) and len(addr) > 1 else None
@@ -420,11 +430,18 @@ def no_broker_socket():
             raise AssertionError(f"the suite dialled broker port {port}")
         return real(self, addr, *a, **k)
 
+    async def guard_create(self, protocol_factory, host=None, port=None, **k):
+        if port in BROKER_PORTS:
+            raise AssertionError(f"the suite dialled broker port {port}")
+        return await real_create(self, protocol_factory, host, port, **k)
+
     socket.socket.connect = guard
+    asyncio.base_events.BaseEventLoop.create_connection = guard_create
     try:
         yield
     finally:
         socket.socket.connect = real
+        asyncio.base_events.BaseEventLoop.create_connection = real_create
 
 
 # ---- 1. the key press renders VALUES ---------------------------------------
@@ -717,8 +734,22 @@ def test_nothing_in_this_suite_opens_a_broker_socket() -> None:
         with pytest.raises(AssertionError, match="dialled broker port 7496"):
             socket.socket().connect(("127.0.0.1", 7496))
 
+        # 054 Part 2 / 040 Part 0 (OBS-040). The control above is SYNCHRONOUS
+        # and would have passed just as well against the pre-054 guard, which
+        # only patched socket.socket.connect -- exactly the version that
+        # measurably let a live TWS connection through in 034. This dials
+        # through asyncio's own path, ib_async's path, and must be caught too.
+        async def _dial():
+            loop = asyncio.get_event_loop()
+            await loop.create_connection(asyncio.Protocol, "127.0.0.1", 7496)
+
+        with pytest.raises(AssertionError, match="dialled broker port 7496"):
+            asyncio.run(_dial())
+
         # and now the real path, which must not trip it.
         body, record = drive("QQQ", IBKRMarketData(FakeIB()))
         assert record.attached and "ADR%" in body
 
     assert socket.socket.connect.__name__ != "guard", "the guard leaked"
+    assert (asyncio.base_events.BaseEventLoop.create_connection.__name__
+            != "guard_create"), "the asyncio guard leaked"

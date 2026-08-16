@@ -237,10 +237,29 @@ job.
     # represent empty -- a retired file would sit in the mirror forever saying the
     # exact opposite, convincingly. Putting it in Drive needs a mirroring export
     # that deletes, and that is a separate decision.
+    # 054 Part 3 / 043 Part 2. A THIRD pair, deliberately overlapping the first:
+    # handoff/questions/ already travels inside the recursive handoff/ -> 
+    # momentum-code-handoff pair. This one duplicates it into a folder Christoph
+    # reads for open questions specifically -- 043 asked for it by name, "joining
+    # 020's export pairs", not replacing the recursive one. Reported as a
+    # deliberate overlap rather than fixed as an inefficiency: de-duplicating it
+    # is a scope decision 054 does not make.
+    #
+    # UNLIKE the other two, this destination is NOT auto-created if missing.
+    # 043: "Christoph creates the Drive folder. If it does not exist when this
+    # runs, report and skip Part 2's pair rather than creating it -- folder
+    # creation is his." Folder-creation-on-his-behalf was never actually
+    # exercised for the other two pairs either (both already existed when 020
+    # ran); this is the first time the question is asked on purpose.
     $exports = @(
         @{ Src = Join-Path $repo 'handoff';        Dst = Join-Path $driveRoot 'momentum-code-handoff';    Recurse = $true  },
         @{ Src = Join-Path $repo 'christoph\done'; Dst = Join-Path $driveRoot 'momentum-christoph-done';  Recurse = $false }
     )
+    if (Test-Path -LiteralPath (Join-Path $driveRoot 'momentum-code-questions')) {
+        $exports += @{ Src = Join-Path $repo 'handoff\questions'; Dst = Join-Path $driveRoot 'momentum-code-questions'; Recurse = $false }
+    } else {
+        Write-Host "momentum-code-questions: skipped - Drive folder does not exist. Christoph creates it, not this script."
+    }
 
     # 037 part 3. Accumulated so the run record's one-line outcome can NAME what
     # moved. "1 copied" tells a reader something happened; it does not tell them

@@ -29,7 +29,7 @@
 # claims.
 #
 # IT MODIFIES NOTHING IN THE TREE, WITH EXACTLY ONE EXEMPTION. No `git add`, no
-# fixture creation, no edits. **It writes `handoff/verify-output.txt`
+# fixture creation, no edits. **It writes `handoff/verify-output.md`
 # and nothing else** (023). That file is gitignored, overwritten each run, and
 # is the artifact the design session reads instead of a pasted transcript.
 #
@@ -53,19 +53,24 @@ $start  = Get-Date
 # THE OUTPUT FILE IS THE ONLY WRITE THIS SCRIPT MAKES. That exemption is stated
 # here because the header three lines up promises the opposite, and a reader who
 # finds a write with no explanation is right to distrust the rest.
-# 053 Part 2. THE PATH IS `handoff/`, NOT THE REPOSITORY ROOT.
+# 053 Part 2 moved this from the repository root into `handoff/` -- the root
+# is not a source of any pair in `config/sync.yaml`, so for every run before
+# 2026-08-16 the artifact HANDOFF-PROTOCOL names as the evidence for REVIEWED
+# was written where nothing could carry it, and REVIEWED was unreachable by
+# its own definition.
 #
-# The root is not a source of any pair in `config/sync.yaml`, so for every run
-# before 2026-08-16 this file -- the artifact HANDOFF-PROTOCOL names as the
-# evidence for REVIEWED -- was written where nothing could carry it.
-# **REVIEWED was unreachable by its own definition**, and every report in fact
-# arrived by Christoph pasting a terminal into chat, which is the one thing the
-# protocol forbids outright: nothing exists only in a terminal.
+# 054 Part 4: THE FOLDER MOVE WAS NOT ENOUGH EITHER. `export-handoff.ps1`
+# filters to `.md` files only, deliberately -- confirmed by reading the export
+# manifest directly, not by reasoning about the config. `handoff/verify-output.txt`
+# sat inside an exported FOLDER and was still never exported, because it was
+# not inside the exported TYPE.
 #
-# ONE PATH CHANGE, NO NEW PAIR. A copier is configured, never duplicated --
-# `handoff/` is already an export source, recursively, so landing the file
-# inside it is sufficient and adding a fourth pair would not be.
-$outFile = Join-Path $repo 'handoff\verify-output.txt'
+# FIXED AT THE FILENAME, NOT THE COPIER. Widening the .md-only filter changes
+# what every future export carries, for the sake of one file; a copier is
+# configured, never duplicated, and it is also not widened for a single case.
+# The content is plain text either way -- nothing about the format changes,
+# only the extension.
+$outFile = Join-Path $repo 'handoff\verify-output.md'
 $script:Captured = [System.Collections.Generic.List[string]]::new()
 function Say {
     param([string]$msg = '')
@@ -662,6 +667,41 @@ if (-not (Test-Path $nowTool)) {
     }
 }
 
+# --- 9. open questions -------------------------------------------------------
+# 054 Part 3 / 043 Part 2. **A count that is visible is harder to drift past
+# than a folder nobody opens** -- and an open question nobody answers is the
+# exact failure the questions convention exists to catch. No verdict, no
+# threshold, consistent with every other section.
+Section 9 'QUESTIONS -- the count of OPEN files in handoff/questions/'
+
+$qDir = Join-Path $repo 'handoff\questions'
+if (-not (Test-Path -LiteralPath $qDir)) {
+    Say '  handoff/questions/ does not exist'
+} else {
+    $qFiles = @(Get-ChildItem -LiteralPath $qDir -Filter '*.md' -File |
+        Where-Object { $_.Extension -eq '.md' } | Sort-Object Name)
+    $open = @()
+    foreach ($f in $qFiles) {
+        $text = Get-Content -LiteralPath $f.FullName -Raw
+        # frontmatter `status:` is the question's own OPEN/ANSWERED vocabulary --
+        # distinct from the five-state **Status** line, which tracks the HANDOFF
+        # of the task that raised the question, not the question itself. 054.
+        $statusMatch = [regex]::Match($text, '(?m)^status\s*:\s*(\S+)')
+        $blocksMatch = [regex]::Match($text, '(?m)^\*\*Blocks\*\*\s*(\S+)')
+        $status = if ($statusMatch.Success) { $statusMatch.Groups[1].Value } else { 'UNKNOWN' }
+        if ($status -eq 'OPEN') {
+            $blocks = if ($blocksMatch.Success) { $blocksMatch.Groups[1].Value } else { 'unstated' }
+            $stem = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+            $open += if ($blocks -eq 'yes') { "$stem (blocks)" } else { $stem }
+        }
+    }
+    if ($open.Count -eq 0) {
+        Say "  open questions    0"
+    } else {
+        Say "  open questions    $($open.Count) - $($open -join ', ')"
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Say ''
@@ -681,7 +721,7 @@ if ($null -ne $suiteSeconds) {
     }
 }
 Say ''
-Say 'verify.ps1 states eight facts and draws no conclusion from them.'
+Say 'verify.ps1 states nine facts and draws no conclusion from them.'
 Say 'The reading belongs to the design session.'
 
 # --- the file ---------------------------------------------------------------

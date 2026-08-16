@@ -21,7 +21,11 @@ REPO = Path(__file__).resolve().parents[1]
 #: 053 Part 2 moved this out of the repository root and into `handoff/`, which
 #: IS an export source. At the root it was unreachable by the export, so the
 #: REVIEWED gate that depends on it could never be satisfied from the file.
-OUTPUT = "handoff/verify-output.txt"
+#: 054 Part 4: the folder move alone was not enough. `export-handoff.ps1`
+#: filters to `.md` only, confirmed by reading the export manifest directly.
+#: The extension is now `.md` so the artifact is inside the exported TYPE,
+#: not only the exported folder.
+OUTPUT = "handoff/verify-output.md"
 
 
 def check_ignore(rel: str) -> bool:
@@ -59,13 +63,13 @@ def test_the_check_can_actually_fail() -> None:
 
 
 def test_the_rule_is_anchored_to_the_repo_root() -> None:
-    """Unanchored rules match at any depth. `verify-output.txt` is written to
+    """Unanchored rules match at any depth. `verify-output.md` is written to
     `handoff/` and nowhere else, and an unanchored rule would silently swallow a file
     of that name inside `handoff/` or `docs/` — the failure the whole `.gitignore`
     was rewritten to avoid under M001."""
-    assert not check_ignore("docs/verify-output.txt"), (
-        "a nested docs/verify-output.txt is also ignored, so the rule is "
-        "unanchored. Write it as `/handoff/verify-output.txt`.")
+    assert not check_ignore("docs/verify-output.md"), (
+        "a nested docs/verify-output.md is also ignored, so the rule is "
+        "unanchored. Write it as `/handoff/verify-output.md`.")
 
 
 def test_verify_ps1_writes_the_path_this_test_guards() -> None:

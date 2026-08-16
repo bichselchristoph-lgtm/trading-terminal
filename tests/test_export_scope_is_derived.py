@@ -69,20 +69,29 @@ def test_the_export_script_exists() -> None:
     )
 
 
-def test_exactly_two_destinations() -> None:
-    """Widening the export must be a visible edit, not a quiet one. Three
-    destinations here means somebody added a source, and that is a decision."""
+def test_exactly_three_destinations() -> None:
+    """Widening the export must be a visible edit, not a quiet one. A fourth
+    destination here means somebody added a source, and that is a decision.
+
+    054 Part 3 / 043 Part 2 widened this deliberately from two to three:
+    handoff/questions/ -> momentum-code-questions, joining the recursive
+    handoff/ pair rather than replacing it. The two overlap ON PURPOSE --
+    043 asked for the questions folder by name, so a question file now
+    travels twice, once inside momentum-code-handoff/questions/ and once at
+    momentum-code-questions/ directly."""
     rows = exports()
-    assert len(rows) == 2, f"expected 2 export rows, parsed {len(rows)}: {rows}"
+    assert len(rows) == 3, f"expected 3 export rows, parsed {len(rows)}: {rows}"
     leaves = sorted(dst.name for _, dst, _ in rows)
-    assert leaves == ["momentum-christoph-done", "momentum-code-handoff"], leaves
+    assert leaves == [
+        "momentum-christoph-done", "momentum-code-handoff", "momentum-code-questions",
+    ], leaves
 
 
 def test_sources_are_the_two_folders_and_nothing_else() -> None:
     """The structural prohibition, stated as an assertion about the sources
     rather than as a list of what is banned."""
     srcs = sorted(str(src.relative_to(REPO)).replace("\\", "/") for src, _, _ in exports())
-    assert srcs == ["christoph/done", "handoff"], (
+    assert srcs == ["christoph/done", "handoff", "handoff/questions"], (
         f"the export's sources are now {srcs}. Every folder not in this list is "
         "excluded BECAUSE it is not in this list -- there is no forbidden-list "
         "backing this up, deliberately."

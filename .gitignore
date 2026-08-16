@@ -100,6 +100,14 @@ secrets.yaml
 # Committing it would create a second source of truth about the tree that ages
 # badly and diffs noisily on every run. Anchored: only the repo root.
 # tests/test_verify_output_is_ignored.py asserts this with `git check-ignore`.
+/handoff/verify-output.md
+# The two RETIRED locations, kept ignored on purpose (054 Part 4). Extension
+# changed .txt -> .md so the artifact is inside export-handoff.ps1's .md-only
+# filter; before that it was inside handoff/verify-output.txt (053 Part 2),
+# before that the repository root (through 023). A stale copy at either old
+# path on any machine that ran an earlier verify.ps1 must not present itself
+# to git as new work, and two files claiming to be THE verification record is
+# the byte-indistinguishable defect in a new place.
 /handoff/verify-output.txt
 # The RETIRED location, kept ignored on purpose. 053 Part 2 moved the file into
 # handoff/ so the export could carry it. A stale artifact from before that move

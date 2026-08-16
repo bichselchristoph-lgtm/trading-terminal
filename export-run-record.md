@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-16T13:52:50+02:00
+last_attempt : 2026-08-16T14:30:42+02:00
 
-last_success : 2026-08-16T13:52:51+02:00
+last_success : 2026-08-16T14:30:43+02:00
 
-outcome      : 1 new - momentum-code-handoff/done/053-ledger-ruling-and-unwired-mechanisms.md
+outcome      : 4 new - momentum-code-handoff/inbox/054-for-code-task-unblock-the-queue.md, momentum-code-handoff/questions/044-duplicate-ledger-ids.md, momentum-code-handoff/verify-output.md, momentum-code-questions/044-duplicate-ledger-ids.md
 
-head         : 3cc0d49c698780d9175946224bc15d35aed2428a 053: correct Part 2 -- verify-output.txt still doesn't reach Drive
+head         : 1458d0c9435b85fab7627542c7957bc81a10ca72 053: final verify + export run record

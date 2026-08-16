@@ -100,7 +100,7 @@ def test_importing_the_probe_connects_to_no_broker_port():
     on the incident it exists for.
     """
     code = (
-        "import socket, sys\n"
+        "import asyncio, socket, sys\n"
         "BROKER = {7496, 7497, 4001, 4002}\n"
         "_real = socket.socket.connect\n"
         "def guard(self, addr, *a, **k):\n"
@@ -109,6 +109,20 @@ def test_importing_the_probe_connects_to_no_broker_port():
         "        raise AssertionError('import connected to broker port %r' % (port,))\n"
         "    return _real(self, addr, *a, **k)\n"
         "socket.socket.connect = guard\n"
+        # 054 Part 2 / 040 Part 0 (OBS-040). "socket.socket.connect" ALONE IS
+        # NOT ENOUGH: on Windows asyncio runs a ProactorEventLoop, and
+        # "loop.create_connection" reaches the socket through "ConnectEx"
+        # without ever calling the method above -- measured by 034
+        # (live/tests/test_launches_as_a_program.py), whose two-part guard
+        # this mirrors. Patched on "BaseEventLoop" so it covers the selector
+        # and proactor loops both.
+        "_real_create = asyncio.base_events.BaseEventLoop.create_connection\n"
+        "async def guard_create(self, protocol_factory, host=None, port=None, **k):\n"
+        "    if port in BROKER:\n"
+        "        raise AssertionError('import connected to broker port %r' % (port,))\n"
+        "    return await _real_create(self, protocol_factory, host, port, **k)\n"
+        "asyncio.base_events.BaseEventLoop.create_connection = guard_create\n"
+        ""
         f"sys.path.insert(0, {str(REPO)!r})\n"
         "import tools.probe_keepuptodate_scale\n"
         "import tools.analyse_keepuptodate_scale\n"
@@ -129,6 +143,26 @@ def test_importing_the_probe_connects_to_no_broker_port():
     r2 = subprocess.run([sys.executable, "-c", proof], capture_output=True, text=True)
     assert r2.returncode != 0
     assert "import connected to broker port 7496" in r2.stderr
+
+    # Second positive control, 054 Part 2 / 040 Part 0. The one above dials
+    # SYNCHRONOUSLY and would pass just as well against the pre-054 guard,
+    # which only patched "socket.socket.connect" -- exactly the version that
+    # measurably let a live TWS connection through in 034 (OBS-040). This one
+    # dials through "asyncio.base_events.BaseEventLoop.create_connection",
+    # ib_async's own path, and must be caught by the SAME exception.
+    proof_async = code.replace(
+        "import tools.probe_keepuptodate_scale\n"
+        "import tools.analyse_keepuptodate_scale\n",
+        "async def _dial():\n"
+        "    loop = asyncio.get_event_loop()\n"
+        "    await loop.create_connection(asyncio.Protocol, '127.0.0.1', 7496)\n"
+        "asyncio.run(_dial())\n",
+    )
+    r3 = subprocess.run([sys.executable, "-c", proof_async], capture_output=True, text=True)
+    assert r3.returncode != 0, (
+        "an asyncio connection to a broker port was NOT refused by the guard -- "
+        "the exact hole OBS-040 measured. stdout:\n" + r3.stdout)
+    assert "import connected to broker port 7496" in r3.stderr, r3.stderr
 
 
 # --------------------------------------------------------------------------

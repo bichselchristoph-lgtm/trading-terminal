@@ -206,7 +206,26 @@ A viewer subscribes to the day record and paints panels from it. **It cannot con
 
 **One caution, and §4.3 is the instrument for it.** A large screen makes it *easy* to show everything, which makes it easy to show things that never change a decision — the constraint stops being pixels and becomes attention, which was always the scarcer input. **`config/layout.yaml`'s history is what catches this**: a panel you never demote and never look at is indistinguishable from a useful one until the log says otherwise. Tiling raises the value of that log rather than removing the need for it.
 
-**Mockup mapping** (files keep their historical numbers):
+**Mockup mapping. TWO SETS EXIST AND THEY DO NOT MIX.**
+
+```
+docs/specs/mockups/       LOCAL, first generation, numbered 01-07.
+                           Referenced by tests and by HTML cross-links.
+                           These filenames are pointers and do not change.
+
+Trading Terminal/Mockups/  Second generation, numbered within type and named
+(Google Drive)             for the spec they serve. Current, and what a
+                           product spec cites.
+```
+
+**A first-generation mockup predates Textual, the TRADE consolidation, the
+deletion of the conviction dial and the deletion of the regime surface.**
+Citing one in a live instruction is a staleness finding, not a rename. The
+local filenames below do not change -- `tests/test_resupplied_docs_are_repaired.py`
+and `tests/test_regime_prompt_invariants.py` cite them, and renaming would
+break working code to satisfy a naming rule.
+
+**Panel-group mapping, local numbers only:**
 
 | Panel group | Mockups |
 |---|---|

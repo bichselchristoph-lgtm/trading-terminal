@@ -23,16 +23,17 @@
 
 outputs:
   - id:       verify_output
-    path:     handoff/verify-output.txt
+    path:     handoff/verify-output.md
     produced: verify.ps1, on every run, overwritten never appended
     why: >-
       The evidence for the REVIEWED state. HANDOFF-PROTOCOL.md rule 3: Claude
       Code's own report of success is a claim, and must be checkable against
-      something Claude Code did not write as prose. Moved here from the
-      repository root by 053 Part 2. STILL NOT REACHABLE: export-handoff.ps1
-      filters to .md only, deliberately, and this is .txt. Being inside an
-      exported folder is not sufficient without also being inside the exported
-      type. Confirmed by reading the export manifest. See 053's bugs: block.
+      something Claude Code did not write as prose. Moved into handoff/ by 053
+      Part 2, which was NOT sufficient on its own: export-handoff.ps1 filters
+      to .md only, deliberately, and the file was .txt. Being inside an
+      exported folder does not help without also being inside the exported
+      type. 054 Part 4 renamed it to .md rather than widening the filter for
+      one file. Confirmed reachable by reading the export manifest directly.
 
   - id:       done_notes
     path:     handoff/done/
