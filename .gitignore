@@ -100,6 +100,11 @@ secrets.yaml
 # Committing it would create a second source of truth about the tree that ages
 # badly and diffs noisily on every run. Anchored: only the repo root.
 # tests/test_verify_output_is_ignored.py asserts this with `git check-ignore`.
+/handoff/verify-output.txt
+# The RETIRED location, kept ignored on purpose. 053 Part 2 moved the file into
+# handoff/ so the export could carry it. A stale artifact from before that move
+# still sits at the root on any machine that ran verify.ps1 earlier, and without
+# this line it stops being ignored and presents itself to git as new work.
 /verify-output.txt
 
 .DS_Store

@@ -29,7 +29,7 @@
 # claims.
 #
 # IT MODIFIES NOTHING IN THE TREE, WITH EXACTLY ONE EXEMPTION. No `git add`, no
-# fixture creation, no edits. **It writes `verify-output.txt` in the repo root
+# fixture creation, no edits. **It writes `handoff/verify-output.txt`
 # and nothing else** (023). That file is gitignored, overwritten each run, and
 # is the artifact the design session reads instead of a pasted transcript.
 #
@@ -53,7 +53,19 @@ $start  = Get-Date
 # THE OUTPUT FILE IS THE ONLY WRITE THIS SCRIPT MAKES. That exemption is stated
 # here because the header three lines up promises the opposite, and a reader who
 # finds a write with no explanation is right to distrust the rest.
-$outFile = Join-Path $repo 'verify-output.txt'
+# 053 Part 2. THE PATH IS `handoff/`, NOT THE REPOSITORY ROOT.
+#
+# The root is not a source of any pair in `config/sync.yaml`, so for every run
+# before 2026-08-16 this file -- the artifact HANDOFF-PROTOCOL names as the
+# evidence for REVIEWED -- was written where nothing could carry it.
+# **REVIEWED was unreachable by its own definition**, and every report in fact
+# arrived by Christoph pasting a terminal into chat, which is the one thing the
+# protocol forbids outright: nothing exists only in a terminal.
+#
+# ONE PATH CHANGE, NO NEW PAIR. A copier is configured, never duplicated --
+# `handoff/` is already an export source, recursively, so landing the file
+# inside it is sufficient and adding a fourth pair would not be.
+$outFile = Join-Path $repo 'handoff\verify-output.txt'
 $script:Captured = [System.Collections.Generic.List[string]]::new()
 function Say {
     param([string]$msg = '')

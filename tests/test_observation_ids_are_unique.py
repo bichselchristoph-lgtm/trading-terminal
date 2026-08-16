@@ -76,25 +76,46 @@ def test_the_ledger_has_rows_at_all() -> None:
         f"has probably drifted from the table format.")
 
 
-def test_every_observation_id_is_allocated_once() -> None:
-    rows = allocated_ids()
+#: **A WATERMARK, NOT AN ALLOWLIST.** 053 Part 1 ruled the pre-existing
+#: collisions: `OBS-044`, `OBS-045` and `OBS-046` were reallocated forward to
+#: `OBS-073`-`075`, and `OBS-047` is a PERMANENT collision that must never be
+#: reallocated -- both of its rows are cited by exported done-notes, so moving
+#: either would change what an exported note appears to have said.
+#:
+#: The distinction matters. **An allowlist names the known-bad ids and is how a
+#: red test becomes furniture** -- every future duplicate gets appended to it and
+#: the check quietly stops checking. A watermark names a MOMENT: everything
+#: allocated after `OBS-062` -- the row that recorded the collisions -- must be
+#: unique, and nothing below it is re-litigated. **A new duplicate is caught no
+#: matter which id it reuses**, because a new row is always allocated above the
+#: line. The exemption cannot grow.
+WATERMARK = 62
+
+
+def test_every_observation_id_allocated_after_the_watermark_is_unique() -> None:
+    """Uniqueness for every id allocated after `OBS-062`. See WATERMARK above."""
+    rows = [(i, d) for i, d in allocated_ids() if int(i.split("-")[1]) > WATERMARK]
     counts = collections.Counter(i for i, _ in rows)
     dupes = {i: n for i, n in counts.items() if n > 1}
 
     detail = []
     for dup in sorted(dupes):
         dates = [d for i, d in rows if i == dup]
-        detail.append(f"  {dup} x{dupes[dup]} — dated {', '.join(dates)}")
+        detail.append(f"  {dup} x{dupes[dup]} dated {', '.join(dates)}")
 
+    nl = chr(10)
     assert not dupes, (
-        "these ids each name more than one finding:\n" + "\n".join(detail)
-        + "\n\n**A number is read, never inferred as free** — the same defect as "
-          "the 035 task-number collision, one folder over.\n"
-          "**This red is EXPECTED and is not yours to clear by renumbering.** "
-          "044 Part 3's rule and the reason given for it point in opposite "
-          "directions once git establishes the real order, and 044 says to stop "
-          "and report rather than guess. See "
-          "handoff/questions/044-duplicate-ledger-ids.md.")
+        f"these ids were allocated after OBS-{WATERMARK:03d} and each names "
+        "more than one finding:" + nl + nl.join(detail) + nl + nl
+        + "**A number is read, never inferred as free** -- the same defect "
+          "as the 035 task-number collision, one folder over." + nl
+        + "**Read the next free id from the ledger at the moment you write "
+          "the row.** Do not carry an id forward from a task file or a "
+          "question file: those record the ledger as it was when they were "
+          "written, and 053 found both OBS-065-067 and OBS-070-072 already "
+          "taken by the time it ran." + nl
+        + "Resolve by allocating a fresh id, never by renumbering an id that "
+          "an exported done-note already cites.")
 
 
 def test_a_duplicate_would_be_caught() -> None:

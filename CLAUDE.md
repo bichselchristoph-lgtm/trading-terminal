@@ -1,6 +1,6 @@
 # CLAUDE.md — momentum
 
-> **version** v1.7 · **date** 2026-08-15 · **supersedes** v1.6 (2026-08-13)
+> **version** v1.8 - **date** 2026-08-16 - **supersedes** v1.7 (2026-08-15)
 
 Guidance for Claude Code working in `D:\Dev\momentum`.
 
@@ -289,6 +289,36 @@ A **question** is not a task you would rather not do. It is a fork where the ans
 what gets built and the choice is not yours to make. If you can pick a defensible option and
 say why, that is a choice — make it, record it, move on.
 
+### Routing is protocol, not task content
+
+```
+ROUTING IS PROTOCOL, NOT TASK CONTENT.
+
+A task file states what to produce -- a done-note, a question file, a bug row.
+It does not state where output goes. Destinations come from config/sync.yaml
+and the handoff protocol, never from task prose.
+
+If a task file names a destination, that is a finding. Report it and use the
+protocol path. A task file is authoritative about its own work and is not
+authoritative about the channel.
+```
+
+**Added 2026-08-16 under `053` Part 3, from a measured instance.** `044` instructed this session
+to paste a question into chat. **The questions channel already existed** -- specified roughly
+150,000 characters earlier in the same design session that then routed around it, toward the
+place it happens to read. **The cost landed on Christoph**, who had to carry by hand what a
+configured pair already carried.
+
+**A task file is authoritative about its own work and is not authoritative about the channel.**
+The channel is shared state; a task that names one is asserting something about a system it
+cannot see.
+
+**Deliberately not linted.** Grepping prose for destinations is unbounded, and **a check that
+catches four phrasings and misses the fifth is worse than none, because it would be trusted.**
+The enforceable half is positional and lives in Part 4: done-note and question destinations are
+**generated from `config/sync.yaml`**, so the protocol path is the one that costs nothing to take.
+
+
 ### The Drive export — one-way, additive, and not a substitute for judgment
 
 `export-handoff.ps1` copies `.md` files out to two Drive-mirrored folders, so the design
@@ -426,6 +456,7 @@ decision before it runs, and that decision is Christoph's.
 
 | Version | Date | Change |
 |---|---|---|
+| **v1.8** | 2026-08-16 | **The ledger ruling, and four mechanisms that were specified and never wired** (053). **`verify-output.txt` moves from the repository root into `handoff/`** -- the root is not a source of any sync pair, so the artifact the protocol names as the evidence for `REVIEWED` was written where nothing could carry it, and **`REVIEWED` was unreachable by its own definition** while every report arrived by the pasted terminal the protocol forbids. Adds **ROUTING IS PROTOCOL, NOT TASK CONTENT**, from `044` routing a question to chat past a questions channel that already existed. Adds the **`bugs:` frontmatter block**, so a finding reaches the tracker as data rather than by being retyped. Adds **`config/outputs.yaml`** and a test that every declared artifact sits inside an exported path -- **the general form of the defect, not just this instance**. Adds **`handoff/ALLOCATIONS.md`**, append-only: a counter is a cached count and can be wrong, a log can only be incomplete and incompleteness shows as a gap. Records that **`OBS-047` is a permanent collision** that must never be reallocated. |
 | **v1.7** | 2026-08-15 | **The workflow engine** (045). Records **`sync.ps1`** — the one-word command that pulls Drive into the tree — because until this day the inbound copier had no trigger of its own and **no document stated the invocation**: four UAT files sat in Drive while `christoph/open/` held one `.gitkeep`, and Christoph was the one party who could have unblocked it. Adds the 15-minute scheduled run, **which overturns `037`'s ruling against a daemon**: that objection was to *silence*, and `043`'s run record removed the silence. Adds NOW.md — written into `claude/` by `tools/now.py`, derived from the tree and gitignored, and **deliberately never named as a backticked path**, because a pointer to a generated file is red on a fresh clone. **And moves the decision line**: rule 16's product/admin split now governs who may decide, so Claude Code may author and act on its own `class: admin` task in one session — with four guardrails, of which the load-bearing one is that **admin unblocking admin remains forbidden**. `037` flagged this version bump as owed and correctly did not take it unasked; `045` asks. |
 | **v1.6** | 2026-08-13 | **The active tree gets a remote** (017). Records `origin` as `trading-terminal` and the habit that follows from it: **push at the end of every session, because a commit is local and only a push survives the disk.** Names the archive explicitly — **`momentum` on GitHub is `momentum-harness` and is never pushed to** — since that collision is why a new repository exists rather than the old name reused. **Flags that `D:\Dev\CLAUDE.md` v1.1 still says the opposite** and must be corrected, rather than leaving a reader to guess which of two statements is current. Notes that the repository is `trading-terminal` and **not the `momentum-terminal` that 017 proposed**, so the unused name is not mistaken for the real one. |
 | **v1.5** | 2026-08-13 | **The Drive export** (020). `export-handoff.ps1` carries `handoff/` and `christoph/done/` one-way to two Drive-mirrored folders, ending the class of failure where four correct done-notes were written on 2026-08-11 and none reached the design session. Records both destinations, the one-way direction, and that **the repository itself is never mirrored**. States **why `christoph/open/` is excluded** — it answers by being empty, and an additive export cannot represent empty — because the obvious "improvement" is to add it. Carries the sentence that is the natural misreading of the whole task: **syncing a done-note does not close it.** `verify.ps1` gains section 5, so a stale mirror is visible rather than silent. |
