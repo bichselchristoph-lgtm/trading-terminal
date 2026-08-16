@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-15T13:21:58+02:00
+last_attempt : 2026-08-16T11:34:05+02:00
 
-last_success : 2026-08-15T13:21:58+02:00
+last_success : 2026-08-16T11:34:06+02:00
 
-outcome      : 1 new - momentum-code-handoff/inbox/048-for-code-task-the-ask-audit.md
+outcome      : 5 new - momentum-code-handoff/done/052-product-spec-pointer.md, momentum-code-handoff/inbox/049-for-code-task-validate-the-owned-corpus.md, momentum-code-handoff/inbox/050-for-code-task-the-tape-window.md, momentum-code-handoff/inbox/051-for-code-task-the-basis-audit.md, momentum-code-handoff/inbox/052-for-code-task-product-spec-pointer.md
 
-head         : 272e2c4a8bf9ef4cb146ffeceb6ff91a1aa69498 048: path-scoped deletion denies do not bind, so the fix moves upstream
+head         : dc4697bbb8cea778b384e8cacc969575e15f86a5 052: NOW.md offers 006 and 007 as ready, which is OBS-071 measured

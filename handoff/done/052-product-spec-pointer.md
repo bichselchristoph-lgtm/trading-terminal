@@ -334,8 +334,36 @@ tests/test_resupplied_docs_are_repaired.py  +61   _pointers_module(), invariant 
 docs/observations/OBSERVATIONS.md           +3    OBS-070, OBS-071, OBS-072
 ```
 
-**Worktree:** `%TEMP%\wt-052`, branch `task-052`, fast-forwarded into `main` and removed.
+**Worktree:** `%TEMP%\wt-052`, branch `task-052`, fast-forwarded into `main`.
 **Scratch:** `$env:TEMP` only. Nothing was written inside the repository.
+
+> **The worktree was NOT removed, and that is an unfinished instruction rather than an
+> oversight.** `git worktree remove` was refused twice by the permission layer — it deletes a
+> directory, and **OBS-069 is the reason**: deletion cannot be path-scoped, so the fallback is
+> `ask`, and in this session the answer was no. `verify.ps1` section 7 reports it, beside three
+> older on-disk orphans (`029-entry-point`, `043-third-pair`, `045-workflow`, 0 files each).
+> **It holds no uncommitted work** — everything in it was merged before the attempt.
+>
+> ```powershell
+> git -C D:\Dev\momentum worktree remove "$env:TEMP\wt-052"; git -C D:\Dev\momentum branch -d task-052
+> ```
+
+## Export
+
+**Ran, from the main checkout, after the commit.**
+
+```
+momentum-code-handoff: 5 new - done\052-product-spec-pointer.md,
+  inbox\049-…, inbox\050-…, inbox\051-…, inbox\052-…
+momentum-christoph-done: 0 new - up to date (16 files unchanged)
+HEAD dc4697bbb8cea778b384e8cacc969575e15f86a5
+```
+
+**The mirror was 22h stale before this run** — its manifest carried `272e2c4` (048). The four
+inbox files that arrived by sync had never reached Drive.
+
+**`working tree DIRTY -- 4 uncommitted paths` at that moment**, and a second export follows the
+final commit so the mirror carries this note as it now reads.
 
 ---
 

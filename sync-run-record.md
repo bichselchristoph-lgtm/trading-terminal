@@ -18,8 +18,8 @@ parsing.
 The three fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-15T12:33:49+02:00
+last_attempt : 2026-08-16T10:31:58+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
-outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 2 REFUSED · 17 unchanged | christoph_open: 0 new · up to date (4 unchanged)
+outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 1 new · 052-for-code-task-product-spec-pointer.md · 2 differing | christoph_open: 0 new · up to date (4 unchanged)
