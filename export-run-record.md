@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-22T16:02:29+02:00
+last_attempt : 2026-08-22T17:18:19+02:00
 
-last_success : 2026-08-22T16:02:30+02:00
+last_success : 2026-08-22T17:18:20+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/057-verify-output-one-name.md, momentum-code-handoff/inbox/057-for-code-task-verify-output-one-name.md, momentum-code-handoff/verify-output.md
+outcome      : 2 new - momentum-code-handoff/verify-output.md, momentum-christoph-done/034-for-christoph-decision-the-rolling-window-unit.md
 
-head         : 5585f908a77b9ecadfdf10a7c2e1b74ec536436c 057: register the new test file in BOOTSTRAP_ALLOWLIST
+head         : 278d6a73c3e305d3833c8c5d986bbd4b45d5eec1 Closing sync run: 034 template reappeared (OBS-077 pattern), routine record update
