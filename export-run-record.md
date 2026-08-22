@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-22T20:18:16+02:00
+last_attempt : 2026-08-22T22:37:37+02:00
 
-last_success : 2026-08-22T20:18:18+02:00
+last_success : 2026-08-22T22:37:37+02:00
 
-outcome      : 5 new - momentum-code-handoff/done/060-bug-panel-duplication-at-real-sizes.md, momentum-code-handoff/inbox/060-for-code-bug-panel-duplication-at-real-sizes.md, momentum-code-handoff/questions/059-panel-duplication-cause.md, momentum-code-handoff/verify-output.md, momentum-code-questions/059-panel-duplication-cause.md
+outcome      : 3 new - momentum-code-handoff/inbox/061-for-code-task-permission-policy-test.md, momentum-christoph-done/035-for-christoph-task-claude-permissions-and-databento-history.md, momentum-christoph-done/036-for-christoph-task-uat-060-panels-render-once.md
 
-head         : 53077499c8fbc12175fc64216801a8f4072dab50 059: B-001 candidate A ruled out, blocked on terminal-reuse question
+head         : 8d0d46b8f68b0241c8139d181d34c712390c4b3c 060: B-001 fixed -- async check-then-act race in _apply_fit

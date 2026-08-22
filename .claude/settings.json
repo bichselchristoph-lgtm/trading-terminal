@@ -13,6 +13,7 @@
 
       "Bash(C:/venvs/trading/Scripts/python.exe:*)",
       "Bash(C:\\venvs\\trading\\Scripts\\python.exe:*)",
+      "Bash(/c/venvs/trading/Scripts/python.exe:*)",
       "PowerShell(C:/venvs/trading/Scripts/python.exe:*)",
       "PowerShell(C:\\venvs\\trading\\Scripts\\python.exe:*)",
       "PowerShell(& 'C:\\venvs\\trading\\Scripts\\python.exe':*)",
@@ -73,11 +74,14 @@
       "Bash(sed -n:*)",
       "Bash(schtasks /query:*)",
 
+      "PowerShell(cd:*)",
+      "PowerShell(Set-Location:*)",
       "PowerShell(Get-ChildItem:*)",
       "PowerShell(Get-Content:*)",
       "PowerShell(Get-Item:*)",
       "PowerShell(Get-Location)",
       "PowerShell(Get-Command:*)",
+      "PowerShell(Get-Process:*)",
       "PowerShell(Test-Path:*)",
       "PowerShell(Select-String:*)",
       "PowerShell(Measure-Object:*)",
@@ -199,7 +203,9 @@
       "Read(//**/.env)",
       "Read(//**/*.key)",
       "Read(//**/*.pem)",
-      "Read(//**/.credentials.json)"
+      "Read(//**/.credentials.json)",
+	  "Write(.claude/settings.json)",
+	  "Edit(.claude/settings.json)"
     ],
 
     "autoMode": {
