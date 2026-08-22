@@ -29,9 +29,10 @@
 # claims.
 #
 # IT MODIFIES NOTHING IN THE TREE, WITH EXACTLY ONE EXEMPTION. No `git add`, no
-# fixture creation, no edits. **It writes `handoff/verify-output.md`
+# fixture creation, no edits. **It writes the verify output file
 # and nothing else** (023). That file is gitignored, overwritten each run, and
 # is the artifact the design session reads instead of a pasted transcript.
+# See where it is actually named, below (057: one literal, one site).
 #
 # The exemption is named here rather than left to be discovered, because until
 # 023 this line read "IT NEVER MODIFIES ANYTHING" without qualification, and a
@@ -61,7 +62,7 @@ $start  = Get-Date
 #
 # 054 Part 4: THE FOLDER MOVE WAS NOT ENOUGH EITHER. `export-handoff.ps1`
 # filters to `.md` files only, deliberately -- confirmed by reading the export
-# manifest directly, not by reasoning about the config. `handoff/verify-output.txt`
+# manifest directly, not by reasoning about the config. The verify output file
 # sat inside an exported FOLDER and was still never exported, because it was
 # not inside the exported TYPE.
 #
@@ -105,6 +106,10 @@ Say ''
 Say "verify.ps1  --  $repo"
 Say "run at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')"
 Say "HEAD at start  $headAtStart"
+# 057 Part 2. **The file states its own path.** A reader holding it never has to
+# consult a document to learn where it came from, and a reader who cannot find it
+# learns the DOCUMENT is wrong rather than concluding the instrument never ran.
+Say "output file    $outFile"
 # Where a "tree moved mid-run" warning is inserted into the FILE's header, if
 # section 3 disagrees with the line above. Recorded now because by the time we
 # know, these lines have already gone to the console.
@@ -637,10 +642,10 @@ foreach ($wtRoot in $wtRoots.Keys) {
 Section 8 'NOW — rewritten from the tree'
 
 # 045 Part 3. **THE SECOND WRITE THIS SCRIPT MAKES, and it is named here for the
-# same reason `verify-output.txt` is: a reader who finds an unexplained write is
+# same reason the verify output is: a reader who finds an unexplained write is
 # right to distrust the rest of the file.**
 #
-# `claude/NOW.md` is GITIGNORED, like `verify-output.txt`, and that is a decision
+# `claude/NOW.md` is GITIGNORED, like the verify output, and that is a decision
 # rather than an oversight. A tracked generated file would dirty the tree on
 # every verify run -- section 2 would report it forever -- and three sessions
 # regenerating it would collide on a file whose entire content is derivable.
