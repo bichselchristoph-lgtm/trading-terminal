@@ -327,6 +327,12 @@ BOOTSTRAP_ALLOWLIST = {
     # that happened to be in use is not a rule.
     "tests/test_permission_policy_is_shell_symmetric.py",  # 046 part 2
     "tests/test_verify_output_named_once.py",              # 057
+
+    # ---- 059: one more ------------------------------------------------------
+    # `B-001`'s regression coverage — authored here, not adopted from anywhere.
+    # Extended under 060 with the size-parametrized table and the race test
+    # that actually caught the bug; still one file, one entry.
+    "live/tests/test_panels_render_once.py",                # 059
 }
 
 

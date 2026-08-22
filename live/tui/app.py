@@ -57,6 +57,7 @@ pass a check while every tile was far under what it needed.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import sys
@@ -632,6 +633,15 @@ class MomentumApp(App):
         self.record = record if record is not None else empty_record()
         self.layout_cfg = layout or Layout.load()
         self.md = md
+        #: `060` — `_apply_fit` is check-then-act ("no `Panel` mounted? mount
+        #: one") and is reachable from two independent callers: `_rerender()`
+        #: (the attach path) and `Frame.on_resize`. Nothing serialised them, so
+        #: a resize landing between one call's `remove_children()` and its own
+        #: `mount()` let a second call see the same empty frame and mount a
+        #: second full panel set beside the first — `B-001`, reproducing at
+        #: 120x40 roughly one attach cycle in five. The lock makes the
+        #: check-and-mount one atomic step regardless of which caller triggers it.
+        self._fit_lock = asyncio.Lock()
         super().__init__()
 
     @property
@@ -843,25 +853,31 @@ class MomentumApp(App):
         cols, height = self.size.width or 0, self.size.height or 0
         if not (cols and height):
             return
-        rows = self.tile_rows()
-        need_cols, need_rows, worst = self.required(rows)
-        frame = self.query_one("#frame", Frame)
+        # `060` — everything from here on is check-then-act against the DOM
+        # (`self.query(...)` then `frame.mount(...)`), and `_rerender()` and
+        # `Frame.on_resize` both call this method. Without the lock, a resize
+        # landing mid-remount let a second caller see the same "empty frame"
+        # and mount a second full panel set. One lock, one mount decision.
+        async with self._fit_lock:
+            rows = self.tile_rows()
+            need_cols, need_rows, worst = self.required(rows)
+            frame = self.query_one("#frame", Frame)
 
-        if cols < need_cols or height < need_rows:
-            # §4e/§5 — a STATED refusal and ZERO panels, never a clipped one.
-            msg = too_small_message(cols, height, need_cols, need_rows, worst)
-            existing = self.query("#too-small")
-            if existing:
-                existing.first(Static).update(msg)   # recomputed, not reused
+            if cols < need_cols or height < need_rows:
+                # §4e/§5 — a STATED refusal and ZERO panels, never a clipped one.
+                msg = too_small_message(cols, height, need_cols, need_rows, worst)
+                existing = self.query("#too-small")
+                if existing:
+                    existing.first(Static).update(msg)   # recomputed, not reused
+                    return
+                await frame.remove_children()
+                await frame.mount(Static(msg, id="too-small"))
                 return
-            await frame.remove_children()
-            await frame.mount(Static(msg, id="too-small"))
-            return
 
-        if self.query("#too-small") or not self.query(Panel):
-            await frame.remove_children()
-            await frame.mount(*[Horizontal(*tiles, classes="row")
-                                for tiles in rows if tiles])
+            if self.query("#too-small") or not self.query(Panel):
+                await frame.remove_children()
+                await frame.mount(*[Horizontal(*tiles, classes="row")
+                                    for tiles in rows if tiles])
 
 
 # ---- starting it as a program ---------------------------------------------

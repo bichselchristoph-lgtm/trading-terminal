@@ -1,9 +1,10 @@
 ---
 id: 059-q1
 title: B-001 reproduces only on a real terminal — what closes the terminal between runs?
-status: OPEN
+status: ANSWERED
 raised_by: claude-code
 task: 059
+answered_by: 060
 ---
 
 **Status** RUNNING
