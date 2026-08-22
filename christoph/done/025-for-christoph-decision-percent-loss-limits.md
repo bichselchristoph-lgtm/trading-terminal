@@ -41,5 +41,8 @@ row and have been sitting there looking decided — **that is B-054, and it is e
 band survived.**
 
 ## To answer
+the percentage should be whatever $1,000 is against the NLV you consider normal.** If that is
+roughly $125,000, daily is **0.8%** and monthly **4.0%** — which is the pair currently drawn in the
+RISK mockup as an illustration,
 
 Two numbers. Copy this file to `christoph/done/` with them and the date.

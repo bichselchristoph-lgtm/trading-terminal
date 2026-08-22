@@ -20,7 +20,7 @@ closes: 043's UAT row
 
 ## 1 — does it land
 
-Drop any small `.md` into the Drive folder `momentum-inbox-christoph`. Wait for the sync folder to
+Drop any small `.md` into the Drive folder `momentum-christoph-open`. Wait for the sync folder to
 catch up, then run the inbound copier.
 
 | | |
@@ -51,7 +51,7 @@ any channel.
 
 ## 3 — the deliberate conflict
 
-Put a file with the **same name but different content** into `momentum-inbox-christoph` as one
+Put a file with the **same name but different content** into `momentum-christoph-open` as one
 already in `christoph/open/`. Run the sync.
 
 | | |
@@ -71,3 +71,4 @@ Delete your test files from both the Drive folder and `christoph/open/`.
 Save into `christoph/done/023-third-drive-pair.md` — the filled-in file. Then tell chat.
 
 **If step 3 overwrote instead of refusing, say so first and loudly.** That one is not a detail.
+invalid test. not testable. its for code, not christoph.

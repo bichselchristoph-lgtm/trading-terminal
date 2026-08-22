@@ -46,5 +46,6 @@ it would look like the keystroke was lost.
 in use if they are wrong.
 
 ## To answer
+Confirm as proposed. 
 
 Confirm, or say what changes. Copy this file to `christoph/done/` with the date.

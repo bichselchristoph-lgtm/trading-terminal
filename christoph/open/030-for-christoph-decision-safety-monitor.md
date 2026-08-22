@@ -47,5 +47,5 @@ position, and never blocks a `SELL` or `CLOSE`. **So "interrupting you" means re
 which is the entire point.**
 
 ## To answer
-
+defer to later phase.
 Four answers. Copy this file to `christoph/done/` with them and the date.

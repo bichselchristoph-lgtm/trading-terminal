@@ -41,4 +41,6 @@ should have stopped.
 
 ## To answer
 
+5 trades max per day.
+
 One number. Copy this file to `christoph/done/` with it and the date.

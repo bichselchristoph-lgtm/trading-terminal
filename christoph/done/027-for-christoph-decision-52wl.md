@@ -44,4 +44,6 @@ a row because a task mentioned it.
 
 ## To answer
 
-Yes or no. Copy this file to `christoph/done/` with the date.
+no, ORL5`, `ORL15` and `52wL` `52wl are all intentional by christoph by design. 
+
+Copy this file to `christoph/done/` with the date.

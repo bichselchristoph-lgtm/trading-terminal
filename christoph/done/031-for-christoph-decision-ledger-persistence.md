@@ -44,3 +44,5 @@ ledger on a name you watched for six hours would look authoritative and be mostl
 ## To answer
 
 Reset, or carry forward. Copy this file to `christoph/done/` with the date.
+
+Christoph Aug 22, 2026: the ruling for the file is: reset at 09:30 for display; persist the day's ledger; multi-day rendering deferred until more than one symbol can carry tape.

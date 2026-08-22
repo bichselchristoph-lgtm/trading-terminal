@@ -39,5 +39,7 @@ There is no reason to remove the control while nothing stages. **The gates that 
 this is not.
 
 ## To answer
+Correct. I will decide when to remove Read-Only. Terminal will fail writes before.
+
 
 Copy this file to `christoph/done/`, add your ruling and the date at the bottom.

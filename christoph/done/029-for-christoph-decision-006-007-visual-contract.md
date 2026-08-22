@@ -43,3 +43,4 @@ of a task is still true.
 Retire, or keep with the contract confirmed. Copy this file to `christoph/done/` with the date.
 
 **Until then they should not be run**, and that is now visible on the board rather than remembered.
+Christoph Aug 22, 2026: retire both, re-cut from current mockups when the slices come up.

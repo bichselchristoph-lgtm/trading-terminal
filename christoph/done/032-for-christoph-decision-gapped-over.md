@@ -45,5 +45,7 @@ a definition.
 
 ## To answer
 
+Christoph. Aug 22, 2026 : colour marks kind or relation, never importance**,  the answer gappedped over is a kind or relation.
+
 A reading, or *"not settled and no playbook needs it."* Copy this file to `christoph/done/` with the
 date.
