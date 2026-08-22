@@ -28,10 +28,10 @@ Zero is written explicitly, per pair -- an absent field is never read as zero.
 The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-22T15:44:03+02:00
+last_attempt : 2026-08-22T15:58:42+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
-outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 1 new · 057-for-code-task-verify-output-one-name.md · 3 differing | christoph_open: 0 new · up to date (2 unchanged)
+outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 25 unchanged | christoph_open: 0 new · up to date (2 unchanged)
 
 refused      : regime_snapshots: 0 | handoff_inbox: 3 | christoph_open: 0
