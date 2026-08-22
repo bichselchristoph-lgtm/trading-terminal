@@ -28,7 +28,7 @@ Zero is written explicitly, per pair -- an absent field is never read as zero.
 The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-22T16:17:52+02:00
+last_attempt : 2026-08-22T17:16:37+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
