@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-22T12:56:22+02:00
+last_attempt : 2026-08-22T14:20:59+02:00
 
-last_success : 2026-08-22T12:56:23+02:00
+last_success : 2026-08-22T14:21:00+02:00
 
-outcome      : 1 new - momentum-code-handoff/done/056-two-false-guards.md
+outcome      : 11 new - momentum-code-handoff/verify-output.md, momentum-christoph-done/018-for-christoph-task-check-atr14-and-pdl.md, momentum-christoph-done/023-for-christoph-task-third-drive-pair.md, momentum-christoph-done/024-for-christoph-decision-read-only-api.md, momentum-christoph-done/025-for-christoph-decision-percent-loss-limits.md, momentum-christoph-done/026-for-christoph-decision-trades-max-day.md, momentum-christoph-done/027-for-christoph-decision-52wl.md, momentum-christoph-done/028-for-christoph-decision-type-dollar.md, momentum-christoph-done/029-for-christoph-decision-006-007-visual-contract.md, momentum-christoph-done/031-for-christoph-decision-ledger-persistence.md, momentum-christoph-done/032-for-christoph-decision-gapped-over.md
 
-head         : d8b344bdab877674c029622c9a38f3d3962edab4 056: fill in the closing-sequence outcomes the done-note deferred
+head         : 1f71a93c9c205e698855e0673515a7b284ca8448 OBS-077 confirmed a third time, at scale: 11 templates reappeared
