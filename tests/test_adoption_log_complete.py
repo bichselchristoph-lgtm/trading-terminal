@@ -326,6 +326,7 @@ BOOTSTRAP_ALLOWLIST = {
     # byte of the reviewed file.** A rule that binds only under the shell tool
     # that happened to be in use is not a rule.
     "tests/test_permission_policy_is_shell_symmetric.py",  # 046 part 2
+    "tests/test_verify_output_named_once.py",              # 057
 }
 
 

@@ -103,6 +103,15 @@ a second occurrence **in memory only**, and asserts the count changes to 2. This
 being tested, not the current file's content being pinned: the expected count is the literal
 `1`, independent of what the file happens to say.
 
+**`tests/` is a code tree for the adoption gate and this new test file needed a
+`BOOTSTRAP_ALLOWLIST` entry.** Caught by `tests/test_adoption_log_complete.py::
+test_every_tracked_file_is_accounted_for` on the first full-suite run after Part 3 —
+`tests/test_verify_output_named_once.py` is natively authored, not adopted, and `tests/` has no
+`NATIVE_PREFIXES` carve-out (deliberately — it would let behaviour arrive with no provenance).
+Added the one-line entry (`# 057`), matching the existing convention for every other
+task-authored test file in the list. This is the gate working as designed on its own author,
+same as `H9`'s note on `tests/test_spec_pointers.py`.
+
 ## A new, unrelated finding — not fixed here
 
 Running the full suite after the fix surfaced `tests/test_export_scope_is_derived.py::
