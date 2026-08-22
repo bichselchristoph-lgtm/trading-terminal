@@ -28,10 +28,10 @@ Zero is written explicitly, per pair -- an absent field is never read as zero.
 The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-22T12:54:13+02:00
+last_attempt : 2026-08-22T14:19:42+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
-outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 24 unchanged | christoph_open: 1 new · 021-for-christoph-task-52-week-basis.md · 0 differing
+outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 24 unchanged | christoph_open: 11 new · 018-for-christoph-task-check-atr14-and-pdl.md, 021-for-christoph-task-52-week-basis.md, 023-for-christoph-task-third-drive-pair.md, 024-for-christoph-decision-read-only-api.md, 025-for-christoph-decision-percent-loss-limits.md, 026-for-christoph-decision-trades-max-day.md, 027-for-christoph-decision-52wl.md, 028-for-christoph-decision-type-dollar.md, 029-for-christoph-decision-006-007-visual-contract.md, 031-for-christoph-decision-ledger-persistence.md, 032-for-christoph-decision-gapped-over.md · 1 differing
 
-refused      : regime_snapshots: 0 | handoff_inbox: 3 | christoph_open: 0
+refused      : regime_snapshots: 0 | handoff_inbox: 3 | christoph_open: 1
