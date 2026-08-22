@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-16T15:44:26+02:00
+last_attempt : 2026-08-22T12:55:30+02:00
 
-last_success : 2026-08-16T15:44:27+02:00
+last_success : 2026-08-22T12:55:31+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/055-the-checkpoint.md, momentum-code-handoff/verify-output.md
+outcome      : 5 new - momentum-code-handoff/done/056-two-false-guards.md, momentum-code-handoff/inbox/056-for-code-task-two-false-guards.md, momentum-code-handoff/verify-output.md, momentum-christoph-done/018-for-christoph-task-check-atr14-and-pdl.md, momentum-christoph-done/021-for-christoph-task-52-week-basis.md
 
-head         : 20058f9db8a30c9f5f22b359956e09d32bda614e 055: the checkpoint - baseline established, two things found off the list
+head         : ccfdb589f4ad01a12f1c2eff3e99da328263e507 Closing sync run: reappeared 021 template, OBS-077 second instance
