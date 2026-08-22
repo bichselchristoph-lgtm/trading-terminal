@@ -107,3 +107,4 @@ nothing and stops the number claiming more than it can.
 
 `TAPE-SPEC §17.1` is then rewritten from the ruling, and `B-057` moves with the ruling in its
 summary.
+christoph's ruling aug 22 2026: Duration stands, with the floor — count stays open.
