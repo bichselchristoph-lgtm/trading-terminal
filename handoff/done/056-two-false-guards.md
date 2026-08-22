@@ -280,10 +280,19 @@ None. Nothing Christoph can look at changed. Stated rather than invented.
 
 ## Closing sequence
 
-`sync.ps1` → `verify.ps1` → commit (branch `056-two-false-guards` merged into `main`, `--no-ff`)
-→ `export-handoff.ps1` → push to `origin` (`trading-terminal`), all from the main checkout, no
-worktree. Ran in that order; outcomes recorded at the bottom of this note once each step
-completed.
+`sync.ps1` → `verify.ps1` → commit (branch `056-two-false-guards` merged into `main`, `--no-ff`,
+`7dc870f`) → `export-handoff.ps1` → push to `origin` (`trading-terminal`), all from the main
+checkout, no worktree. Ran in that order.
+
+**This note cannot name the HEAD its own export ran against — that is `046`'s own reasoning,
+carried forward rather than re-derived**: `export-handoff.ps1` runs after the commit that
+contains this note, so the manifest HEAD it records is a later commit than this one. The next
+`verify.ps1` section 5 is where to check that the export ran and what it carried. What this
+note can say directly: `sync.ps1` re-ran twice more after the branch merge (once as the closing
+sequence's own first step, which re-surfaced `021`'s pre-fill template the same way `018`'s did
+— see `OBS-077`'s second instance), each re-run's routine output committed in its own small
+commit rather than folded into this one, and `verify.ps1` ran clean (section 2: no uncommitted
+paths) immediately before the export.
 
 ---
 
