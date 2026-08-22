@@ -86,7 +86,17 @@ two files on purpose -- see `RUN_RECORD` in `tools/sync_from_drive.py`.
 `tests/test_sync_run_record.py` goes red if this file stops existing or stops
 parsing.
 
-The three fields below are at COLUMN ZERO. **The reader below also tolerates
+**056: `refused` is a MACHINE-READABLE count, per pair, not a sentence.** The
+`outcome` line below stays exactly as it is -- it is prose for Christoph and
+for `verify.ps1` section 6, and the two zero-cases (`up to date` vs `REFUSED`)
+must keep reading differently. `refused` exists because `outcome` prints the
+same "files refused" condition two different ways depending on whether
+anything else copied in the same run, and a test that matches one wording is
+one rewording away from going false-green again -- `tests/test_inbound_run_
+record_has_no_conflicts.py` reads THIS field and ignores the prose entirely.
+Zero is written explicitly, per pair -- an absent field is never read as zero.
+
+The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
 last_attempt : {attempt}
@@ -94,6 +104,8 @@ last_attempt : {attempt}
 last_success : {success}
 
 outcome      : {outcome}
+
+refused      : {refused}
 """
 
 #: **`^\s*`, not `^`. This is `037`'s remedy, copied deliberately rather than
@@ -132,11 +144,12 @@ def read_field(name: str, path: Optional[Path] = None) -> str:
     return m.group(1).strip() if m else "never"
 
 
-def write_record(*, attempt: str, success: str, outcome: str,
+def write_record(*, attempt: str, success: str, outcome: str, refused: str,
                  path: Optional[Path] = None) -> None:
     p = path or RUN_RECORD
     p.write_text(_RECORD_TEMPLATE.format(attempt=attempt, success=success,
-                                         outcome=outcome), encoding="utf-8")
+                                         outcome=outcome, refused=refused),
+                 encoding="utf-8")
 
 
 def _now() -> str:
@@ -191,6 +204,15 @@ class PairResult:
         never overwritten -- a handed-off file that changes breaks a reference
         another party already holds."""
         return bool(self.differing)
+
+    @property
+    def refused_count(self) -> int:
+        """056: the same count `headline()` computes inline for its `N REFUSED`
+        wording (line ~225), exposed here so the run record can carry it as a
+        MACHINE-READABLE field instead of only as prose. Two refusal shapes,
+        one count: a same-name file with different bytes, and a number
+        collision -- neither is ever copied."""
+        return len(self.collisions) + len(self.differing)
 
     @property
     def blocked(self) -> bool:
@@ -420,8 +442,12 @@ def main(argv: list[str] | None = None) -> int:
     previous_success = read_field("last_success", record)
     attempt = _now()
     if not args.dry_run:
+        # `refused` is deliberately NOT "0" here -- tenet 2, an absent or
+        # unknown count must never read as zero, and this write happens before
+        # any pair has been examined.
         write_record(attempt=attempt, success=previous_success,
-                     outcome="RUNNING - this run has not finished", path=record)
+                     outcome="RUNNING - this run has not finished",
+                     refused="pending", path=record)
 
     results = [sync_pair(p, dry_run=args.dry_run) for p in pairs]
     for line in render(results):
@@ -435,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
         write_record(attempt=attempt,
                      success=previous_success if blocked else attempt,
                      outcome=" | ".join(r.headline() for r in results),
+                     refused=" | ".join(f"{r.pair_id}: {r.refused_count}"
+                                        for r in results),
                      path=record)
 
     # NON-ZERO when a person must look. A scheduled run that reports a collision

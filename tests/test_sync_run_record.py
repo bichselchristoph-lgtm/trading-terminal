@@ -96,7 +96,7 @@ def test_an_indented_field_still_parses_which_is_037s_remedy(tmp_path: Path) -> 
     record one reformat away from the bug it was written to prevent.
     """
     good = tmp_path / "good.md"
-    write_record(attempt="A", success="S", outcome="O", path=good)
+    write_record(attempt="A", success="S", outcome="O", refused="p: 0", path=good)
     assert read_field("last_success", good) == "S"
 
     indented = tmp_path / "indented.md"

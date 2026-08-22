@@ -85,10 +85,14 @@ def frontmatter(path: Path) -> dict[str, str]:
 
 
 def depends_on(path: Path) -> list[str]:
-    """The ids this task waits for. **Absent means nothing.**"""
+    """The ids this task waits for. **Absent means nothing, and so does the
+    literal value `none`** -- 056: five task files write `depends: none` as
+    the established convention for "no dependency", and the parser must read
+    it the same way it reads an absent key, not as a phantom dependency on a
+    task literally named "none"."""
     raw = frontmatter(path).get("depends", "")
     raw = raw.strip().strip("[]")
-    if not raw:
+    if not raw or raw.lower() == "none":
         return []
     return [p.strip() for p in raw.split(",") if p.strip()]
 
