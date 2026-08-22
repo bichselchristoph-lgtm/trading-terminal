@@ -140,6 +140,22 @@ def test_a_task_with_no_depends_is_ready(tmp_path: Path) -> None:
     assert compute(repo)["ready"] == ["006"]
 
 
+def test_a_task_with_depends_none_is_ready(tmp_path: Path) -> None:
+    """**056 Part B.** The literal string `"none"` written as a VALUE is not
+    the same case as an ABSENT key, and `depends_on()` treated only the second
+    correctly. `"depends: none"` parsed to `raw="none"` — non-empty, so it
+    became a phantom dependency on a task literally named `"none"` that can
+    never appear in `done` or `superseded`.
+
+    **This is the project's own established convention, not a hypothetical
+    edge case**: `049`, `051`, `052`, `053` and `054` all write `depends:
+    none`, and `049`/`051` rendered `blocked — needs none` in `NOW.md` while
+    genuinely ready — found by `055`, the two tasks named next after it.
+    """
+    repo = tree(tmp_path, inbox={"049-x": front(id="049", depends="none")})
+    assert compute(repo)["ready"] == ["049"]
+
+
 def test_a_superseded_task_is_not_ready(tmp_path: Path) -> None:
     """**Not in 045's list, and added because leaving it out is harmful.**
 

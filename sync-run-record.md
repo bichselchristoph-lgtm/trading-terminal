@@ -15,11 +15,23 @@ two files on purpose -- see `RUN_RECORD` in `tools/sync_from_drive.py`.
 `tests/test_sync_run_record.py` goes red if this file stops existing or stops
 parsing.
 
-The three fields below are at COLUMN ZERO. **The reader below also tolerates
+**056: `refused` is a MACHINE-READABLE count, per pair, not a sentence.** The
+`outcome` line below stays exactly as it is -- it is prose for Christoph and
+for `verify.ps1` section 6, and the two zero-cases (`up to date` vs `REFUSED`)
+must keep reading differently. `refused` exists because `outcome` prints the
+same "files refused" condition two different ways depending on whether
+anything else copied in the same run, and a test that matches one wording is
+one rewording away from going false-green again -- `tests/test_inbound_run_
+record_has_no_conflicts.py` reads THIS field and ignores the prose entirely.
+Zero is written explicitly, per pair -- an absent field is never read as zero.
+
+The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-16T15:28:01+02:00
+last_attempt : 2026-08-22T12:43:45+02:00
 
 last_success : 2026-08-15T11:46:20+02:00
 
-outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 23 unchanged | christoph_open: 0 new · up to date (14 unchanged)
+outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 24 unchanged | christoph_open: 0 new · up to date (14 unchanged)
+
+refused      : regime_snapshots: 0 | handoff_inbox: 3 | christoph_open: 0
