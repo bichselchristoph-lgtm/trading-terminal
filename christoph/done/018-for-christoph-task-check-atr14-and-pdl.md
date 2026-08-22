@@ -38,6 +38,8 @@ whether TradingView's ATR is set to RMA — some templates default to SMA smooth
 disagree by a few percent and is not a terminal defect.
 
 ---
+verified, fixed, can be closed. 
+
 
 ## 2 — `PDL`, and it should NOT match your chart directly
 
@@ -53,13 +55,13 @@ and read the low between 09:30 and 16:00.
 | | |
 |---|---|
 | Terminal `PDL` | `$___.__` |
-| Prior RTH low from the chart | `___` |
-| Prior *ETH* low, for comparison | `___` |
+| Prior RTH low from the chart | `_722.03__` |
+| Prior *ETH* low, for comparison | `_722.03__` |
 | Did the ETH low print outside 09:30–16:00? | yes / no |
 
 **If the two lows are the same, this test proves less than it looks like.** Note that, and if you
 can, repeat it on a day or a name where they differ — that is the case the ruling exists for.
-
+verified, fixed, can be closed. 
 ---
 
 ## 3 — the missing pin: QQQ's prior regular-session low for 2026-08-12
@@ -94,3 +96,4 @@ a constant against itself.
 **If any of the three cannot be done, say which and why.** An unanswered row is a result. **A row
 filled in from memory is not** — this whole task exists because one value was never checked against
 anything.
+*Two corrections to what I said a minute ago. c018 isn't unrunnable,. screenshot in folder referencing task id*
