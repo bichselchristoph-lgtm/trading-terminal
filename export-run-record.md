@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-22T14:20:59+02:00
+last_attempt : 2026-08-22T16:02:29+02:00
 
-last_success : 2026-08-22T14:21:00+02:00
+last_success : 2026-08-22T16:02:30+02:00
 
-outcome      : 11 new - momentum-code-handoff/verify-output.md, momentum-christoph-done/018-for-christoph-task-check-atr14-and-pdl.md, momentum-christoph-done/023-for-christoph-task-third-drive-pair.md, momentum-christoph-done/024-for-christoph-decision-read-only-api.md, momentum-christoph-done/025-for-christoph-decision-percent-loss-limits.md, momentum-christoph-done/026-for-christoph-decision-trades-max-day.md, momentum-christoph-done/027-for-christoph-decision-52wl.md, momentum-christoph-done/028-for-christoph-decision-type-dollar.md, momentum-christoph-done/029-for-christoph-decision-006-007-visual-contract.md, momentum-christoph-done/031-for-christoph-decision-ledger-persistence.md, momentum-christoph-done/032-for-christoph-decision-gapped-over.md
+outcome      : 3 new - momentum-code-handoff/done/057-verify-output-one-name.md, momentum-code-handoff/inbox/057-for-code-task-verify-output-one-name.md, momentum-code-handoff/verify-output.md
 
-head         : 1f71a93c9c205e698855e0673515a7b284ca8448 OBS-077 confirmed a third time, at scale: 11 templates reappeared
+head         : 5585f908a77b9ecadfdf10a7c2e1b74ec536436c 057: register the new test file in BOOTSTRAP_ALLOWLIST
