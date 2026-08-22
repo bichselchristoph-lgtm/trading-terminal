@@ -100,3 +100,15 @@ be running, so choose a morning where you do not mind that.
 
 Answers here, in this file, moved to `christoph/done/` when complete. **Two numbers and a
 date is the whole deliverable.**
+
+
+christoph aug 22 2026
+
+`risk_pct_default_daily= 0.04%
+`risk_pct_default_monthly= 0.4%
+
+confirming again: The copy I can reach may be behind yours. The Drive mirror of christoph/done/014-for-christoph-account-parameters.md was last written 2026-08-13 13:34, and in that version the only percentage is risk_pct_default at 0.02% under heading 1. Heading 2 carries dollars only — $1,000 daily, $5,000 monthly. No daily_loss_pct, no monthly_loss_pct.
+
+If you've edited the local file since, the export hasn't carried it — which is the verify-output.txt sync problem in a different folder, and worth a row on its own.
+
+Paste the two lines here and RISK is writable in the same turn. That's been the reliable path before.

@@ -95,4 +95,5 @@ a constant against itself.
 filled in from memory is not** — this whole task exists because one value was never checked against
 anything.
 
-Christoph Aug 22, 2026. this is a duplicate. we already decided. ATR14 is ETH and PDL `PDL` is now the low of the prior *regular* session, 09:30–16:00 ET. Ruled as a decission by design. not tests needed.
+Christoph Aug 22, 2026. this is a duplicate. we already decided. ATR20 is ETH and PDL `PDL` is now the low of the prior *regular* session, 09:30–16:00 ET. Ruled as a decission by design. not tests needed.
+018 adopt ATR20 as definition in all specs and tasks.

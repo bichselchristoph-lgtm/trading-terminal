@@ -67,4 +67,4 @@ Save into `christoph/done/021-52-week-basis.md` — the filled-in file. Then tel
 **If every name you try agrees, record that.** It means the check found nothing, which is different
 from the check passing.
 
-UAT results Christoph: The following levels are correctly anchored to RTH `52wH`, `52wL` and `ATH`. All other levels need to be confirmed on case by case basis. 
+UAT results Christoph: The following levels are correctly anchored to RTH `52wH`, `52wL` and `ATH`.  "52wH, 52wL and ATH are correctly anchored to RTH and are rendered."

@@ -44,6 +44,8 @@ a row because a task mentioned it.
 
 ## To answer
 
-no, ORL5`, `ORL15` and `52wL` `52wl are all intentional by christoph by design. 
+no, ORL5`, `ORL15` and `52wL` `52wl are all intentional and to be rendered in the ui." 
+
+christoph aug 22 2026
 
 Copy this file to `christoph/done/` with the date.

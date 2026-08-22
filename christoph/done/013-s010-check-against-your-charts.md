@@ -79,7 +79,7 @@ and the two are not expected to match.
 - [ ] agree
 - [ ] disagree
 
-**Note:** Wilder's smoothing, not a plain mean of the last 14 true ranges. Most charting
+**Note:** Wilder's smoothing, not a plain mean of the last 20 true ranges. Most charting
 packages use Wilder's; if yours offers a choice, check which is selected.
 
 **C · RVOL — does it agree?**
