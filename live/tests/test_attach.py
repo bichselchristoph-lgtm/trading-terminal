@@ -17,12 +17,13 @@ from typing import Optional, Sequence
 
 import pytest
 
-from core.indicators.context import (ATR_DEFAULT_N, Bar, Measured, adr_dollar,
-                                     adr_pct, adr_used, atr_d14, rvol_at,
-                                     rvol_curve, rvol_rel, true_ranges,
-                                     vwap_from_bars)
+from core.indicators.context import (ADR_BASIS, ATR_DEFAULT_N, Bar, Measured,
+                                     adr_dollar, adr_pct, adr_used, atr_d14,
+                                     rvol_at, rvol_curve, rvol_rel,
+                                     true_ranges, vwap_from_bars)
 from live.attach.attach import (COOLDOWN_S, ORIGINS, TICK_SLOTS, AttachResult,
-                                Contract, attach)
+                                Contract, Stage2Inputs, attach,
+                                compute_context_and_rail)
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -98,7 +99,58 @@ class Fake:
     def sector_today_minutes(self, c): return minutes(30) if self.sector else None
     def sector_sessions(self, c): return [minutes(30) for _ in range(20)] if self.sector else None
     def open_tick_stream(self, c): self._maybe("tick"); return "tick-by-tick AllLast"
+
+    def open_price_stream(self, c, on_update):
+        """**080.** Answers instantly and synchronously, exactly like every
+        other method here — `on_update` fires once with `today_minutes`'s
+        own fixture bars, so a test using `Fake` sees `Last $`/`VWAP` land
+        immediately rather than staying pending forever. Reuses
+        `today_minutes`'s own `fail=["today"]` switch rather than adding a
+        second one — the stream replaces that one-shot role, so it fails
+        the same way. `StreamHandle`'s cancel just flips a flag; nothing
+        here is actually ongoing."""
+        on_update(self.today_minutes(c))
+        from live.attach.streaming import StreamHandle
+        return StreamHandle(lambda: None)
+
     def playbook_for(self, c): return self.playbook
+
+
+def stage2_of(md, c: Contract) -> tuple[dict, dict]:
+    """**080.** The test-side equivalent of `app.py`'s independent-landing
+    dispatch, collapsed into one synchronous call — `Fake` answers every
+    role instantly, so there is no ordering to exercise here, only the same
+    per-role try/except `attach.py`'s retired `_context_block` used to run,
+    now performed by the caller (`app.py` in production; this helper in a
+    test) rather than by `attach()` itself."""
+    def reason(exc: BaseException) -> str:
+        return str(exc).strip() or type(exc).__name__
+
+    inp = Stage2Inputs(has_sector=bool(c.sector_etf))
+    try:
+        inp.today = list(md.today_minutes(c))
+    except Exception as exc:                            # noqa: BLE001
+        inp.today_failed = reason(exc)
+    try:
+        inp.rth_dailies = list(md.daily_bars(c, ADR_BASIS))
+    except Exception as exc:                            # noqa: BLE001
+        inp.rth_dailies_failed = reason(exc)
+    try:
+        inp.sessions = list(md.intraday_sessions(c))
+    except Exception as exc:                            # noqa: BLE001
+        inp.sessions_failed = reason(exc)
+    if inp.has_sector:
+        try:
+            st = md.sector_today_minutes(c)
+            inp.sector_today = list(st) if st is not None else None
+        except Exception as exc:                        # noqa: BLE001
+            inp.sector_today_failed = reason(exc)
+        try:
+            ss = md.sector_sessions(c)
+            inp.sector_sessions = list(ss) if ss is not None else None
+        except Exception as exc:                        # noqa: BLE001
+            inp.sector_sessions_failed = reason(exc)
+    return compute_context_and_rail(inp)
 
 
 # ---- the arithmetic, against hand-checkable fixtures ----------------------
@@ -250,34 +302,42 @@ def test_a_measured_is_a_value_or_a_reason_never_both_and_never_neither() -> Non
 
 
 def test_a_clean_attach_fills_the_context_block() -> None:
+    """**080.** Stage 1 (`attach()`) qualifies the contract alone now;
+    stage 2's rows come from `stage2_of` — the test-side stand-in for
+    `app.py`'s independent-landing dispatch, exercised as one synchronous
+    call since `Fake` answers instantly."""
     r = attach("QQQ", Fake())
     assert r.attached and r.qualified
     assert r.contract.symbol == "QQQ"
     assert r.origin == "typed"
-    for k in ("ADR% used", "VWAP", "VWAP_ext", "RVOL", "RVOL_rel", "RVOL_sector"):
-        assert k in r.context, f"{k} missing from the context block"
+    ctx, rail = stage2_of(Fake(), QQQ)
+    for k in ("Last $", "ADR% used", "VWAP", "RVOL", "RVOL_rel", "RVOL_sector"):
+        assert k in ctx, f"{k} missing from the context block"
+    # **VWAP_ext is gone — 080/v1.5.** The signed-distance suffix left the
+    # VWAP row; nothing computes it any more (v1.5 §2, B-127's third firing).
+    assert "VWAP_ext" not in ctx, "VWAP_ext should no longer be computed at all"
     # **070 Part 3, the leak check.** Christoph, 2026-08-23: the context block
     # carries `ADR% used` and NO other ADR metric, and no ATR anywhere in this
     # panel. `B-028`/`B-091`'s shape is a field that keeps reaching the record
     # after its row was deleted from `CONTEXT_ORDER` -- so this asserts the
-    # field is absent from the STRUCTURE `_context_block` returns, not merely
-    # unrendered by `live/tui/app.py`.
+    # field is absent from the STRUCTURE the compute functions return, not
+    # merely unrendered by `live/tui/app.py`.
     for gone in ("ADR%", "ADR%avail", "ADR $", "ADR used", "room up",
                  "room down", "ATR14", "ATR20"):
-        assert gone not in r.context, (
+        assert gone not in ctx, (
             f"{gone} is back in the context block. 070, ruled by Christoph "
             f"2026-08-23: no ATR anywhere in ATTACHED and no other ADR metric "
             f"— TRADE's stop selector is ATR's only surface in the terminal.")
-    assert r.context["ADR% used"].ok
+    assert ctx["ADR% used"].ok
     # 042 Part 1: four opening-range levels, and no bare `ORH`/`ORL` anywhere.
     # **065 Part A: ORL5, ORL15 and 52wL explicitly, not merely covered by
     # `>=`.** Christoph, 2026-08-22: all three are intentional and must render.
-    assert set(r.rail) >= {"PDH", "PDL", "PMH", "PML",
-                           "ORH5", "ORL5", "ORH15", "ORL15", "52wH", "52wL",
-                           "VWAP"}
+    assert set(rail) >= {"PDH", "PDL", "PMH", "PML",
+                         "ORH5", "ORL5", "ORH15", "ORL15", "52wH", "52wL",
+                         "VWAP"}
     for k in ("ORL5", "ORL15", "52wL"):
-        assert r.rail[k].ok, f"{k} rendered but did not measure: {r.rail[k]}"
-    assert "ORH" not in r.rail and "ORL" not in r.rail, (
+        assert rail[k].ok, f"{k} rendered but did not measure: {rail[k]}"
+    assert "ORH" not in rail and "ORL" not in rail, (
         "a bare ORH/ORL is a well-formed name answering two different questions")
 
 
@@ -309,16 +369,23 @@ def test_refusal_d_an_ambiguous_ticker_qualifies_nothing() -> None:
 def test_the_slot_is_checked_before_any_historical_request_is_spent() -> None:
     """**Step 2 precedes step 3 deliberately.** With no slot you should learn
     that in the first frame — not after three historical requests have gone
-    against a 60-per-10-minutes budget on a symbol you are about to detach."""
+    against a 60-per-10-minutes budget on a symbol you are about to detach.
+
+    **080: stage 1 (`attach()`) no longer touches a historical request at
+    all** — `resolve` is the only call `f.calls` gets from it now, so the
+    ordering this test exists to pin is checked against `stage2_of`'s own
+    dispatch instead, which is what actually issues `daily`.
+    """
     f = Fake(slots=TICK_SLOTS)
     r = attach("QQQ", f)
     assert r.attached, "no slot must not fail the attach"
     assert "no tick slot" in r.slot_state
-    assert f.calls.index("resolve") < f.calls.index("daily")
     # The tape is what is missing, and it says so by name.
     assert r.tape == "absent - no free tick slot"
+    ctx, _rail = stage2_of(f, QQQ)
+    assert f.calls.index("resolve") < f.calls.index("daily")
     # ...and the context block is fully populated anyway. THIS IS THE POINT.
-    assert r.context["ADR% used"].ok and r.context["VWAP"].ok
+    assert ctx["ADR% used"].ok and ctx["VWAP"].ok
 
 
 def test_refusal_b_the_same_symbol_twice_inside_the_cooldown() -> None:
@@ -333,12 +400,18 @@ def test_refusal_b_the_same_symbol_twice_inside_the_cooldown() -> None:
     the guard exists to keep under IBKR's limit. **Never a silent drop**: the
     whole gather refuses before any historical request fires, with its
     remaining seconds on screen."""
-    r = attach("QQQ", Fake(cooldown=11))
+    f = Fake(cooldown=11)
+    r = attach("QQQ", f)
     assert not r.attached
     assert r.queued == "11s"
-    assert not r.context and not r.rail, (
+    # **080: `AttachResult` no longer carries `context`/`rail` at all** —
+    # stage 2 is a separate dispatch `app.py` makes only from a SUCCESSFUL
+    # `_finish_stage1`, which a queued cooldown never reaches. Checked here
+    # against the one thing that still can prove it: no historical role was
+    # ever asked for.
+    assert f.calls == ["resolve"], (
         "a queued re-attach must not spend any of step 3's historical "
-        "requests — the whole point of refusing before it starts")
+        f"requests — the whole point of refusing before it starts; saw {f.calls}")
     assert COOLDOWN_S == 15
 
 
@@ -347,31 +420,34 @@ def test_refusal_a_a_failed_request_leaves_the_others_rendering() -> None:
     `unavailable (reason)`, never a partial ADR.**"""
     r = attach("QQQ", Fake(fail=["daily"]))
     assert r.attached, "one failed request must not fail the attach"
+    ctx, _rail = stage2_of(Fake(fail=["daily"]), QQQ)
     for k in ("ADR% used",):
-        assert not r.context[k].ok, f"{k} rendered a value from a failed request"
-        assert "pacing limit, retry in 42s" in r.context[k].unavailable, (
+        assert not ctx[k].ok, f"{k} rendered a value from a failed request"
+        assert "pacing limit, retry in 42s" in ctx[k].unavailable, (
             "pacing is a display state, not an error, and the reason must survive")
     # The rows that came from OTHER requests are untouched.
-    assert r.context["VWAP"].ok, "VWAP refused because the DAILY request failed"
-    assert r.context["RVOL"].ok
+    assert ctx["VWAP"].ok, "VWAP refused because the DAILY request failed"
+    assert ctx["RVOL"].ok
 
 
 def test_a_partial_adr_is_impossible_by_construction() -> None:
     """Refusal A's real content: there is no state in which `round` exists
     and `ADR% used` does not, because each is derived from the same ADR $
     and both carry the same refusal."""
-    r = attach("QQQ", Fake(fail=["daily"]))
-    assert r.context["ADR% used"].value is None
-    assert r.rail["round"].value is None, (
+    ctx, rail = stage2_of(Fake(fail=["daily"]), QQQ)
+    assert ctx["ADR% used"].value is None
+    assert rail["round"].value is None, (
         "`round` spans by ADR $; a failed daily request must blank it too")
 
 
 def test_refusal_c_end_to_end_no_sector_means_rvol_rel_refuses_by_name() -> None:
     r = attach("THIN", Fake(contracts=[NOSECTOR]))
-    m = r.context["RVOL_rel"]
+    assert r.attached
+    ctx, _rail = stage2_of(Fake(contracts=[NOSECTOR]), NOSECTOR)
+    m = ctx["RVOL_rel"]
     assert not m.ok
     assert m.unavailable == "no sector mapping"
-    assert r.context["RVOL"].ok, "the symbol's own RVOL must still render"
+    assert ctx["RVOL"].ok, "the symbol's own RVOL must still render"
 
 
 def test_the_tape_failing_does_not_fail_the_attach() -> None:
@@ -380,7 +456,8 @@ def test_the_tape_failing_does_not_fail_the_attach() -> None:
     r = attach("QQQ", Fake(fail=["tick"]))
     assert r.attached
     assert r.tape.startswith("absent - ")
-    assert r.context["ADR% used"].ok
+    ctx, _rail = stage2_of(Fake(fail=["tick"]), QQQ)
+    assert ctx["ADR% used"].ok
 
 
 def test_no_playbook_says_so_rather_than_binding_nothing_silently() -> None:

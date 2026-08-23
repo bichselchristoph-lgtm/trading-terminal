@@ -62,6 +62,7 @@ import functools
 import os
 import re
 import sys
+import time
 import unicodedata
 
 from datetime import datetime
@@ -76,18 +77,53 @@ from textual.widgets import Input, Static
 # tests against it and NOTHING in the running application imported it. The three
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
-from core.indicators.context import ADR_DEFAULT_N
+from core.indicators.context import ADR_BASIS, ADR_DEFAULT_N, Bar
 
-from ..attach.attach import COOLDOWN_S, MarketData, attach
+from ..attach.attach import (COOLDOWN_S, Contract, MarketData, Stage2Inputs,
+                             attach, compute_context_and_rail)
 # **034: the import that was missing one layer down.** `live/attach/ibkr.py` —
 # the only module in this tree that touches a broker — was imported by nothing
 # at all, not even a test, while 032 was fixing the same shape for `attach()`.
 from ..attach.ibkr import IbkrConfig, connect
-from .day_record import Attached, DayRecord, empty_record
-from .grammar import Cell, FLAGGED_NOT_ERROR
+from ..attach.streaming import StreamHandle
+from .day_record import (Attached, AttachMetrics, DayRecord, RequestMetrics,
+                         StreamMetrics, empty_record)
+from .grammar import Cell
 from .layout import Layout
 from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
                       progress_bar)
+
+#: **080 Part 3.** One threshold, every row. Unfitted — task 008b: median
+#: 5.002s, max 14.477s, one 32-minute session of one symbol. Renders as
+#: unfitted wherever provenance shows (this module has no provenance line
+#: of its own to carry it on; the done-note states it).
+STALE_THRESHOLD_S = 20.0
+
+#: Roles whose bars arrive pre-split by session (a list of lists), so their
+#: "received" count sums across sessions rather than counting the outer list.
+_SESSION_ROLES = frozenset({"sessions", "sector_sessions"})
+
+
+def _reason_str(exc: BaseException) -> str:
+    """**080.** The same reason-extraction `attach.py._reason` already does
+    — duplicated rather than imported, since it is three lines and importing
+    a private function across a module boundary is a worse coupling than
+    three duplicated lines (`attach.py`'s own module docstring: pacing is a
+    display state, and the message is what a reader acts on)."""
+    msg = str(exc).strip()
+    return msg or type(exc).__name__
+
+
+def _bar_count(role: str, bars) -> Optional[int]:
+    """**080 Part 4.** `bars_received` for a landed role. `None` only when
+    `bars` itself is `None` (the role returned nothing at all, which some
+    `MarketData` implementations do for an absent sector); an empty
+    sequence is a real, countable zero."""
+    if bars is None:
+        return None
+    if role in _SESSION_ROLES:
+        return sum(len(s) for s in bars)
+    return len(bars)
 
 #: Session logic is US/Eastern via `zoneinfo`, never machine locale — the
 #: workspace convention, applied to the one clock this module reads.
@@ -342,18 +378,15 @@ class Panel(Static):
             self.update(self.body(w, h or None))
 
 
-#: 070. `ATTACHED` mockup v1.0 §1: four rows, ruled by Christoph 2026-08-23 —
-#: `ADR% used`, no ATR, no other ADR metric. `RVOL_rel`, `RVOL_sector` and
-#: `cum vol` fold into one combined `RVOL rel` line (mockup: `1.4x · avg
-#: 0.86x · cum 18.1M sh`) and `VWAP` renders across two physical lines (value
-#: + extension, then its sample on a continuation line) — both handled as
-#: bespoke cases in `context_rows`, not by the generic per-key loop this tuple
-#: used to drive alone. `ADR%avail`, `ATR20` and `ext 10`/`ext 20`/`ext 50`
-#: are gone from here on purpose: the first two no longer exist in
-#: `_context_block`'s `out` dict at all (070 Part 3's leak check), and the SMA
-#: stack is still computed and recorded there — "chart work," per the
-#: mockup's own §2 — just never rendered on this panel.
-CONTEXT_ORDER = ("ADR% used", "RVOL_rel", "VWAP")
+#: **080.** Five rows: symbol (rendered separately, above these), `Last $`,
+#: `ADR% used`, `RVOL`, `VWAP`. `RVOL_rel`/`RVOL_sector`/`cum vol` fold into
+#: the single `RVOL` line (own reading first, sector-relative second, each
+#: labelled with its basis — `avg`/`rel` are retired as labels); `VWAP`
+#: renders its value alone, no signed distance (v1.5's own change — the old
+#: `VWAP_ext` suffix compared `Last $` against itself once both were on the
+#: same panel, B-127's third firing). `ADR%avail`, `ATR20`, `ext 10/20/50`
+#: stay off this tuple as before — still computed, never displayed.
+CONTEXT_ORDER = ("Last $", "ADR% used", "RVOL", "VWAP")
 
 #: The level rail. **`VWAP` is deliberately absent** — `level_rail` carries it
 #: and so does the context block, and rendering one value twice is how two rows
@@ -436,90 +469,129 @@ def _adr_used_cell(m) -> str:
     return f"{text} {bar} of {m.sample} ADR{ADR_DEFAULT_N} {window}"
 
 
-def _rvol_rel_cell(rel, context: dict) -> str:
-    """`ATTACHED` mockup v1.2 §1: `1.4x · avg 0.86x · cum 22.1M sh` — three
-    values that used to render as three separate rows (`RVOL_rel`, the
-    sector's own RVOL, `cum vol`) fold into one line here, a presentation
-    decision, so it lives in the render layer rather than in `attach.py`'s
-    `out` dict, which still exposes all three under their own keys. `rel` is
-    `RVOL_rel` itself, already confirmed present by the caller;
-    `RVOL_sector`/`cum vol` are read from `context` and each is simply
-    omitted from the line if that key is absent or itself refuses — a
-    fixture testing this row in isolation need not supply all three.
+#: **080.** Every pending row says this, verbatim, and nothing else does —
+#: the Refusal exit test pins the literal token so `pending` and a stale
+#: value can never render alike.
+PENDING = "pending"
 
-    **071: no trailing `sample · basis` any more.** 070 appended `RVOL_rel`'s
-    own detail after `cum` (`... · vs sector RVOL · vs 20d median at ... ·
-    04:00-20:00 ET`) — one of the two rows (alongside `ADR% used`) verbose
-    enough to overflow the 62-column tile the mockup is drawn at without
-    truncating. The mockup's own line has no trailing basis at all; dropped
-    to match, the same call made for `ADR% used` in `_adr_used_cell`.
 
-    **071 §6/exit tests: a refused `rel` no longer blanks `avg`/`cum`.** 070
-    returned bare on `rel` refusing (`if parts is None: return
-    measured_cell(rel)`), which drops `avg`/`cum` even when THEY are
-    present — the exact "one field's refusal does not blank the row"
-    failure the mockup's §5 caption names for this row specifically. The two
-    are independent in `attach.py` (`RVOL_rel` reads `RVOL`; `RVOL_sector`
-    is `sector_rvol` directly), so a state where one refuses and the other
-    doesn't is reachable even though the mockup's own illustration —
-    `no sector mapping` alongside a present `avg` — is not: if the sector
-    mapping is missing, `attach.py` sets BOTH `RVOL_rel` and `RVOL_sector`
-    to the same `no sector mapping` refusal (`rvol_rel()`'s own `sector is
-    None` branch), so that specific combination cannot occur. Built for the
-    principle regardless, since a different pair of causes reaches the same
-    shape.
+def _age_now(last_update_at: Optional[float]) -> Optional[float]:
+    """Seconds since a stream last updated, or `None` if it never has.
+    `time.monotonic()`, matching `_PacingGuard`'s own clock — never wall
+    time, which a DST change or a session boundary can jump."""
+    if last_update_at is None:
+        return None
+    return time.monotonic() - last_update_at
+
+
+def _stale_suffix(age: Optional[float]) -> str:
+    """**080 Part 3.** The single place `stale Ns` gets written. Empty for
+    a fresh or not-yet-aged reading — this IS the amber exception, rendered
+    as text rather than colour (this codebase has no colour-rendering layer
+    anywhere; every other state distinction here is already typographic —
+    `~`, `?`, `[ ]`, `—` — and this follows the same convention rather than
+    inventing a first one). The Colour exit test asserts this string never
+    appears anywhere except where it belongs."""
+    if age is None or age < STALE_THRESHOLD_S:
+        return ""
+    return f" stale {int(age)}s"
+
+
+def _rvol_row(a: "Attached") -> str:
+    """**080.** `0.86x own · 1.4x vs XLC` — own-history reading first
+    (`RVOL`, read first in `compute_context_and_rail` too), sector-relative
+    second (`RVOL_rel`), each labelled with its basis. `avg`/`rel`/`cum` are
+    retired as labels — `cum vol` stays computed, off this row entirely
+    (082's own instruction: the check is that the TEXT is absent, not that
+    the field is absent, the opposite of B-028's `ADR$` treatment).
+
+    **One reading refusing never blanks the other — B-117**, and one
+    reading PENDING never blanks the other either, which is the same
+    property extended to the new state 080 adds: `own`/`rel` are read from
+    `a.context` independently, so `0.86x own · pending` (the 20-session
+    sector pull still in flight while the symbol's own curve already
+    landed) is reachable and correctly does not blank `own`.
+
+    **Amber is per reading**, because the two readings track two
+    independent stream ages — `own` the symbol stream, `rel` the sector
+    stream (080 Part 3, the task's own words: "two streams, two independent
+    ages").
     """
-    parts = _cell_parts(rel)
-    bits = [parts[0] if parts is not None else measured_cell(rel)]
-    sector = context.get("RVOL_sector")
-    if sector is not None:
-        sector_parts = _cell_parts(sector)
-        if sector_parts is not None:
-            bits.append(f"avg {sector_parts[0]}")
-    cumvol = context.get("cum vol")
-    if cumvol is not None:
-        cumvol_parts = _cell_parts(cumvol)
-        if cumvol_parts is not None:
-            bits.append(f"cum {cumvol_parts[0]}")
-    return "  · ".join(bits)
+    own = a.context.get("RVOL")
+    rel = a.context.get("RVOL_rel")
+    if own is None and rel is None:
+        return f"    {'RVOL':<9} {PENDING}"
+
+    symbol_age = _age_now(a.metrics.streams.get("symbol", StreamMetrics()).last_update_at)
+    sector_age = _age_now(a.metrics.streams.get("sector", StreamMetrics()).last_update_at)
+
+    if own is None:
+        own_text = PENDING
+    else:
+        own_parts = _cell_parts(own)
+        own_text = (f"{own_parts[0]} own{_stale_suffix(symbol_age)}"
+                   if own_parts is not None else measured_cell(own))
+
+    if rel is None:
+        rel_text = PENDING
+    else:
+        rel_parts = _cell_parts(rel)
+        if rel_parts is not None:
+            label = f"vs {a.sector_etf}" if a.sector_etf else "vs sector"
+            rel_text = f"{rel_parts[0]} {label}{_stale_suffix(sector_age)}"
+        else:
+            rel_text = measured_cell(rel)
+
+    return f"    {'RVOL':<9} {own_text}  · {rel_text}"
 
 
-def _vwap_rows(vwap, context: dict) -> list[str]:
-    """071. `ATTACHED` mockup v1.2 §1: one physical line — `VWAP  $712.97 ·
-    +$1.28`. **070 rendered a second, unlabelled continuation line below it
-    carrying `VWAP`'s own `sample`** (`bar-derived · 22.1M sh · 960 min ·
-    04:00 anchor · ...`); 071 §4 removes it explicitly: *"Nothing renders
-    below a value. The row is the row."* Deleted, not moved — unlike the
-    other five rows 071 removes, this text has no new home on screen. The
-    underlying `Measured.sample`/`.basis` on `vwap` itself are untouched
-    (`_stamp()` still reads `vwap.sample` for the record's `as_of`/`lag`);
-    only this second rendered line goes.
-
-    `vwap` is confirmed present by the caller; `VWAP_ext` is read from
-    `context` and simply omitted if absent. **`vwap_from_bars` is
-    untouched** — the mockup's `pre-mkt 2.1M of 18.4M` breakdown (v1.0's
-    illustration, since dropped from the mockup too) would have been a new
-    VWAP statistic, not a rendering change, and stays out of scope
-    (`touches:` names the ATTACHED renderer, not the VWAP statistic).
-    """
+def _vwap_row(vwap) -> str:
+    """**080/v1.5.** The value and nothing else — `VWAP $714.25`. The
+    signed-distance suffix (`VWAP_ext`, `· +$1.28`) this row carried since
+    070 is gone: once `Last $` joined this panel (080), the two read the
+    same underlying price and the distance became self-contradictory
+    whenever they drifted (v1.5 §2, B-127's third firing) — a reader with
+    both numbers on screen can already do the subtraction; the row states
+    the level. `vwap_from_bars` itself is untouched."""
+    if vwap is None:
+        return f"    {'VWAP':<9} {PENDING}"
     parts = _cell_parts(vwap)
     if parts is None:
-        return [f"    {'VWAP':<9} {measured_cell(vwap)}"]
+        return f"    {'VWAP':<9} {measured_cell(vwap)}"
     text, _detail = parts
-    ext = context.get("VWAP_ext")
-    ext_text = ""
-    if ext is not None:
-        ext_parts = _cell_parts(ext)
-        if ext_parts is not None:
-            sign = "+" if ext.value >= 0 else ""
-            ext_text = f"  · {sign}{ext_parts[0]}"
-    return [f"    {'VWAP':<9} {text}{ext_text}"]
+    return f"    {'VWAP':<9} {text}"
+
+
+def _adr_row(m) -> str:
+    if m is None:
+        return f"    {'ADR% used':<9} {PENDING}"
+    return f"    {'ADR% used':<9} {_adr_used_cell(m)}"
+
+
+def _last_price_row(m) -> str:
+    """**080.** `Last $` — the last trade, off the price stream. **Never
+    `pending`** (080 Part 2, verbatim): the row's nature is a live tick, not
+    a queued historical fetch, so its brief pre-first-tick state uses the
+    grammar's existing `not_yet`/`warming` wording instead of the literal
+    `pending` token every other row in this panel uses — distinct on
+    purpose, since it is a structurally different wait (a stream opening,
+    never bounded at 60s the way a historical request is)."""
+    if m is None:
+        return f"    {'Last $':<9} {Cell.not_yet().render()}"
+    parts = _cell_parts(m)
+    if parts is None:
+        return f"    {'Last $':<9} {measured_cell(m)}"
+    text, _detail = parts
+    return f"    {'Last $':<9} {text}"
 
 
 def context_rows(a: Attached) -> list[str]:
-    """The context block for one attached symbol: `ADR% used`, `RVOL rel`,
-    `VWAP` and, only while a gather has landed with refusals, the partial-
-    count line. 034 part 4; reduced to this from ten-plus rows by 071.
+    """The context block for one attached symbol: `Last $`, `ADR% used`,
+    `RVOL`, `VWAP`. **080: rows land independently, each pending until it
+    does** — there is no longer a screen-level partial-count line (058/071's
+    `a.partial`); five rows and the header are all this panel renders, per
+    the task's own §4 constraint, and a row's own state (pending / value /
+    `— (reason)`) already says everything the old summary line said.
 
     **Indented one level under its symbol**, because the panel holds a list of
     attachments and a flat block would read as belonging to whichever symbol the
@@ -530,55 +602,70 @@ def context_rows(a: Attached) -> list[str]:
     future slot indicator, TAPE, the LEVELS rail) without deleting the data
     they were reading — `Attached` still carries `source`/`as_of`/`lag`/
     `slot_state`/`tape`/`rail`, populated exactly as before; this function
-    just stops reading them. The block-level-stamp limitation the removed
-    `from` row used to carry a comment about (one stamp for the whole block,
-    because `Measured` has no per-value as-of/lag field) is now moot for
-    THIS panel and is recorded here only so a reader tracing the history
-    does not go looking for a comment that used to be attached to a row
-    that no longer exists.
+    just stops reading them.
     """
-    if not a.context:
-        return [f"    {Cell.not_yet('no context block measured').render()}"]
     rows: list[str] = []
-    if a.partial:
-        # **058 Part 3, reworded by 071 §6.** A screen-level statement that
-        # the gather completed with refusals — tenet 3 (status inherits from
-        # the weakest), rendered rather than merely true. **Not
-        # `Cell.degraded()` any more**: its DEGRADED marker prepends `~`
-        # unconditionally, and the mockup's own objection is exactly that —
-        # `~2 of 21` reads as *approximately*, the same complaint that
-        # retired `~level` from the LEVELS rail. `a.partial` is already an
-        # exact count (058); the only thing wrong was the marker glued in
-        # front of it, so this builds the line directly instead of through a
-        # confidence axis that cannot render exact and degraded at once.
-        rows.append(f"    {'':<9} {a.partial} ({FLAGGED_NOT_ERROR})")
-    # **070.** `ADR% used`, `RVOL_rel` and `VWAP` are no longer a uniform
-    # one-key-one-line loop — each has a bespoke renderer (the bar, the
-    # combined RVOL line, VWAP's own line) — but `CONTEXT_ORDER` still names
-    # them, in the order they render, and each is still gated on the same
-    # `if name in a.context` presence check the rest of this function uses.
     for name in CONTEXT_ORDER:
-        if name not in a.context:
-            continue
-        if name == "ADR% used":
-            rows.append(f"    {name:<9} {_adr_used_cell(a.context[name])}")
-        elif name == "RVOL_rel":
-            rows.append(f"    {'RVOL rel':<9} {_rvol_rel_cell(a.context[name], a.context)}")
+        if name == "Last $":
+            rows.append(_last_price_row(a.context.get("Last $")))
+        elif name == "ADR% used":
+            rows.append(_adr_row(a.context.get("ADR% used")))
+        elif name == "RVOL":
+            rows.append(_rvol_row(a))
         elif name == "VWAP":
-            rows.extend(_vwap_rows(a.context[name], a.context))
-        else:
-            rows.append(f"    {name:<9} {measured_cell(a.context[name])}")
-    # **071 §4 removes `from`, `slot`, `tape` and the `RAIL_ORDER` loop (PDH,
-    # PDL, PMH, PML, ORH5, ORL5, ORH15, ORL15, 52wH, 52wL, `round` — eleven
-    # rows; the mockup names eight, the other three were simply absent from
-    # the screenshot it was drawn against, and the target's row count of
-    # exactly four leaves no room for any of the eleven) from THIS panel's
-    # rendering.** None of `Attached.source`/`as_of`/`lag`/`slot_state`/
-    # `tape`/`rail` is deleted from the record — `_finish_attach` still
-    # populates every one of them, because SOURCES/HEALTH, a future slot
-    # indicator, the TAPE pane and the LEVELS rail (`067`) each have a named
-    # claim on the same data per 071 §4's table. Only `ADR% used`/`RVOL_rel`/
-    # `VWAP` and the partial-count line are this panel's business now.
+            rows.append(_vwap_row(a.context.get("VWAP")))
+    return rows
+
+
+def header_freshness(a: Attached) -> str:
+    """**080 Part 3.** The header's age suffix — `4s`, `stale 34s`, or `` (a
+    bare header, the broken state, B-134: the freshness computation is not
+    running at all). **The older of the two stream ages** — never more
+    optimistic than the worst reading on the panel. A stream absent from
+    `a.metrics.streams` (no sector mapping) never contributes; one present
+    but never yet updated (`last_update_at is None`) is filtered out rather
+    than forcing bare, so a healthy symbol stream still renders its own age
+    while the sector stream is still opening.
+    """
+    ages = [age for age in
+            (_age_now(sm.last_update_at) for sm in a.metrics.streams.values())
+            if age is not None]
+    if not ages:
+        return ""
+    oldest = max(ages)
+    return f"stale {int(oldest)}s" if oldest >= STALE_THRESHOLD_S else f"{int(oldest)}s"
+
+
+def attach_metrics_rows(record: DayRecord) -> list[str]:
+    """**080 Part 4.** What Part 4 asks for, rendered where it asks for it —
+    never on ATTACHED. Per-stream (symbol/sector **separately, never
+    pooled**) update counts and ages; per-request wall time and bar counts;
+    per-stage keypress-to-paint. Empty when nothing is attached.
+
+    **States the trap rather than hiding it** (Part 4's own instruction): a
+    degraded supplier and a quiet market both read as a long gap here —
+    this renders the NUMBER, not a verdict about what produced it.
+    """
+    if not record.attached:
+        return []
+    m = record.attached[0].metrics
+    rows: list[str] = []
+    for name, sm in sorted(m.streams.items()):
+        age = _age_now(sm.last_update_at)
+        age_text = f"{int(age)}s ago" if age is not None else "no update yet"
+        err = f" - {sm.error}" if sm.error else ""
+        rows.append(f"  stream {name:<7} {sm.update_count} updates · {age_text}{err}")
+    for role, rm in sorted(m.requests.items()):
+        wall = f"{rm.wall_s:.1f}s" if rm.wall_s is not None else "—"
+        bars = f"{rm.bars_received} bars" if rm.bars_received is not None else "— bars"
+        err = f" - {rm.error}" if rm.error else ""
+        rows.append(f"  role {role:<15} {wall} · {bars}{err}")
+    if m.stage1_keypress_to_paint_s is not None:
+        rows.append(f"  stage1 keypress-to-paint  {m.stage1_keypress_to_paint_s:.2f}s")
+    if m.stage2_first_row_s is not None:
+        rows.append(f"  stage2 first row          {m.stage2_first_row_s:.2f}s")
+    if m.stage2_last_row_s is not None:
+        rows.append(f"  stage2 last row           {m.stage2_last_row_s:.2f}s")
     return rows
 
 
@@ -624,14 +711,13 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         attach_rows.append(f"  {symbol} queued · {remaining} "
                            f"({COOLDOWN_S}s same-contract cooldown)")
     elif record.attaching:
-        # **071 §5, verified against mockup v1.2 §3 — a real difference from
-        # what 070 shipped and reported as already matching.** The row read
-        # `[ ATTACHING QQQ ]` via `Cell.attaching().render()`; the mockup's
-        # body is the plain sentence `(values land in one paint)`, with the
-        # symbol carried only by the caption below. Not a `Cell` — nothing
-        # here is a value under refusal, just a fixed description of what
-        # is happening.
-        attach_rows.append("  (values land in one paint)")
+        # **080.** Stage 1 alone gates this window now — contract
+        # resolution, measured 0.23-0.25s — not the whole gather 071's
+        # "one paint" described. Rows landing independently is stage 2's
+        # story, told entirely inside `context_rows` once `at` is non-empty;
+        # this placeholder only covers the brief span before even the
+        # symbol row exists.
+        attach_rows.append("  (resolving)")
     if record.attach_refusal:
         attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
     if record.attach_queued:
@@ -654,15 +740,13 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         # sees before reading that far.
         provenance = "attach refused"
     else:
-        # **071 §3.** Bare when landed — "the header carries the panel
-        # state, not the clock" (mockup v1.2 §1). The symbol row already
-        # carries `attached HH:MM:SS`; a `since HH:MM` caption duplicated
-        # the same fact in a coarser format, which is exactly the shape of
-        # defect the mockup's §2 table names for `from`: "two renderings of
-        # one fact is how a value ends up disagreeing with itself." True for
-        # a partial attach too (mockup §5's header is equally bare) — the
-        # partial-count row inside the panel already says what's wrong.
-        provenance = ""
+        # **080 Part 3, reversing 071 §3.** The header now carries the
+        # freshness age, always — "the age renders always... a bare header
+        # means the freshness age is not being computed" (B-134). Bare is
+        # no longer 071's "nothing to report" signal; it is the BROKEN
+        # state. `record.attached` holds at most one entry (SPEC.md
+        # §12.11), so there is exactly one symbol's freshness to report.
+        provenance = header_freshness(at[0]) if at else ""
     p["attached"] = Panel(
         "ATTACHED", provenance,
         attach_rows or [f"  {Cell.absent('nothing attached').render()}"])
@@ -712,7 +796,8 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
                       [f"  last seen {n}  {t}" for n, t in sorted(h.last_seen.items())])
     p["health"] = Panel(
         "HEALTH", "updates · none yet",
-        source_rows + last_seen_rows + [f"  frames/ticks  {ratio}"],
+        source_rows + last_seen_rows + [f"  frames/ticks  {ratio}"]
+        + attach_metrics_rows(record),
         pinned=[f"regime    {Cell.not_built().render()}"
                 if not record.regime_snapshot.ref
                 else f"regime    {record.regime_snapshot.ref}"])
@@ -843,6 +928,21 @@ class MomentumApp(App):
         #: 120x40 roughly one attach cycle in five. The lock makes the
         #: check-and-mount one atomic step regardless of which caller triggers it.
         self._fit_lock = asyncio.Lock()
+        #: **080.** Every open stream the CURRENT attach owns — cancelled and
+        #: replaced wholesale on the next `_begin_attach` (task's own words:
+        #: "attaching a different symbol cancels every data stream of the
+        #: current one").
+        self._streams: list[StreamHandle] = []
+        #: Bumped on every `_begin_attach`. A callback carries the
+        #: generation it was dispatched under; one that arrives after a
+        #: newer attach has begun is inert, even if `cancel()` could not
+        #: stop a request already on the wire.
+        self._attach_generation = 0
+        #: Stage 2's accumulated inputs for the CURRENT attach — reset to a
+        #: fresh instance on every `_begin_attach`.
+        self._stage2_inputs = Stage2Inputs()
+        self._stage1_started_at: Optional[float] = None
+        self._stage2_started_at: Optional[float] = None
         super().__init__()
 
     @property
@@ -912,9 +1012,9 @@ class MomentumApp(App):
                 "no broker in this slice")
             await self._rerender()
             return
-        self._begin_attach(symbol)
+        generation = self._begin_attach(symbol)
         await self._rerender()
-        self.run_worker(functools.partial(self._attach_worker, symbol),
+        self.run_worker(functools.partial(self._attach_worker, symbol, generation),
                         thread=True, exclusive=False, group="attach",
                         name=f"attach-{symbol}")
 
@@ -945,14 +1045,28 @@ class MomentumApp(App):
 
         **`record.attached` still holds at most one entry** (`SPEC.md`
         §12.11 — several symbols at once is deferred) — enforced in
-        `_finish_attach`'s success branch, which clears fully before
+        `_finish_stage1`'s success branch, which clears fully before
         appending, rather than here.
+
+        **080: also cancels every stream the OUTGOING symbol opened, and
+        bumps the generation.** Returns the new generation so the caller can
+        tag the worker it is about to dispatch with it — a callback tagged
+        with a stale generation is inert even when `cancel()` could not stop
+        a request already on the wire.
         """
         self.record.attach_refusal = ""
         self.record.attach_queued = ""
         self.record.attaching = symbol
+        for handle in self._streams:
+            handle.cancel()
+        self._streams = []
+        self._attach_generation += 1
+        self._stage2_inputs = Stage2Inputs()
+        self._stage1_started_at = time.monotonic()
+        self._stage2_started_at = None
+        return self._attach_generation
 
-    def _attach_worker(self, symbol: str) -> None:
+    def _attach_worker(self, symbol: str, generation: int) -> None:
         """**Runs OFF the Textual event loop thread.** Computes only — the
         record is mutated back on the MAIN thread via `call_from_thread`,
         because `self.record` is read by `_apply_fit`/render calls that can
@@ -992,26 +1106,27 @@ class MomentumApp(App):
             # Textual's default — surfaced here rather than trusted away, so
             # a genuinely unexpected fault still renders instead of leaving
             # `ATTACHING` on screen forever (Refusal, never a stuck badge).
-            self.call_from_thread(self._finish_attach, symbol, None,
+            self.call_from_thread(self._finish_stage1, symbol, generation, None,
                                   f"{symbol}: attach failed "
                                   f"({type(exc).__name__}: {exc})")
             return
-        self.call_from_thread(self._finish_attach, symbol, result, None)
+        self.call_from_thread(self._finish_stage1, symbol, generation, result, None)
 
-    async def _finish_attach(self, symbol: str, result, worker_refusal: Optional[str]) -> None:
-        """**058 Part 3, the atomic swap's last step: every value lands in
-        ONE paint.** Runs on the main thread (via `call_from_thread`), so
-        this and `_begin_attach` are the only two places that mutate
-        `record.attached`/`record.attaching` — there is no window where a
-        reader of `self.record` sees a half-applied result.
+    async def _finish_stage1(self, symbol: str, generation: int, result,
+                             worker_refusal: Optional[str]) -> None:
+        """**080: stage 1's landing.** Runs on the main thread (via
+        `call_from_thread`), so this and `_begin_attach` are the only two
+        places that mutate `record.attached`/`record.attaching`.
 
-        **Partial failure must not look like success.** `result.partial`
-        (set by `attach()` when the gather completed with some rows
-        refusing) rides onto `Attached` unchanged; `context_rows` renders it
-        as a screen-level line beside the per-row refusals, so four values
-        and two refusals cannot read as a complete attach of an illiquid
-        name.
+        **Paints symbol + order-ready state alone — no context, no rail.**
+        Those are stage 2's, and stage 2 is dispatched from HERE, the
+        instant stage 1 lands successfully — not awaited, not blocking this
+        paint. A stale generation (a newer attach already began while this
+        one was in flight) is a no-op; `_begin_attach` already cancelled
+        whatever streams this one might have opened.
         """
+        if generation != self._attach_generation:
+            return
         self.record.attaching = ""
         if worker_refusal is not None:
             self.record.attach_refusal = worker_refusal
@@ -1029,41 +1144,215 @@ class MomentumApp(App):
             self.record.attach_refusal = f"{result.symbol}: {result.refusal}"
             self.record.attach_queued = ""
         else:
-            # An attach that failed at steps 2-5 is still an attach, so a
+            # An attach that failed at steps 2-4 is still an attach, so a
             # stale refusal from a previous attempt must not survive one.
-            # **This is the ONE place `record.attached` is ever cleared —
-            # 072 Defect A.** The old code filtered `a.symbol !=
-            # result.symbol`, which only dropped a re-attach of the SAME
-            # symbol; a DIFFERENT symbol's entry (still there, since
-            # `_begin_attach` does not touch the record — see there) simply
-            # accumulated. `record.attached` holds at most one entry
-            # (`SPEC.md` §12.11 — several symbols at once is deferred), so
-            # a SUCCESSFUL attach clears unconditionally rather than
-            # filtering, and only a successful one — a failed attach must
-            # leave whatever was there untouched (§4.2).
+            # **072 Defect A's fix, unchanged**: a SUCCESSFUL attach clears
+            # `record.attached` unconditionally rather than filtering, and
+            # only a successful one — a failed attach must leave whatever
+            # was there untouched (§4.2).
             self.record.attached = []
-            # **034: the context block is CARRIED, not recomputed and not
-            # dropped.** `attach()` measured all of it one line ago and
-            # until now every value was discarded here — the panel showed
-            # that a symbol was attached and nothing about it.
-            # `render_panels` is pure over the record, so a value the record
-            # does not hold is a value that cannot render.
-            as_of, lag = self._stamp(result)
-            self.record.attached.append(
-                Attached(symbol=result.symbol,
-                        # **071 §3.** Seconds, not minutes — "09:19 and
-                        # 09:19:59 are a minute apart on a panel whose whole
-                        # job is what happened when" (mockup v1.2 §1).
+            a = Attached(symbol=result.symbol,
+                        # **071 §3.** Seconds, not minutes.
                         since=datetime.now(EASTERN).strftime("%H:%M:%S"),
-                        context=result.context, rail=result.rail,
-                        source=self.source_name, as_of=as_of, lag=lag,
-                        tape=result.tape, slot_state=result.slot_state,
-                        partial=result.partial))
+                        sector_etf=(result.contract.sector_etf or ""
+                                   if result.contract else ""),
+                        source=self.source_name,
+                        tape=result.tape, slot_state=result.slot_state)
+            if self._stage1_started_at is not None:
+                a.metrics.stage1_keypress_to_paint_s = (
+                    time.monotonic() - self._stage1_started_at)
+            self.record.attached.append(a)
             self.record.attach_refusal = ""
             self.record.attach_queued = ""
+            await self._rerender()
+            self._dispatch_stage2(result.contract, generation)
+            return
         await self._rerender()
 
-    def _stamp(self, result) -> tuple[str, str]:
+    # ---- 080, stage 2: independent landing --------------------------------
+
+    def _dispatch_stage2(self, contract: Contract, generation: int) -> None:
+        """**080 Part 1/Part 0 item 3.** Dispatched the instant stage 1's
+        contract resolves — built and tested as ROUGHLY the same cost as
+        sequencing it after stage 1, since every call below is already an
+        independent, non-blocking `run_worker(thread=True)` dispatch onto
+        the SAME shared broker connection; adding a second wave later would
+        be the more expensive shape to build, not this one (see the
+        done-note for the full reasoning).
+
+        Two `keepUpToDate` streams (symbol, sector — only if a mapping
+        exists) and up to three one-shot historical requests, each its own
+        worker, each landing and repainting independently.
+        """
+        self._stage2_inputs.has_sector = bool(contract.sector_etf)
+        self._stage2_started_at = time.monotonic()
+
+        self.run_worker(
+            functools.partial(self._stream_worker, contract, generation,
+                              "symbol", contract),
+            thread=True, exclusive=False, group="attach",
+            name=f"stream-symbol-{contract.symbol}")
+
+        if contract.sector_etf:
+            sector_c = Contract(symbol=contract.sector_etf, con_id=0, exchange="SMART")
+            self.run_worker(
+                functools.partial(self._stream_worker, contract, generation,
+                                  "sector", sector_c),
+                thread=True, exclusive=False, group="attach",
+                name=f"stream-sector-{contract.symbol}")
+
+        self.run_worker(
+            functools.partial(self._role_worker, contract, generation, "rth_dailies"),
+            thread=True, exclusive=False, group="attach",
+            name=f"role-rth-dailies-{contract.symbol}")
+        self.run_worker(
+            functools.partial(self._role_worker, contract, generation, "sessions"),
+            thread=True, exclusive=False, group="attach",
+            name=f"role-sessions-{contract.symbol}")
+        if contract.sector_etf:
+            self.run_worker(
+                functools.partial(self._role_worker, contract, generation,
+                                  "sector_sessions"),
+                thread=True, exclusive=False, group="attach",
+                name=f"role-sector-sessions-{contract.symbol}")
+
+    def _stream_worker(self, owner: Contract, generation: int, which: str,
+                       stream_contract: Contract) -> None:
+        """Opens ONE `keepUpToDate` stream and blocks only long enough to
+        register it — `on_update` then fires for the rest of the stream's
+        life, each firing marshalled back via `call_from_thread` exactly as
+        `_attach_worker`'s single result used to be."""
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+        def on_update(bars) -> None:
+            self.call_from_thread(self._apply_stream_update, generation, which, bars)
+
+        try:
+            handle = self.md.open_price_stream(stream_contract, on_update)
+        except Exception as exc:                        # noqa: BLE001
+            self.call_from_thread(self._apply_stream_error, generation, which,
+                                  _reason_str(exc))
+            return
+        self.call_from_thread(self._register_stream, generation, handle)
+
+    def _register_stream(self, generation: int, handle: StreamHandle) -> None:
+        if generation != self._attach_generation:
+            handle.cancel()
+            return
+        self._streams.append(handle)
+
+    async def _apply_stream_update(self, generation: int, which: str, bars) -> None:
+        if generation != self._attach_generation or not self.record.attached:
+            return
+        a = self.record.attached[0]
+        now = time.monotonic()
+        sm = a.metrics.streams.setdefault(which, StreamMetrics(label=which))
+        if sm.last_update_at is not None:
+            sm.gaps_s.append(now - sm.last_update_at)
+            if len(sm.gaps_s) > 200:
+                sm.gaps_s.pop(0)
+        sm.update_count += 1
+        sm.last_update_at = now
+        if which == "symbol":
+            self._stage2_inputs.today = bars
+        else:
+            self._stage2_inputs.sector_today = bars
+        self._recompute_and_merge(a)
+        await self._rerender()
+
+    async def _apply_stream_error(self, generation: int, which: str, reason: str) -> None:
+        if generation != self._attach_generation or not self.record.attached:
+            return
+        a = self.record.attached[0]
+        a.metrics.streams.setdefault(which, StreamMetrics(label=which)).error = reason
+        if which == "symbol":
+            self._stage2_inputs.today_failed = reason
+        else:
+            self._stage2_inputs.sector_today_failed = reason
+        self._recompute_and_merge(a)
+        await self._rerender()
+
+    def _role_worker(self, contract: Contract, generation: int, role: str) -> None:
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        started = time.monotonic()
+        try:
+            if role == "rth_dailies":
+                bars = self.md.daily_bars(contract, ADR_BASIS)
+            elif role == "sessions":
+                bars = self.md.intraday_sessions(contract)
+            elif role == "sector_sessions":
+                bars = self.md.sector_sessions(contract)
+            else:                                        # pragma: no cover
+                raise ValueError(f"unknown stage-2 role {role!r}")
+        except Exception as exc:                        # noqa: BLE001
+            self.call_from_thread(self._apply_role_error, generation, role,
+                                  time.monotonic() - started, _reason_str(exc))
+            return
+        self.call_from_thread(self._apply_role_landed, generation, role,
+                              time.monotonic() - started, bars)
+
+    async def _apply_role_landed(self, generation: int, role: str, wall_s: float,
+                                 bars) -> None:
+        if generation != self._attach_generation or not self.record.attached:
+            return
+        a = self.record.attached[0]
+        a.metrics.requests[role] = RequestMetrics(
+            role=role, wall_s=wall_s, bars_received=_bar_count(role, bars))
+        if role == "rth_dailies":
+            self._stage2_inputs.rth_dailies = bars
+        elif role == "sessions":
+            self._stage2_inputs.sessions = bars
+        elif role == "sector_sessions":
+            self._stage2_inputs.sector_sessions = bars
+        self._recompute_and_merge(a)
+        self._note_row_landing()
+        await self._rerender()
+
+    async def _apply_role_error(self, generation: int, role: str, wall_s: float,
+                                reason: str) -> None:
+        if generation != self._attach_generation or not self.record.attached:
+            return
+        a = self.record.attached[0]
+        a.metrics.requests[role] = RequestMetrics(role=role, wall_s=wall_s, error=reason)
+        if role == "rth_dailies":
+            self._stage2_inputs.rth_dailies_failed = reason
+        elif role == "sessions":
+            self._stage2_inputs.sessions_failed = reason
+        elif role == "sector_sessions":
+            self._stage2_inputs.sector_sessions_failed = reason
+        self._recompute_and_merge(a)
+        self._note_row_landing()
+        await self._rerender()
+
+    def _recompute_and_merge(self, a: Attached) -> None:
+        """**080.** The one call site for `compute_context_and_rail` —
+        merges NEW rows in, never removes one that already landed (`inp`'s
+        fields only ever go from absent to present/failed, never back, so a
+        recompute can only add or replace, never blank)."""
+        ctx, rail = compute_context_and_rail(self._stage2_inputs)
+        a.context.update(ctx)
+        if rail:
+            a.rail.update(rail)
+        vwap = ctx.get("VWAP") or a.context.get("VWAP")
+        if vwap is not None:
+            a.as_of, a.lag = self._stamp({"VWAP": vwap})
+
+    def _note_row_landing(self) -> None:
+        if self._stage2_started_at is None or not self.record.attached:
+            return
+        a = self.record.attached[0]
+        elapsed = time.monotonic() - self._stage2_started_at
+        if a.metrics.stage2_first_row_s is None:
+            a.metrics.stage2_first_row_s = elapsed
+        a.metrics.stage2_last_row_s = elapsed
+
+    def _stamp(self, context: dict) -> tuple[str, str]:
         """As-of and lag for the block, **derived from the DATA, never the clock
         alone.** The as-of is the last session bar's own timestamp; the lag is
         now minus that. A stamp taken at render time would say when the screen
@@ -1071,8 +1360,12 @@ class MomentumApp(App):
 
         Both are empty when there is no bar to read one from — `context_rows`
         then renders the stamp without them rather than inventing one.
+
+        **080: takes a `context` dict, not an `AttachResult`** — there is no
+        longer one gather producing both at once; called from
+        `_recompute_and_merge` whenever `VWAP` is present.
         """
-        vwap = result.context.get("VWAP")
+        vwap = context.get("VWAP")
         span = getattr(vwap, "sample", "") if vwap is not None else ""
         # `vwap_from_bars` ends its sample with `... · <first ts> to <last ts>`.
         # The last timestamp is the newest bar the feed gave us, which is the
@@ -1103,11 +1396,22 @@ class MomentumApp(App):
                 f"{seconds}s" if abs(seconds) < 3600 else f"{seconds // 60}m")
 
     async def _rerender(self) -> None:
-        """Rebuild the tiles from the record. `_apply_fit` remounts when no
-        `Panel` is present, so emptying the frame is the whole trigger."""
-        frame = self.query_one("#frame", Frame)
-        await frame.remove_children()
-        await self._apply_fit()
+        """Rebuild the tiles from the record.
+
+        **080: the empty-then-remount dance moved INSIDE `_apply_fit`'s own
+        lock.** Emptying the frame here, THEN calling `_apply_fit()`
+        separately, left a window between the two where a second concurrent
+        `_rerender()` (080 calls this from many independent callback sites
+        now — every stream tick, every row landing, not just one atomic
+        swap) could remove the SAME already-empty frame and mount before
+        this call's own `_apply_fit()` ran, which then saw panels already
+        present and mounted nothing — an empty frame reaching the screen.
+        `force=True` makes the whole remove-then-mount decision one atomic
+        step under `_fit_lock`, the same guarantee `060`/B-001 already
+        established for concurrent resize-vs-attach; this is that guarantee
+        extended to concurrent attach-vs-attach.
+        """
+        await self._apply_fit(force=True)
 
     def tile_rows(self) -> list[list[Panel]]:
         """The tiling, as rows of tiles. One place, so the too-small guard and
@@ -1166,7 +1470,7 @@ class MomentumApp(App):
     async def on_mount(self) -> None:
         await self._apply_fit()
 
-    async def _apply_fit(self) -> None:
+    async def _apply_fit(self, *, force: bool = False) -> None:
         """Switch between the refusal and the panels, **in both directions.**
 
         A one-way transition would be worse than what it replaces: a terminal
@@ -1177,6 +1481,11 @@ class MomentumApp(App):
         naming the launch size while the window is now a different size is a
         well-formed value answering a different question — the defect this
         project is named for, rendered in the widget whose job is to prevent it.
+
+        **`force=True`** (080): `_rerender()`'s caller — remove and remount
+        unconditionally, as one atomic step under the lock below, rather
+        than trusting a prior `not self.query(Panel)` check that a second
+        concurrent caller could have already invalidated.
         """
         cols, height = self.size.width or 0, self.size.height or 0
         if not (cols and height):
@@ -1195,14 +1504,14 @@ class MomentumApp(App):
                 # §4e/§5 — a STATED refusal and ZERO panels, never a clipped one.
                 msg = too_small_message(cols, height, need_cols, need_rows, worst)
                 existing = self.query("#too-small")
-                if existing:
+                if existing and not force:
                     existing.first(Static).update(msg)   # recomputed, not reused
                     return
                 await frame.remove_children()
                 await frame.mount(Static(msg, id="too-small"))
                 return
 
-            if self.query("#too-small") or not self.query(Panel):
+            if force or self.query("#too-small") or not self.query(Panel):
                 await frame.remove_children()
                 await frame.mount(*[Horizontal(*tiles, classes="row")
                                     for tiles in rows if tiles])

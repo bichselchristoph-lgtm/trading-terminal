@@ -42,32 +42,83 @@ class Ticket:
 
 
 @dataclass
+class StreamMetrics:
+    """**080.** One `keepUpToDate` stream's own numbers — symbol and sector
+    tracked **separately, never pooled** (080 Part 4): a dead sector stream
+    must not hide behind a healthy symbol stream in an average.
+
+    `last_update_at`/`gaps_s` are `time.monotonic()` seconds, matching
+    `_PacingGuard`'s and `cooldown_remaining_s`'s own clock convention —
+    never wall time, which a session boundary or a DST change can jump.
+    """
+
+    label: str = ""
+    update_count: int = 0
+    last_update_at: Optional[float] = None
+    #: Capped so this cannot grow unbounded across a long session — the
+    #: distribution's shape is the point (008b: median 5.002s, max 14.477s),
+    #: not a lifetime log.
+    gaps_s: list = field(default_factory=list)
+    error: str = ""
+
+
+@dataclass
+class RequestMetrics:
+    """**080 Part 4.** One historical request's own numbers."""
+
+    role: str = ""
+    wall_s: Optional[float] = None
+    bars_received: Optional[int] = None
+    #: `None` where an expected count is not computable from duration/bar
+    #: size alone (080 Part 0: "nothing you write may imply a certainty
+    #: the measurement does not have") — rendered absent rather than guessed.
+    bars_requested: Optional[int] = None
+    error: str = ""
+
+
+@dataclass
+class AttachMetrics:
+    """**080 Part 4.** Recorded, never rendered on ATTACHED — HEALTH renders
+    it. Per-stage keypress-to-paint, per-stream update stats, per-request
+    wall time and bar counts."""
+
+    stage1_keypress_to_paint_s: Optional[float] = None
+    stage2_first_row_s: Optional[float] = None
+    stage2_last_row_s: Optional[float] = None
+    streams: dict = field(default_factory=dict)     # {"symbol": StreamMetrics, "sector": StreamMetrics}
+    requests: dict = field(default_factory=dict)     # {"rth_dailies": RequestMetrics, ...}
+
+
+@dataclass
 class Attached:
     """One attached symbol, **and the context block that was measured for it.**
 
-    **Why fields were added to a record whose docstring says not to (034).**
-    `attach()` has computed `context` and `rail` since S010 and `Attached` had
-    nowhere to put them, so every value the slice exists to produce was
-    discarded one line after it was measured. That is the fifth instance in this
-    tree of *computed and unreachable* — after the app with no entry point, the
-    palette that lived in a docstring, `attach()` with no key, and
-    `IBKRMarketData` imported by nothing.
+    **080: two stages, not one.** `context`/`rail` are populated
+    INCREMENTALLY now — `app.py` merges each row in as it lands
+    (`compute_context_and_rail`), so a key's absence from `context` while
+    `since` is already set is the **pending** state, not an omission. A row
+    is never removed once landed; it can only be replaced by a fresher
+    computation of itself.
 
     **These are `Measured`s, not strings.** `render_panels` is a pure function of
     this record and formatting is its job; storing pre-rendered rows here would
     put the refusal grammar in two places, and `grammar.py` exists so that it is
     in one.
-
-    The docstring's prohibition is about fields that make an UNBUILT reading
-    representable — `layer_0`, `exposure`. These hold values that already exist
-    on `AttachResult`, measured by code that shipped under S010.
     """
 
     symbol: str
     since: str = ""
-    #: `AttachResult.context` — ADR, ATR, extension, VWAP, cum vol, both RVOLs.
+    #: **080.** The sector ETF symbol (or `""`), carried alongside `context`
+    #: so `RVOL`'s row can label its second reading `vs XLK` rather than a
+    #: generic `vs sector` — the render layer needs the STRING, not just
+    #: whether a mapping exists.
+    sector_etf: str = ""
+    #: ADR, extension, VWAP, cum vol, both RVOL readings. Merged in row by
+    #: row as `compute_context_and_rail` produces them — see the class note.
     context: dict = field(default_factory=dict)
-    #: `AttachResult.rail` — PDH/PDL, PMH/PML, ORH/ORL, VWAP, 52-week, rounds.
+    #: PDH/PDL, PMH/PML, ORH/ORL, VWAP, 52-week, rounds. Merged in once
+    #: `rth_dailies` lands (`compute_context_and_rail` returns it as a whole
+    #: — the rail has no per-row landing requirement of its own).
     rail: dict = field(default_factory=dict)
     #: Where the numbers came from and how old they are. **Block-level, and that
     #: is a stated limitation rather than a shortcut**: `Measured` carries a
@@ -79,10 +130,15 @@ class Attached:
     #: What step 4 said. An attach with no tape is still an attach (S010).
     tape: str = ""
     slot_state: str = ""
-    #: **058 Part 3.** `AttachResult.partial` — "N of M rows unavailable"
-    #: when the gather completed with some requests refusing. Empty when
-    #: everything measured. Tenet 3, rendered rather than merely true.
-    partial: str = ""
+    #: **080 Part 3.** The freshness clock lives on `metrics.streams["symbol"
+    #: /"sector"].last_update_at` — ONE source of truth for both "how fresh"
+    #: and "how many updates/what gap distribution" (080 Part 4), rather than
+    #: a second copy of the same timestamp. Exactly two independently-aged
+    #: streams — task 080's own text: "two streams, two independent ages" —
+    #: never per-row, because `Last $`/`VWAP`/`ADR% used`/`RVOL`'s own
+    #: reading all read the SAME symbol stream, and `RVOL`'s sector-relative
+    #: reading alone reads the sector stream.
+    metrics: AttachMetrics = field(default_factory=AttachMetrics)
 
 
 @dataclass

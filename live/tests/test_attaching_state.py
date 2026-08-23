@@ -70,6 +70,22 @@ async def _type(pilot, symbol: str) -> None:
     await pilot.pause()
 
 
+async def _settle(pilot) -> None:
+    """**080.** Stage 1's worker dispatches stage 2's (several) from INSIDE
+    its `call_from_thread` callback — which happens DURING, not before, a
+    single `wait_for_complete()` call, so the workers it starts may not yet
+    be registered in the set that call is waiting on. A second call catches
+    anything the first missed; stage 2 is dispatched exactly once per
+    attach, so two calls converge — there is no ongoing chain that would
+    need a third. Skipping this was reproduced as a real, if test-only,
+    flake: `NoMatches('#frame')` when the pilot context exits while a
+    late-registered worker is still mid-callback."""
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
+
+
 # ---- 1 + 2: the mid-flight screen -------------------------------------
 
 
@@ -90,8 +106,7 @@ def test_the_screen_shows_attaching_while_the_gather_is_in_flight() -> None:
                 f"a context row rendered before the gather completed — the "
                 f"screen could be mistaken for a finished attach:\n{body}")
             release.set()
-            await pilot.app.workers.wait_for_complete()
-            await pilot.pause()
+            await _settle(pilot)
             after = attached_panel(app).body()
             assert "ADR% used" in after and "ATTACHING" not in after, (
                 f"the completed attach still shows ATTACHING or never landed "
@@ -116,7 +131,7 @@ def test_the_ui_stays_responsive_during_an_attach() -> None:
             await pilot.press("ctrl+tab")
             await pilot.pause()          # would hang here if the UI froze
             release.set()
-            await pilot.app.workers.wait_for_complete()
+            await _settle(pilot)
     asyncio.run(go())
 
 
@@ -153,8 +168,7 @@ def test_re_attaching_drops_the_old_values_immediately() -> None:
             assert "ATTACHING" in mid and "QQQ" in mid
 
             release.set()
-            await pilot.app.workers.wait_for_complete()
-            await pilot.pause()
+            await _settle(pilot)
             after = attached_panel(app).body()
             assert "ADR% used" in after and "ATTACHING" not in after
     asyncio.run(go())
@@ -178,8 +192,7 @@ def test_a_re_attach_inside_the_cooldown_shows_one_line_and_nothing_else() -> No
         async with app.run_test(size=UAT_SIZE) as pilot:
             await pilot.pause()
             await _type(pilot, "QQQ")
-            await pilot.app.workers.wait_for_complete()
-            await pilot.pause()
+            await _settle(pilot)
             panel = attached_panel(app)
             body = panel.body()
             assert "queued · 11s" in body and "QQQ" in body, (
@@ -196,37 +209,39 @@ def test_a_re_attach_inside_the_cooldown_shows_one_line_and_nothing_else() -> No
 # ---- partial failure must not look like success -------------------------
 
 
-def test_a_partial_attach_carries_a_screen_level_statement() -> None:
-    """`AttachResult.partial` — "N of M rows unavailable" — must reach the
-    screen when some (not all) of the gather's rows refused, so four values
-    and two refusals cannot be mistaken for a complete attach of an illiquid
-    name."""
+def test_a_partial_attach_names_the_specific_row_and_reason() -> None:
+    """**080 reverses this test's own premise, stated in the done-note.**
+    `AttachResult.partial` — the screen-level "N of M rows unavailable"
+    summary — is retired: five rows and the header are all this panel
+    renders (080 §4/§7), so there is no summary line left for a partial
+    gather to carry. What survives is the underlying guarantee: a failed
+    request's row refuses with its OWN specific reason, and the other rows
+    are untouched by it."""
     async def go():
         app = MomentumApp(md=Fake(fail=["daily"]))
         async with app.run_test(size=UAT_SIZE) as pilot:
             await pilot.pause()
             await _type(pilot, "QQQ")
-            await pilot.app.workers.wait_for_complete()
-            await pilot.pause()
+            await _settle(pilot)
             body = attached_panel(app).body()
-            assert "rows unavailable" in body, (
-                f"a partial attach (the daily request failed, others did "
-                f"not) does not carry a screen-level statement that it is "
-                f"partial:\n{body}")
-            assert "flagged, not an error" in body
+            assert "rows unavailable" not in body, (
+                f"the retired screen-level summary line reappeared:\n{body}")
+            assert "ADR% used" in body and "pacing limit, retry in 42s" in body, (
+                f"the failed row's own specific reason did not render:\n{body}")
+            assert "VWAP" in body and "RVOL" in body, (
+                f"a row that came from an UNRELATED request went missing "
+                f"alongside the one that actually failed:\n{body}")
     asyncio.run(go())
 
 
-def test_an_explicit_failure_widens_the_unavailable_count() -> None:
-    """**`Fake()`'s own baseline is not the zero case** — its `minutes()`
-    fixture starts at 09:30, so PMH/PML have no pre-market bars and always
-    refuse; the screen-level statement is correct to name that. What this
-    asserts is the part that must hold regardless: an EXPLICIT failure
-    (`fail=["daily"]`) refuses strictly more rows than the baseline, so the
-    statement tracks the actual refusal count rather than being a fixed
-    string that renders whether or not anything is wrong.
-    """
-    async def counts(md) -> int:
+def test_an_explicit_failure_refuses_a_row_the_baseline_does_not() -> None:
+    """**Rewritten for 080** — `Attached.partial`'s count is gone, so this
+    now asserts the same underlying property (an explicit failure produces
+    strictly more refused ROWS than the clean baseline) directly against
+    the panel body, per-row, rather than against a retired summary field.
+    `Fake()`'s baseline is genuinely clean on THIS panel — 071 already moved
+    PMH/PML (the one gap the old baseline carried) off ATTACHED entirely."""
+    async def refused_rows(md) -> int:
         result: dict = {}
 
         async def go():
@@ -234,17 +249,17 @@ def test_an_explicit_failure_widens_the_unavailable_count() -> None:
             async with app.run_test(size=UAT_SIZE) as pilot:
                 await pilot.pause()
                 await _type(pilot, "QQQ")
-                await pilot.app.workers.wait_for_complete()
-                await pilot.pause()
-                result["partial"] = app.record.attached[0].partial
+                await _settle(pilot)
+                result["body"] = attached_panel(app).body()
         await go()
-        partial = result["partial"]
-        return int(partial.split(" of ")[0]) if partial else 0
+        return result["body"].count("— (")
 
-    baseline = asyncio.run(counts(Fake()))
-    failed = asyncio.run(counts(Fake(fail=["daily"])))
+    baseline = asyncio.run(refused_rows(Fake()))
+    failed = asyncio.run(refused_rows(Fake(fail=["daily"])))
+    assert baseline == 0, (
+        f"the clean baseline refused a row on ATTACHED — 071 moved PMH/PML "
+        f"off this panel, so nothing here should refuse with no explicit "
+        f"failure; saw {baseline}")
     assert failed > baseline, (
-        f"an explicit `daily` failure did not widen the unavailable count "
-        f"(baseline {baseline}, with failure {failed}) — the screen-level "
-        f"statement would not distinguish a genuinely worse attach from the "
-        f"fixture's own baseline gaps")
+        f"an explicit `daily` failure did not refuse any row on the panel "
+        f"(baseline {baseline}, with failure {failed})")

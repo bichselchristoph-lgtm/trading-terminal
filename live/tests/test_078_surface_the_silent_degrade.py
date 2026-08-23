@@ -1,18 +1,30 @@
 """078 — the two defects 075 measured live, fixed: `warm()` failing is
 surfaced even when every row still measures, and every historical request
-(warmed or fallback) now consults `_PacingGuard`.
+(warmed or fallback) now consults `_PacingGuard`. **Reported here as
+`B-130`/`B-133`.**
 
-**075's own finding, restated**: on 3 of 6 AMZN attaches `warm()` timed out,
-every per-role read fell back to its own unguarded live request, every one
-of those fallbacks succeeded, and nothing anywhere said the fast path had
-failed. `_bars` — the single choke point every fallback goes through — never
-consulted `_PacingGuard`. Both reported here as `B-130`/`B-133`.
+**080 changed the shape this task's Green/Refusal tests exercise, and this
+file says so rather than silently rewriting the guard — task 080 §7's own
+instruction.** 080 retires `warm()`/`_context_block` entirely: stage 2 no
+longer runs one gathered call that a per-role fallback degrades AWAY from —
+`app.py` now dispatches `daily_bars`/`intraday_sessions`/`sector_sessions`
+directly, independently, and each IS the only read that role ever gets.
+**The scenario B-130's original Green/Refusal tests exercised — `warm()`
+timing out while every per-role fallback still quietly succeeds — is no
+longer reachable**, because there is no more `warm()` call in the dispatch
+path for anything to time out ahead of. `AttachResult.partial`/
+`Attached.partial` are removed with it (080's own five-row constraint
+leaves no line for a screen-level summary).
 
-**Reuses existing vocabulary, per 078 §3**: no new grammar token, no new
-colour, no new row — `AttachResult.partial`/`Attached.partial` is the same
-field `058` built for "the gather completed with some rows refusing";
-`context_rows()`'s rendering of it (`{partial} (flagged, not an error)`) is
-untouched. Only a new SENTENCE for a cause that previously had none at all.
+**What 078 actually cared about survives, in a form that fits 080's
+architecture**: a role's failure is NEVER silently invisible — it renders
+as THAT row's own `unavailable (specific reason)`, directly (still true,
+covered in `test_attach.py`), and **every historical request still
+consults `_PacingGuard` before it dispatches** — B-133's real content —
+which the two tests below now check against the ACTUAL call shape `app.py`
+uses (`daily_bars`/`intraday_sessions`/`sector_sessions` called with
+nothing ever warmed, since nothing calls `warm()` any more), not merely
+against `_bars()` in isolation as tests 3/4 already did.
 """
 from __future__ import annotations
 
@@ -21,100 +33,61 @@ import time
 
 import pytest
 
-from live.attach.attach import Contract, attach
+from core.indicators.context import ADR_BASIS
+from live.attach.attach import Contract
 from live.attach.ibkr import IBKRMarketData, _pacing_key
-from live.tests.test_attach import QQQ, Fake, minutes
+from live.tests.test_attach import QQQ
 from live.tests.test_attach_is_reachable_by_key import FakeIB
-from live.tui.app import MomentumApp, context_rows
-from live.tui.day_record import Attached
 
 
-class FakeWithPremarket(Fake):
-    """`Fake.today_minutes` always starts at 09:30 — no fixture in
-    `test_attach.py` ever gives PMH/PML a pre-market bar, so `refused` is
-    never actually empty against the shared `Fake`. This fixture starts at
-    08:00 (120 bars → 08:00 through 09:59) so a genuinely CLEAN attach —
-    every row `ok`, including PMH/PML — is reachable for the GREEN test,
-    which needs `refused` to be empty so the degraded-gather sentence is
-    not masked by an unrelated ordinary refusal."""
-
-    def today_minutes(self, c):
-        self._maybe("today")
-        return minutes(120, start_h=8, start_m=0)
+# ---- exit test 1/2 (080's replacement) — every stage-2 role paces itself --
 
 
-# ---- exit test 1 (Green) — warm() fails, every row still measures --------
+def test_every_stage2_role_call_consults_the_pacing_guard() -> None:
+    """**080's shape for B-133.** `app.py` never calls `warm()` any more —
+    `daily_bars`/`intraday_sessions`/`sector_sessions` are each dispatched
+    directly, independently, from their own worker. `_warmed()` therefore
+    always misses (nothing populated `self._warm`), so every one of these
+    three calls falls straight through to `_bars()` — and `_bars()`
+    consulting `_PacingGuard` (078/B-133, unchanged) is what makes THIS the
+    guarantee 078 actually needed: not that a fallback path is guarded, but
+    that the path `app.py` genuinely takes, always, is."""
+    _ensure_main_thread_has_a_loop()
+    md = IBKRMarketData(FakeIB())
+    key = _pacing_key(QQQ)
+    assert key not in md._pacing._seen, "fixture assumption: nothing seen yet"
+
+    md.daily_bars(QQQ, ADR_BASIS)
+    assert key in md._pacing._seen, "daily_bars reached the wire unguarded"
+    assert len(md._pacing._seen[key]) == 1
+
+    md.intraday_sessions(QQQ)
+    assert len(md._pacing._seen[key]) == 2, (
+        "intraday_sessions reached the wire unguarded")
 
 
-def test_a_failed_warm_that_still_measures_reports_a_degraded_gather() -> None:
-    """`FakeWithPremarket(fail=["warm"])`: `warm()` raises; every per-role
-    method is still its own, independent, always-succeeding read (`Fake`
-    never checks a warm cache), so every row lands `ok` — `refused` stays
-    empty and, pre-078, `AttachResult.partial` stayed `""`: a fully
-    successful-looking attach that had actually taken the slow, unguarded
-    path throughout. **Exact wording asserted, not a substring** (078 §4 /
-    B-126)."""
-    r = attach("QQQ", FakeWithPremarket(fail=["warm"]))
-    assert r.attached
-    values = {**r.context, **r.rail}
-    assert all(v.ok for v in values.values()), (
-        "fixture assumption broken: every row must measure for this to be "
-        "the GREEN case, not the REFUSAL case")
-    assert r.partial == "gather degraded - warm unavailable", (
-        f"expected the exact degraded-gather sentence, got {r.partial!r}")
+def test_a_role_failure_renders_its_own_reason_not_a_generic_default() -> None:
+    """**080's shape for B-130's real content.** No `warm()` step exists to
+    fail independently of a row any more, so there is nothing for a
+    degraded-gather sentence to report — but the underlying guarantee 078
+    protected (a specific failure reason must never be swallowed by a
+    generic "no daily bars" default) is still load-bearing, and is already
+    covered end-to-end by `test_attach.py`'s
+    `test_refusal_a_a_failed_request_leaves_the_others_rendering` via
+    `compute_context_and_rail`. Pinned again here, directly against the
+    live client's own `daily_bars`, so this file keeps a test that would go
+    red if that specific-reason guarantee regressed at the client layer
+    rather than only at the arithmetic layer."""
 
-    # And on the rendered panel — same field, same row, same suffix.
-    a = Attached(symbol=r.symbol, since="09:31:00", context=r.context,
-                rail=r.rail, partial=r.partial)
-    body = "\n".join(context_rows(a))
-    assert "gather degraded - warm unavailable (flagged, not an error)" in body, (
-        f"the degraded-gather line did not render:\n{body}")
+    class PacingFailIB(FakeIB):
+        def reqHistoricalData(self, contract, **kw):
+            if kw["barSizeSetting"] == "1 day":
+                raise RuntimeError("pacing limit, retry in 42s")
+            return super().reqHistoricalData(contract, **kw)
 
-
-def test_a_clean_warm_reports_no_partial_at_all() -> None:
-    """The control: `warm()` succeeding, with no other row refusing, must
-    NOT produce any `partial` — otherwise the degraded-gather sentence
-    would be meaningless noise on every attach rather than a signal on a
-    real one."""
-    r = attach("QQQ", FakeWithPremarket())
-    assert r.attached and not r.partial
-
-
-# ---- exit test 2 (Refusal) — warm() fails AND a fallback also fails ------
-
-
-def test_warm_and_fallback_both_failing_refuses_with_a_specific_reason() -> None:
-    """`Fake(fail=["warm", "daily"])`. The affected rows (everything reading
-    `daily_bars` — `ADR% used`, `ext 10/20/50`, `PDH`/`PDL`, `52wH`/`52wL`)
-    must refuse with the SPECIFIC reason their shared fallback raised — not
-    the generic `"no daily bars"` default a successful-but-empty read would
-    carry. **That distinction is the assertion**: a reason-carrying refusal
-    must not be confusable with "the read succeeded and simply returned
-    nothing." `refused` is non-empty here (both the daily-dependent rows
-    AND the base fixture's own PMH/PML gap), so this also exercises the
-    COMBINED message — a real refusal never silently swallows the
-    degraded-gather fact, and vice versa."""
-    r = attach("QQQ", Fake(fail=["warm", "daily"]))
-    assert r.attached
-    adr = r.context["ADR% used"]
-    assert not adr.ok
-    assert adr.unavailable == "pacing limit, retry in 42s", (
-        f"expected the fallback's own specific exception reason, got "
-        f"{adr.unavailable!r} — a generic default here would be "
-        f"indistinguishable from 'the read succeeded and returned nothing'")
-    assert adr.unavailable != "no daily bars", (
-        "the specific failure reason was overwritten by the generic "
-        "empty-read default — the two must stay distinguishable")
-
-    # Both facts are true here (rows refused AND warm() itself failed), so
-    # the screen-level statement carries both — neither silently swallows
-    # the other.
-    values = {**r.context, **r.rail}
-    refused = [k for k, v in values.items() if not v.ok]
-    assert refused, "fixture assumption: at least one row must refuse here"
-    assert r.partial == (f"{len(refused)} of {len(values)} rows unavailable "
-                         f"(gather degraded - warm unavailable)"), (
-        f"unexpected partial: {r.partial!r}")
+    md = IBKRMarketData(PacingFailIB())
+    with pytest.raises(RuntimeError, match="pacing limit, retry in 42s"):
+        md.daily_bars(QQQ, ADR_BASIS)
 
 
 # ---- exit test 3 (Guard) — every historical request consults the guard ---

@@ -1,28 +1,28 @@
 """The attach sequence — S010 part 1, `SPEC.md` §6b.1a-seq.
 
-**Attach does five things and they are not one operation.** Three of them can
-fail independently, and **each failure must leave the others working.** That is
-the whole design, and it is why this is a sequence with a result object rather
-than a function that returns a symbol or raises.
+**080 splits this into two stages.** `attach()` below is now STAGE 1 alone —
+resolve, cooldown, slot, tape, playbook. **Stage 2 — the historical requests
+that feed `ADR% used`, `RVOL` and `VWAP` — is not a function call any more.**
+It is `Stage2Inputs`/`compute_context_and_rail` (bottom of this file): a pure
+recompute driven by whichever inputs have landed so far, called by `app.py`
+every time one more of them arrives. **That is the mechanism "rows land
+independently" runs on** — there is no longer a single gathered call for the
+caller to wait on.
 
     | # | step                          | blocking | on failure                    |
     |---|-------------------------------|----------|-------------------------------|
     | 1 | resolve the contract          | YES      | ambiguous -> render, ask      |
     | 2 | check the tick slot           | no       | render NOW, name what to drop |
-    | 3 | 4-6 historical requests, GATHERED CONCURRENTLY | no | per-row unavailable(reason) |
-    | 4 | open the tick-by-tick stream  | no       | attach SUCCEEDS, tape absent  |
-    | 5 | bind the playbook             | no       | `no trigger level declared`   |
+    | 3 | open the tick-by-tick stream  | no       | attach SUCCEEDS, tape absent  |
+    | 4 | bind the playbook             | no       | `no trigger level declared`   |
+
+**Stage 1 alone is enough to submit an order — this is the whole point of
+080.** Nothing in stage 1 waits on a historical request; `app.py` dispatches
+the price stream and the three stage-2 roles the moment step 1 resolves, and
+none of stage 2 gates this function's return.
 
 **Step 2 precedes step 3 deliberately.** With no slot you should learn that in
-the first frame — not after three historical requests have been spent against a
-60-per-10-minutes budget on a symbol you are about to detach.
-
-**Step 4 does not gate step 3, and that ordering is the point of the slice.** A
-symbol with no free tick slot still yields ADR, ATR, extension, the level rail,
-both RVOLs and session VWAP — everything sizing will need. **The tape is an
-enrichment, not a precondition**, and an attach that refused wholesale because
-one of five slots was busy would be a worse terminal than one that says so and
-carries on.
+the first frame.
 
 ----
 
@@ -39,7 +39,7 @@ it rather than trusting this sentence — S010 part 2 requires a test, because
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Protocol, Sequence
+from typing import Callable, Optional, Protocol, Sequence
 
 from core.indicators.context import (ADR_BASIS, Bar, INTRADAY_BASIS, Measured,
                                      PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
@@ -47,6 +47,7 @@ from core.indicators.context import (ADR_BASIS, Bar, INTRADAY_BASIS, Measured,
                                      cumulative_volume, extension_in_adr,
                                      level_rail, rvol_at, rvol_curve,
                                      rvol_rel, sma, vwap_from_bars)
+from .streaming import StreamHandle
 
 #: The three origins, recorded from day one **even though only `typed` exists.**
 #: `scanner` and `watchlist` arrive in later slices; recording the field now
@@ -80,12 +81,13 @@ class MarketData(Protocol):
     def resolve(self, symbol: str) -> Sequence[Contract]: ...
     def tick_slots_in_use(self) -> int: ...
     def cooldown_remaining_s(self, symbol: str) -> int: ...
-    #: **058 Part 2.** Fire every independent historical request this attach
-    #: needs, CONCURRENTLY, before the per-role methods below are read. A
-    #: fixture that never implements this as anything but a no-op is
-    #: unaffected — each per-role method still answers on its own; `warm` is
-    #: an optimisation the live client makes real, not a new contract the
-    #: numbers depend on.
+    #: **080.** No longer called by `attach()` — stage 2's roles are now
+    #: fetched independently (`app.py` calls `daily_bars`/`intraday_sessions`
+    #: /`sector_sessions` directly, each from its own worker), so there is no
+    #: single gathered call left for this to warm ahead of. Kept on the
+    #: Protocol and on `IBKRMarketData` unchanged: nothing in this task asks
+    #: for its removal, and a future direct caller (a fixture, a diagnostic)
+    #: still has a working no-op/real implementation to call.
     def warm(self, c: Contract) -> None: ...
     def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]: ...
     def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]: ...
@@ -93,13 +95,32 @@ class MarketData(Protocol):
     def sector_today_minutes(self, c: Contract) -> Optional[Sequence[Bar]]: ...
     def sector_sessions(self, c: Contract) -> Optional[Sequence[Sequence[Bar]]]: ...
     def open_tick_stream(self, c: Contract) -> str: ...
+    #: **080, stage 1.** A live, `keepUpToDate`-shaped minute-bar series.
+    #: `on_update(bars)` fires with the FULL current bar list on every
+    #: revision — never just the delta — because `vwap_from_bars`/
+    #: `cumulative_volume`/`rvol_at` all need the whole series, not one bar.
+    #: A fixture answers this synchronously and instantly, exactly as every
+    #: other method here does; the live client's version genuinely stays
+    #: open until cancelled.
+    def open_price_stream(
+        self, c: Contract, on_update: Callable[[Sequence[Bar]], None]
+    ) -> StreamHandle: ...
     def playbook_for(self, c: Contract) -> str: ...
 
 
 @dataclass
 class AttachResult:
-    """What a caller gets back. **An attach that failed at steps 2-5 is still an
-    attach**, and this object is the only place that distinction is expressed."""
+    """What a caller gets back from STAGE 1. **An attach that failed at
+    steps 2-4 is still an attach**, and this object is the only place that
+    distinction is expressed.
+
+    **080: `context`/`rail`/`partial` are gone from this object.** They held
+    stage 2's output, and stage 2 is no longer one call this function makes
+    and waits on — it is `Stage2Inputs`/`compute_context_and_rail`, driven by
+    `app.py` from callbacks that land after this function has already
+    returned. A caller wanting the context block no longer reads it off
+    `AttachResult` at all.
+    """
 
     symbol: str
     origin: str
@@ -117,14 +138,6 @@ class AttachResult:
     slot_state: str = ""
     tape: str = ""
     playbook: str = ""
-    context: dict[str, Measured] = field(default_factory=dict)
-    rail: dict[str, Measured] = field(default_factory=dict)
-    #: **058 Part 3.** "N of M rows unavailable" when the gather completed
-    #: with SOME requests refusing. Empty when everything measured. Tenet 3
-    #: — status inherits from the weakest — has to be RENDERED, not merely
-    #: true: four values and two refusals must not be indistinguishable from
-    #: a complete attach of an illiquid name.
-    partial: str = ""
 
     @property
     def qualified(self) -> bool:
@@ -179,10 +192,12 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
                     if in_use < TICK_SLOTS
                     else f"no tick slot - detach one of {in_use} to free it")
 
-    # ---- step 3: three historical requests, each failing alone -------------
-    r.context, r.rail, warm_failure = _context_block(r.contract, md)
+    # **080.** Stage 2 (the historical requests behind `ADR% used`/`RVOL`/
+    # `VWAP`) no longer runs here at all — `app.py` dispatches it, and the
+    # live price stream, the instant this function returns `r.contract`.
+    # Nothing below this line waits on a historical request.
 
-    # ---- step 4: the tape. DOES NOT GATE STEP 3 ---------------------------
+    # ---- step 3: the tape. Never gated on a historical request ------------
     if r.slot_state.startswith("no tick slot"):
         r.tape = "absent - no free tick slot"
     else:
@@ -194,252 +209,191 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
             # the exception already carried "no tape components in core".
             r.tape = f"absent - {_reason(exc)}"
 
-    # ---- step 5: the playbook ---------------------------------------------
+    # ---- step 4: the playbook ----------------------------------------------
     try:
         r.playbook = md.playbook_for(r.contract) or "no trigger level declared"
     except Exception:                              # noqa: BLE001
         r.playbook = "no trigger level declared"
 
-    # **058 Part 3.** A screen-level statement that the gather completed
-    # with refusals — the per-row `— (reason)` cells already say WHICH rows,
-    # this says the attach as a whole is not a clean one, so a reader
-    # scanning the header cannot mistake a partial attach for a complete one.
-    values = {**r.context, **r.rail}
-    refused = [k for k, v in values.items() if getattr(v, "ok", True) is False]
-    # **078/B-130.** `warm_failure` and `refused` are independent facts and
-    # neither may silently swallow the other. A row can refuse for reasons
-    # that have nothing to do with `warm()` (PMH/PML with no pre-market
-    # bars yet, for instance) — if that alone suppressed the degraded-gather
-    # sentence, the one morning both happen together is exactly the morning
-    # this task exists to make legible, and it would go quiet again.
-    if refused and warm_failure:
-        r.partial = (f"{len(refused)} of {len(values)} rows unavailable "
-                     f"(gather degraded - {warm_failure})")
-    elif refused:
-        # **058 Part 3.** A screen-level statement that the gather
-        # completed with refusals — the per-row `— (reason)` cells already
-        # say WHICH rows, this says the attach as a whole is not a clean
-        # one, so a reader scanning the header cannot mistake a partial
-        # attach for a complete one.
-        r.partial = f"{len(refused)} of {len(values)} rows unavailable"
-    elif warm_failure:
-        # `warm()` failed but every row still measured — each one fell
-        # back to its own individual, unguarded request and got there
-        # anyway, so `refused` above is empty and this attach would
-        # otherwise look completely clean. It was not: reusing the SAME
-        # field, the SAME rendered row and the SAME `flagged, not an
-        # error` suffix `refused` already uses (no new token, no new
-        # colour, no new row — 078 §3) — just a different sentence for a
-        # different cause, since "N of M rows unavailable" would be false
-        # here (every row DID measure; the fast, guarded path did not).
-        r.partial = f"gather degraded - {warm_failure}"
-
     r.attached = True
     return r
 
 
-def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], dict[str, Measured], str]:
-    """The three requests. **Each row refuses on its own** — a failure in the
-    intraday request must not blank ADR, which came from a different call.
+@dataclass
+class Stage2Inputs:
+    """**080.** Every independent piece of data the four value rows and the
+    LEVELS rail can be built from — each starting absent and arriving on its
+    own schedule. `app.py` owns one instance per attach, mutates it as each
+    role/stream lands, and calls `compute_context_and_rail(inp)` again after
+    every mutation.
 
-    **078/B-130: the third return value.** `warm()`'s own failure used to be
-    a bare `except Exception: pass` — swallowed with no trace anywhere. 075
-    measured this live: `warm()` timed out on 3 of 6 AMZN attaches, every
-    per-role read then fell back to its own individual request, and every
-    one of those fallbacks succeeded — so `refused` (below, in `attach()`)
-    stayed empty and the attach LOOKED clean. It was not: it took the
-    unguarded, pre-058 sequential path for 70-83 extra seconds, and nothing
-    on screen or in any log said so. `warm_failure` carries the reason
-    (empty string when `warm()` did not raise) so `attach()` can surface it
-    even when every row still measured successfully.
+    **A field being `None` (and its `_failed` sibling being `""`) IS the
+    pending state** — there is no separate boolean, because a third state
+    ("pending" vs "landed" vs "failed") only needs two facts (value, error)
+    to be fully determined, and a redundant flag is a second place those two
+    facts could disagree.
+
+    **`today`/`sector_today` are never one-shot.** They are replaced by the
+    `keepUpToDate` price streams (080, stage 1) — every stream update
+    replaces the WHOLE list here (never appended to), because a forming bar
+    is REVISED IN PLACE (008b's own finding: 344 of 376 updates revised the
+    forming minute, only 32 appended a new one), and `on_update` already
+    hands back the full current series for exactly that reason.
+    """
+
+    has_sector: bool = False
+    today: Optional[Sequence[Bar]] = None
+    today_failed: str = ""
+    sector_today: Optional[Sequence[Bar]] = None
+    sector_today_failed: str = ""
+    rth_dailies: Optional[Sequence[Bar]] = None
+    rth_dailies_failed: str = ""
+    sessions: Optional[Sequence[Sequence[Bar]]] = None
+    sessions_failed: str = ""
+    sector_sessions: Optional[Sequence[Sequence[Bar]]] = None
+    sector_sessions_failed: str = ""
+
+
+def _adr_terms(rth_dailies: Sequence[Bar]) -> tuple[Measured, Measured, float]:
+    """`(pct, dol, todays_open)` — the shared arithmetic `ADR% used` and the
+    LEVELS rail's `adr_dol` both need from the same `rth_dailies` series.
+    Split out so `compute_context_and_rail` computes it once, not twice."""
+    todays_open = rth_dailies[-1].open
+    pct = adr_pct(rth_dailies)
+    dol = adr_dollar(pct, todays_open)
+    return pct, dol, todays_open
+
+
+def compute_context_and_rail(
+    inp: Stage2Inputs,
+) -> tuple[dict[str, Measured], dict[str, Measured]]:
+    """**080.** The pure recompute stage 2 now runs on. Called every time one
+    more of `inp`'s fields changes; returns whichever rows are CURRENTLY
+    computable from what has landed so far. **A row absent from the returned
+    `context` dict is pending — not refused, not zero.** `app.py` merges new
+    keys into the record's existing context, never removing one that already
+    landed, because `inp`'s fields only ever go from absent to present or
+    failed, never back.
+
+    **Each row refuses on its own** — a failure in the sessions request must
+    not blank `ADR% used`, which reads a different input entirely. This is
+    the same guarantee `_context_block` (078/B-130's home, retired by this
+    task) gave the old one-shot gather; here it falls out of each branch
+    below reading only its own inputs.
     """
     out: dict[str, Measured] = {}
-    warm_failure = ""
 
-    # --- 058 Part 2: fire every independent historical request at once -----
+    # --- Last $ / VWAP -- the symbol price stream alone ---------------------
+    if inp.today_failed:
+        out["Last $"] = Measured.absent(inp.today_failed)
+        out["VWAP"] = Measured.absent(inp.today_failed)
+        out["cum vol"] = Measured.absent(inp.today_failed)
+    elif inp.today:
+        out["Last $"] = Measured(value=inp.today[-1].close, sample="last trade",
+                                 unit=Unit.DOLLAR, basis=INTRADAY_BASIS)
+        out["VWAP"] = vwap_from_bars(inp.today)
+        out["cum vol"] = cumulative_volume(inp.today)
+    # else: the stream has not delivered its first payload yet -- pending.
+
+    # --- ADR% used -- self-sufficient from rth_dailies alone -----------------
     #
-    # A failure here is not fatal — every fetch below still tries its own
-    # live request if warming did not populate it (a `Fake` never populates
-    # anything; it is a no-op). That is Refusal A extended to the gather
-    # rather than a new failure mode: one dead round trip must not cost the
-    # rows that a second, working round trip could still answer.
-    try:
-        md.warm(c)
-    except Exception as exc:                       # noqa: BLE001
-        warm_failure = _reason(exc)
-
-    # --- request 1: dailies, ONCE PER DISTINCT BASIS -----------------------
-    #
-    # **038 Part 1. This used to be one request at `use_rth=True` feeding ADR,
-    # the SMA stack, PDH/PDL and ATR14 alike** — and that is precisely how
-    # `ATR14` came to read `13.14` against a true ~`15.6`. ATR's true range
-    # spans the prior close, so the gap is the measurement, so it needs the ETH
-    # series; ADR has no gap term at all and is RTH by definition.
-    #
-    # **Memoised on the flag, not on the indicator.** Two indicators sharing a
-    # basis share the request — IBKR's pacing budget is ~60 historical requests
-    # per 10 minutes (§6b.1b) and an attach that issued one per indicator would
-    # spend it. But each indicator still ASKS with its own constant, so flipping
-    # one basis moves that indicator alone and cannot silently drag another with
-    # it.
-    _daily_cache: dict[bool, list[Bar]] = {}
-    _daily_failed: dict[bool, str] = {}
-
-    def dailies_on(basis: SessionBasis) -> list[Bar]:
-        if basis.use_rth in _daily_cache:
-            return _daily_cache[basis.use_rth]
-        if basis.use_rth in _daily_failed:
-            return []
-        try:
-            bars = list(md.daily_bars(c, basis))
-        except Exception as exc:                   # noqa: BLE001
-            _daily_failed[basis.use_rth] = _reason(exc)
-            return []
-        _daily_cache[basis.use_rth] = bars
-        return bars
-
-    def daily_why(basis: SessionBasis) -> str:
-        return _daily_failed.get(basis.use_rth, "no daily bars")
-
-    rth_dailies = dailies_on(ADR_BASIS)
-
-    # **ADR% used — RTH, the panel's only ADR/ATR row.** 070, ruled by Christoph
-    # 2026-08-23: the context block carries `ADR% used` and NO other ADR
-    # metric, and NO ATR anywhere in this panel — TRADE's stop selector is
-    # ATR's only surface in the whole terminal. `ADR%avail`, `ADR $`, `room
-    # up`/`room down` and any ATR row all leave `out` entirely here, not merely
-    # `CONTEXT_ORDER` — B-028 is exactly a value that kept reaching the
-    # renderer after its row was deleted, and a field absent from this
-    # dict cannot repeat that by accident.
-    #
-    # **`adr_used` is the existing function, not a new formula.** 070 Part 2:
-    # `ADR%avail = 100 - adr_used`, so the row this task adds is what
-    # `adr_available` was already computing internally before returning its
-    # complement — reused directly rather than re-derived.
-    #
-    # **The ETH daily request that fed ATR is also gone.** Nothing else in this
-    # block consumed `eth_dailies`; keeping the fetch alive for a value nobody
-    # reads would spend part of IBKR's pacing budget for nothing. TRADE's own
-    # task adds its own request when it needs one — this function serves
-    # ATTACHED specifically, not a shared cache of everything any panel might
-    # ever want.
-    #
-    # **`dol` IS STILL COMPUTED AND IS NOT A DEAD LOCAL.** `level_rail` spans
-    # `round` with it, and `adr_used` divides by it. Only the display rows go.
-    if rth_dailies:
-        todays_open = rth_dailies[-1].open
-        price = rth_dailies[-1].close
-        pct = adr_pct(rth_dailies)
-        dol = adr_dollar(pct, todays_open)
-        out["ADR% used"] = adr_used(price, todays_open, dol)
-    else:
-        why = daily_why(ADR_BASIS)
-        out["ADR% used"] = Measured.absent(why)
-        dol = Measured.absent(why)
-        price = 0.0
-
-    # **The SMA stack is UNRULED by 038, computed and recorded, never
-    # displayed** — the `ATTACHED` mockup v1.0 §2 removes it from this panel
-    # on the same footing as ATR ("Chart work"), but does not say the
-    # computation stops; `live/tui/app.py`'s `CONTEXT_ORDER` is what actually
-    # keeps it off screen, not this function.
-    sma_dailies = dailies_on(SMA_BASIS)
-    if sma_dailies:
-        sma_price = sma_dailies[-1].close
+    # **`price` is `rth_dailies[-1].close`, the daily bar's own close, NOT
+    # the price stream's** — unchanged from the retired `_context_block`.
+    # `adr_used`'s existing call is reused verbatim; only WHEN it fires
+    # changed, not what it is fed.
+    dol: Optional[Measured] = None
+    if inp.rth_dailies_failed:
+        out["ADR% used"] = Measured.absent(inp.rth_dailies_failed)
+    elif inp.rth_dailies:
+        pct, dol, todays_open = _adr_terms(inp.rth_dailies)
+        out["ADR% used"] = adr_used(inp.rth_dailies[-1].close, todays_open, dol)
+        # **The SMA stack is UNRULED, computed and recorded, never
+        # displayed** (unchanged from the retired `_context_block`) — the
+        # mockup keeps it off this panel; `app.py`'s `CONTEXT_ORDER` is what
+        # keeps it off screen, not this function.
+        sma_price = inp.rth_dailies[-1].close
         for n in (10, 20, 50):
-            out[f"ext {n}"] = extension_in_adr(sma_price, sma(sma_dailies, n), dol)
+            out[f"ext {n}"] = extension_in_adr(sma_price, sma(inp.rth_dailies, n), dol)
+    # else: pending.
+
+    # --- RVOL -- own reading needs sessions AND the price stream -----------
+    own: Optional[Measured] = None
+    if inp.sessions_failed:
+        own = Measured.absent(inp.sessions_failed)
+        out["RVOL"] = own
+    elif inp.sessions and inp.today:
+        own = rvol_at(inp.today, rvol_curve(inp.sessions))
+        out["RVOL"] = own
+    elif inp.sessions is not None and not inp.today:
+        # Sessions landed with no bars at all -- a real, named empty result,
+        # not a pending state; `rvol_at` already refuses this correctly.
+        own = Measured.absent("no bars today") if inp.today is not None else None
+        if own is not None:
+            out["RVOL"] = own
+    # else: pending on `sessions`.
+
+    # --- RVOL_rel -- NEVER 1.0. Independent readings, independent landing --
+    if not inp.has_sector:
+        if own is not None:
+            out["RVOL_rel"] = Measured.absent("no sector mapping")
+        out["RVOL_sector"] = Measured.absent("no sector mapping")
     else:
-        for n in (10, 20, 50):
-            out[f"ext {n}"] = Measured.absent(daily_why(SMA_BASIS))
+        if inp.sector_sessions_failed or inp.sector_today_failed:
+            reason = inp.sector_sessions_failed or inp.sector_today_failed
+            if own is not None:
+                out["RVOL_rel"] = Measured.absent(reason)
+            out["RVOL_sector"] = Measured.absent(reason)
+        elif inp.sector_sessions and inp.sector_today:
+            sector_rvol = rvol_at(inp.sector_today, rvol_curve(inp.sector_sessions))
+            out["RVOL_sector"] = sector_rvol
+            if own is not None:
+                out["RVOL_rel"] = rvol_rel(own, sector_rvol)
+        # else: pending on the sector's own sessions/stream.
 
-    # --- request 3: today, from the open -----------------------------------
-    try:
-        today = list(md.today_minutes(c))
-    except Exception as exc:                       # noqa: BLE001
-        today = []
-        out["VWAP"] = Measured.absent(_reason(exc))
-        out["cum vol"] = Measured.absent(_reason(exc))
-    if today:
-        out["VWAP"] = vwap_from_bars(today)
-        out["cum vol"] = cumulative_volume(today)
-
-    # **070. `VWAP_ext` — how far price sits above/below VWAP, in dollars.**
-    # `ATTACHED` mockup v1.0 §1: `VWAP $730.68 · +$2.46`. Not a new VWAP
-    # statistic — `vwap_from_bars` is untouched — this is the renderer's own
-    # derived value (today's latest close minus VWAP), scoped to `attach.py`
-    # since `touches:` names the ATTACHED renderer, not the VWAP statistic.
-    if today and out["VWAP"].ok:
-        out["VWAP_ext"] = Measured(value=today[-1].close - out["VWAP"].value,
-                                   sample="price - VWAP", unit=Unit.DOLLAR,
-                                   basis=INTRADAY_BASIS)
-    else:
-        out["VWAP_ext"] = Measured.absent(out["VWAP"].unavailable)
-
-    # --- request 2: 20 sessions intraday -> the RVOL curve ------------------
-    try:
-        sessions = list(md.intraday_sessions(c))
-    except Exception as exc:                       # noqa: BLE001
-        sessions = []
-        out["RVOL"] = Measured.absent(_reason(exc))
-    if sessions:
-        out["RVOL"] = rvol_at(today, rvol_curve(sessions)) if today else \
-            Measured.absent("no bars today")
-
-    # --- RVOL_rel. NEVER 1.0 ------------------------------------------------
-    sector_rvol: Optional[Measured] = None
-    if c.sector_etf:
-        try:
-            s_sessions = md.sector_sessions(c)
-            s_today = md.sector_today_minutes(c)
-            if s_sessions and s_today:
-                sector_rvol = rvol_at(list(s_today), rvol_curve(list(s_sessions)))
-        except Exception as exc:                   # noqa: BLE001
-            sector_rvol = Measured.absent(_reason(exc))
-    out["RVOL_rel"] = rvol_rel(out.get("RVOL", Measured.absent("no RVOL")), sector_rvol)
-    # **070. Exposed under its own key, not left a dead local.** `ATTACHED`
-    # mockup v1.0 §1 folds the sector's own RVOL into the same line as
-    # `RVOL_rel` (`avg 0.86x`) — it was already computed here for
-    # `rvol_rel`'s sake and simply never reached `out` before this task.
-    out["RVOL_sector"] = sector_rvol if sector_rvol is not None \
-        else Measured.absent("no sector mapping")
-
-    # --- the level rail -----------------------------------------------------
+    # --- the level rail. Refuses alongside ADR% used, not merely pending ---
     #
-    # **058 Part 1. 52wH/52wL come off `rth_dailies` — no second request.**
-    # `daily_bars(c, ADR_BASIS)` now fetches a full year of RTH dailies (not
-    # 60D), because ADR%/the SMA stack/PDH-PDL only ever read the TAIL of
-    # whatever they are given (`adr_pct`/`sma` slice `[-n:]`), so extending
-    # the window changes nothing they compute — and the same series already
-    # holds everything 52wH/52wL need. `year_high_low` is retired as a
-    # separate `MarketData` call for exactly this reason: the two "requests"
-    # were always the same RTH daily series at two different windows.
-    if rth_dailies:
-        yh, yl = (max(b.high for b in rth_dailies), min(b.low for b in rth_dailies))
-    else:
-        yh = yl = None
-    # **PDH/PDL come from the RTH dailies** (038 Part 1). On ETH bars `PDL`
-    # would be the prior session's extended-hours low — which is `AML`, a
-    # different level wearing PDL's name. Confirmed on QQQ 2026-08-13, where the
-    # ETH low of 717.37 sat in the early pre-market.
-    prior = dailies_on(PRIOR_DAY_BASIS)
-    prev_day = prior[-2] if len(prior) >= 2 else None
-    premarket = [b for b in today if _clock(b.ts) < "09:30"]
-    # 042 Part 1. Two windows, and the 15 CONTAINS the 5 — which is what makes
-    # `ORH15 >= ORH5` and `ORL15 <= ORL5` hold by construction rather than by
-    # luck. Sliced here rather than inside `level_rail` so `core` keeps taking
-    # bars and never a clock convention.
-    opening_5 = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
-    opening_15 = [b for b in today if "09:30" <= _clock(b.ts) < "09:45"]
-    rail = level_rail(prev_day=prev_day, premarket=premarket,
-                      opening_5=opening_5, opening_15=opening_15,
-                      session_clock=_clock(today[-1].ts) if today else None,
-                      vwap=out.get("VWAP", Measured.absent("no session bars")),
-                      year_high=yh, year_low=yl,
-                      price=today[-1].close if today else (prior[-1].close if prior else 0.0),
-                      # `ADR $` no longer renders (042 Part 3) so it is no
-                      # longer in `out` — passed directly from the local.
-                      adr_dol=dol)
-    return out, rail, warm_failure
+    # **A FAILED `rth_dailies` still produces a rail** — `level_rail` is
+    # called with an absent `adr_dol` and `prev_day`/year-high/low all
+    # `None`, exactly as the retired `_context_block` did — so `round` (and
+    # every other rail value spanned by ADR $) refuses BY NAME rather than
+    # simply never appearing. Only the genuinely PENDING case (neither
+    # landed nor failed yet) leaves `rail` empty.
+    rail: dict[str, Measured] = {}
+    if inp.rth_dailies_failed:
+        today = inp.today or ()
+        premarket = [b for b in today if _clock(b.ts) < "09:30"]
+        opening_5 = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
+        opening_15 = [b for b in today if "09:30" <= _clock(b.ts) < "09:45"]
+        rail = level_rail(
+            prev_day=None, premarket=premarket,
+            opening_5=opening_5, opening_15=opening_15,
+            session_clock=_clock(today[-1].ts) if today else None,
+            vwap=out.get("VWAP", Measured.absent("no session bars")),
+            year_high=None, year_low=None,
+            price=today[-1].close if today else 0.0,
+            adr_dol=Measured.absent(inp.rth_dailies_failed))
+    elif inp.rth_dailies:
+        if dol is None:
+            _, dol, _ = _adr_terms(inp.rth_dailies)
+        yh = max(b.high for b in inp.rth_dailies)
+        yl = min(b.low for b in inp.rth_dailies)
+        prior = inp.rth_dailies      # PRIOR_DAY_BASIS shares rth_dailies -- both RTH.
+        prev_day = prior[-2] if len(prior) >= 2 else None
+        today = inp.today or ()
+        premarket = [b for b in today if _clock(b.ts) < "09:30"]
+        opening_5 = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]
+        opening_15 = [b for b in today if "09:30" <= _clock(b.ts) < "09:45"]
+        rail = level_rail(
+            prev_day=prev_day, premarket=premarket,
+            opening_5=opening_5, opening_15=opening_15,
+            session_clock=_clock(today[-1].ts) if today else None,
+            vwap=out.get("VWAP", Measured.absent("no session bars")),
+            year_high=yh, year_low=yl,
+            price=today[-1].close if today else prior[-1].close,
+            adr_dol=dol)
+    # else: rth_dailies is genuinely pending -- the rail waits with it.
+
+    return out, rail
 
 
 def _clock(ts: str) -> str:

@@ -104,6 +104,13 @@ async def type_symbol(pilot, symbol: str) -> None:
     await pilot.pause()
     await pilot.app.workers.wait_for_complete()
     await pilot.pause()
+    # **080.** Stage 1's own worker dispatches stage 2's (several, one per
+    # stream/role) from INSIDE its `call_from_thread` callback — blocking,
+    # so they exist before stage 1's worker itself is marked complete — but
+    # a second wait is cheap insurance against relying on that ordering
+    # alone, since a Fake answers every one of them essentially instantly.
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
 
 
 def tile_body(panel: Panel) -> str:
@@ -409,6 +416,18 @@ class FakeIB:
         return [self.reqHistoricalData(contract, **kwargs)
                for contract, kwargs in requests]
 
+    def reqHistoricalDataStream(self, contract, on_update, **kwargs):
+        """**080.** `IBKRMarketData.open_price_stream` reads this. Answers
+        synchronously and instantly, same as every other method here — one
+        `reqHistoricalData` call (tracked in `self.asked` like any other),
+        `on_update` fired once with the payload, nothing ongoing."""
+        bars = self.reqHistoricalData(contract, **kwargs)
+        on_update(bars)
+        return bars
+
+    def cancelHistoricalDataStream(self, bars) -> None:
+        pass
+
     def reqHistoricalData(self, contract, **kw):
         self.asked.append(kw)
         size, duration = kw["barSizeSetting"], kw["durationStr"]
@@ -546,14 +565,18 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         "today's minutes were requested RTH-only — session VWAP includes "
         "pre-market and the RVOL curve must match itself")
 
-    # **058 Parts 1+2, then 070.** `StubDetails` carries no industry/category,
-    # so this QQQ resolves with no sector mapping and no sector requests.
-    # Pre-058 shape: 5 historical requests — RTH 60D dailies, ETH 60D dailies
-    # (ATR), RTH 1Y dailies (year_high_low), today's minutes, 20D intraday.
-    # 058 Part 1 collapsed the two RTH daily requests into one, five to four.
-    # **070, ruled by Christoph 2026-08-23: no ATR anywhere in ATTACHED** —
-    # `_context_block` no longer fetches the ETH 60D series at all, since
-    # nothing else consumed it, taking the count from four to three.
+    # **058 Parts 1+2, then 070, then 080.** `StubDetails` carries no
+    # industry/category, so this QQQ resolves with no sector mapping and no
+    # sector requests. Pre-058 shape: 5 historical requests — RTH 60D
+    # dailies, ETH 60D dailies (ATR), RTH 1Y dailies (year_high_low),
+    # today's minutes, 20D intraday. 058 Part 1 collapsed the two RTH daily
+    # requests into one, five to four. **070, ruled by Christoph 2026-08-23:
+    # no ATR anywhere in ATTACHED** — the ETH 60D series is no longer
+    # fetched at all, taking the count from four to three. **080: the count
+    # stays three, for a different reason** — the one-shot `today` role is
+    # retired in favour of the `keepUpToDate` price stream (080, stage 1),
+    # which issues the SAME `"1 D"`/`"1 min"` request shape as an OPEN
+    # rather than a one-shot pull, so it still shows up here once.
     daily_1y = [k for k in asked if k["barSizeSetting"] == "1 day"
                and k["durationStr"] == "1 Y"]
     daily_60d = [k for k in asked if k["barSizeSetting"] == "1 day"
@@ -566,8 +589,9 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         f"the only consumer (ATR) from ATTACHED and the fetch went with it — "
         f"got {len(daily_60d)}: {daily_60d}")
     assert len(asked) == 3, (
-        f"expected 3 historical requests after 070 dropped the ETH ATR "
-        f"fetch (was 4), got {len(asked)}:\n" + "\n".join(str(a) for a in asked))
+        f"expected 3 historical requests (the 1Y RTH dailies, the 20D "
+        f"intraday session pull, and the price stream's open — 080), "
+        f"got {len(asked)}:\n" + "\n".join(str(a) for a in asked))
 
 
 # ---- 2. a refused connection is rendered, and the app survives --------------
@@ -715,11 +739,11 @@ def test_the_as_of_renders_in_eastern_not_in_the_wire_format() -> None:
     author would write them.
     """
     app = MomentumApp()
-    result = SimpleNamespace(context={"VWAP": Measured(
+    context = {"VWAP": Measured(
         value=1.0,
         sample=("bar-derived · 1 sh · 1 min · "
-                "2026-08-13 13:00:00+00:00 to 2026-08-13 17:18:00+00:00"))})
-    as_of, lag = app._stamp(result)
+                "2026-08-13 13:00:00+00:00 to 2026-08-13 17:18:00+00:00"))}
+    as_of, lag = app._stamp(context)
 
     assert as_of.endswith("13:18:00"), (
         f"as-of rendered as {as_of!r} — a UTC clock beside an Eastern session")

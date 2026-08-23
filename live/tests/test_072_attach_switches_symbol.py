@@ -77,6 +77,15 @@ async def _type(pilot, symbol: str) -> None:
         await pilot.press(ch)
     await pilot.press("enter")
     await pilot.pause()
+    # **080.** Two calls, not one: stage 1's worker dispatches stage 2's
+    # (several) from INSIDE its `call_from_thread` callback, which happens
+    # DURING a single `wait_for_complete()`, so a worker it starts may not
+    # yet be registered in the set that call is waiting on. Reproduced as a
+    # real, if test-only, flake — `NoMatches('#frame')` on pilot teardown
+    # with a late-registered worker still mid-callback — see
+    # `test_attaching_state.py`'s `_settle` for the same fix.
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
     await pilot.app.workers.wait_for_complete()
     await pilot.pause()
 
@@ -215,6 +224,8 @@ def test_no_stale_symbol_renders_while_a_different_one_is_in_flight() -> None:
             assert "ATTACHING" in mid and "AMZN" in mid
 
             release.set()
+            await pilot.app.workers.wait_for_complete()
+            await pilot.pause()
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             after = attached_panel(app).body()

@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-23T18:28:33+02:00
+last_attempt : 2026-08-23T21:00:34+02:00
 
-last_success : 2026-08-23T18:28:33+02:00
+last_success : 2026-08-23T21:00:36+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/078-surface-the-silent-degrade.md, momentum-code-handoff/inbox/078-for-code-task-surface-the-silent-degrade.md, momentum-code-handoff/verify-output.md
+outcome      : 3 new - momentum-code-handoff/done/080-for-code-task-two-stage-attach.md, momentum-code-handoff/inbox/080-for-code-task-two-stage-attach.md, momentum-code-handoff/verify-output.md
 
-head         : 8c1a9f9e3cadc3e04827f5c034d0e9be8fcc7128 075: a symbol switch takes over twenty seconds -- measured live, not fixed
+head         : 7e59fa2eed3bab26a1e776cff8d694720cb8e481 078: surface the silent degrade, and guard the fallback path (B-130, B-133)

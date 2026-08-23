@@ -44,8 +44,10 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from core.indicators.context import Bar
-from live.attach.attach import Contract, attach
+from types import SimpleNamespace
+
+from core.indicators.context import ADR_BASIS, Bar
+from live.attach.attach import Contract, Stage2Inputs, attach, compute_context_and_rail
 
 QQQ = Contract(symbol="QQQ", con_id=320227571, exchange="SMART", sector_etf=None)
 
@@ -158,9 +160,24 @@ class QQQFixture:
 
 
 def _attached():
+    """**080.** `attach()` (stage 1) qualifies the contract; stage 2's
+    `context`/`rail` come from `compute_context_and_rail`, fed the SAME
+    fixture bars `QQQFixture`'s own methods would hand `app.py`'s dispatch —
+    `daily_bars(c, ADR_BASIS)` for `rth_dailies`, `today_minutes` for
+    `today`, `intraday_sessions` for `sessions`. Returned alongside stage
+    1's result under the SAME `.context`/`.rail` names every test below
+    already reads, so this file's externally-checked assertions are
+    unchanged by the two-stage split."""
     r = attach("QQQ", QQQFixture())
     assert r.attached and r.qualified, "the fixture attach did not qualify"
-    return r
+    fixture = QQQFixture()
+    inp = Stage2Inputs(has_sector=False)
+    inp.today = fixture.today_minutes(QQQ)
+    inp.rth_dailies = fixture.daily_bars(QQQ, ADR_BASIS)
+    inp.sessions = fixture.intraday_sessions(QQQ)
+    ctx, rail = compute_context_and_rail(inp)
+    return SimpleNamespace(context=ctx, rail=rail, contract=r.contract,
+                           attached=r.attached, qualified=r.qualified)
 
 
 def test_the_four_matched_levels_still_match() -> None:

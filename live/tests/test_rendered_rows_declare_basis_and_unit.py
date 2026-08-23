@@ -32,7 +32,7 @@ from live.attach.attach import attach
 from live.tui.app import measured_cell
 from live.tui.numbers import FORMATS, NO_BASIS, format_value, needs_basis
 
-from .test_attach import Fake
+from .test_attach import QQQ, Fake, stage2_of
 
 #: The windows and anchors a row may legitimately name. **A closed vocabulary** —
 #: if a row invents a seventh, that is a ruling somebody has to make, not a string
@@ -82,9 +82,14 @@ def numeric_rows() -> list[tuple[str, Measured, str]]:
     up inside.
     """
     result = attach("QQQ", Fake())
-    assert result.attached and result.context, "the fixture attach did not fill"
+    assert result.attached, "the fixture attach did not qualify"
+    # **080.** Stage 2's context/rail no longer come off `AttachResult` —
+    # `stage2_of` is the test-side equivalent of `app.py`'s independent
+    # dispatch, collapsed into one synchronous call.
+    context, rail = stage2_of(Fake(), QQQ)
+    assert context, "the fixture attach did not fill"
     out = []
-    for name, m in {**result.context, **result.rail}.items():
+    for name, m in {**context, **rail}.items():
         if not m.ok:
             continue
         out.append((name, m, f"{name:<9} {measured_cell(m)}"))

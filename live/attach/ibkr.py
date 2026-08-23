@@ -61,6 +61,7 @@ import yaml
 from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar,
                                      INTRADAY_BASIS, SessionBasis)
 from .attach import Contract
+from .streaming import StreamHandle
 
 REPO = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO / "config" / "ibkr.yaml"
@@ -481,6 +482,38 @@ class IBKRMarketData:
             return [by_day[k] for k in sorted(by_day)]
         return self.intraday_sessions(self._etf(c.sector_etf))
 
+    # ---- 080, stage 1: the live price stream -----------------------------
+
+    def open_price_stream(self, c: Contract, on_update) -> StreamHandle:
+        """**080.** `keepUpToDate=True`, the SAME request shape 008b
+        measured live (median 5.002s cadence, 376 updates over 32 minutes,
+        zero API errors, no dropped connection) — `"1 D"`/`"1 min"` at
+        `INTRADAY_BASIS.use_rth`, the identical duration/size/basis the
+        retired `today`/`sector_today` roles used to fetch as a one-shot.
+        **This replaces those roles rather than duplicating them**: the
+        stream's own initial payload is what a one-shot `today_minutes()`
+        pull would have returned, and it keeps growing from there — `Last
+        $`, `VWAP` and ADR% used's price term, and RVOL's own-reading
+        numerator, are all read off the growing bar list `on_update`
+        delivers, never off a second, redundant request.
+
+        **Called once per symbol AND once per sector ETF** (`app.py` opens
+        two of these per attach when a sector mapping exists) — `c` is
+        whichever contract this particular stream is for.
+
+        **078/B-133: paced like every other historical request**, once, at
+        open — a streaming open is still a request against IBKR's
+        six-per-two-seconds limit, whatever shape its replies take
+        afterward.
+        """
+        self._pacing.check(_pacing_key(c), 1, now=time.monotonic())
+        self._note_fetch(c.symbol)
+        kwargs = _request_kwargs("1 D", "1 min", use_rth=INTRADAY_BASIS.use_rth)
+        kwargs["keepUpToDate"] = True
+        raw = self.ib.reqHistoricalDataStream(
+            _contract_for(c), lambda bars: on_update(_convert(bars)), **kwargs)
+        return StreamHandle(lambda: self.ib.cancelHistoricalDataStream(raw))
+
     # ---- steps 4 and 5 ---------------------------------------------------
 
     def open_tick_stream(self, c: Contract) -> str:
@@ -724,6 +757,44 @@ class _ThreadedIB:
             [lambda contract=contract, kw=kwargs:
              self._ib.reqHistoricalDataAsync(contract, **kw)
              for contract, kwargs in requests])
+
+    def reqHistoricalDataStream(self, contract, on_update, **kwargs):
+        """**080, stage 1.** Opens a `keepUpToDate=True` request and
+        marshals every update back through `on_update(raw_bars)`.
+
+        **`on_update` fires on the broker loop's own thread** — the same
+        thread every other `ib_async` event in this process fires on,
+        because that thread is the one running `self._loop`'s asyncio loop
+        (`_BrokerLoop._run`: `asyncio.set_event_loop(self._loop);
+        self._loop.run_forever()`). `eventkit`'s `Event` callbacks run
+        wherever the loop dispatching them is running, which is this daemon
+        thread and never the caller's. That makes `on_update` exactly as
+        safe a place to call Textual's `call_from_thread` as the existing
+        `_attach_worker` already is — a different OS thread from the app's
+        own, which is the one thing `call_from_thread` requires.
+
+        The registration itself happens on the broker loop too (inside
+        `_open`, awaited via `self._loop.call`), not on the caller's thread
+        — `eventkit.Event.__iadd__` is not documented as thread-safe from
+        an arbitrary caller, and every other mutation of broker-owned state
+        in this module already goes through `_loop.call`.
+        """
+        async def _open():
+            bars = await self._ib.reqHistoricalDataAsync(contract, **kwargs)
+            # **The INITIAL payload fires `on_update` too, not only later
+            # revisions.** `updateEvent` only fires on a REVISION after the
+            # request opens — without this line, `Last $`/`VWAP` would sit
+            # pending for one extra cadence beat (~5s) even though the data
+            # they need already arrived with the opening payload.
+            on_update(list(bars))
+            bars.updateEvent += lambda b, has_new_bar: on_update(list(b))
+            return bars
+        return self._loop.call(_open)
+
+    def cancelHistoricalDataStream(self, bars) -> None:
+        async def _cancel():
+            self._ib.cancelHistoricalData(bars)
+        self._loop.call(_cancel)
 
 
 @dataclass
