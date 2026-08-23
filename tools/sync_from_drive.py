@@ -163,6 +163,18 @@ CONVENTION = re.compile(r"^(?P<num>\d{3})-for-code-.+\.md$")
 #: a file that breaks the convention still has a number that can collide.
 LEADING_NUM = re.compile(r"^(?P<num>\d{3})\b")
 
+#: 069 Part A. The leading id TOKEN, whole -- everything before the first
+#: hyphen, letter suffix included. Deliberately not `LEADING_NUM`: `035` and
+#: `035a` are different tasks (`NOW.md`'s own `superseded` line lists them
+#: separately), so a suppression keyed on the bare digits would let `035a`
+#: in `christoph/done/` wrongly suppress a live `035` still in Drive.
+LEADING_ID = re.compile(r"^([^-]+)-")
+
+
+def _leading_id(name: str) -> Optional[str]:
+    m = LEADING_ID.match(name)
+    return m.group(1) if m else None
+
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -197,6 +209,16 @@ class PairResult:
     collisions: list[tuple[str, str, str]] = field(default_factory=list)
     source_mutated: list[str] = field(default_factory=list)
     considered: int = 0
+    #: 069 Part A. `checks: [suppress_retired]` only. Id tokens of source files
+    #: NOT copied because that token is already present in the pair's sibling
+    #: `done/` directory -- i.e. genuinely retired, not merely missing.
+    suppressed: list[str] = field(default_factory=list)
+    #: Set instead of `suppressed` being empty, when the sibling `done/`
+    #: directory could not be read at all (missing, permission error, any
+    #: reason) -- fail CLOSED toward copying everything rather than silently
+    #: reading "cannot tell" as "nothing is retired". Distinct from `suppressed
+    #: == []`, which means "read fine, nothing retired yet".
+    retirement_check_unreadable: Optional[str] = None
 
     @property
     def refused_differing(self) -> bool:
@@ -238,6 +260,19 @@ class PairResult:
             return f"{self.pair_id}: 0 new · destination UNREACHABLE · {self.dest}"
         if self.considered == 0:
             return f"{self.pair_id}: 0 new · source folder EMPTY · {self.source}"
+
+        # 069 Part A. Composed once, prefixed onto every shape below, so the
+        # four report lines this exists for -- normal, N suppressed, sibling
+        # done/ unreadable, source unreachable (already its own branch above)
+        # -- cannot drift out of sync with each other by being written twice.
+        if self.retirement_check_unreadable is not None:
+            suppression = f"{self.retirement_check_unreadable} — nothing suppressed · "
+        elif self.suppressed:
+            suppression = (f"{len(self.suppressed)} suppressed "
+                          f"({' '.join(sorted(self.suppressed))}) · ")
+        else:
+            suppression = ""
+
         if not self.copied and (self.collisions or self.differing):
             # **043: a refused file is its own outcome and must NOT read as `up
             # to date`.** Before this, a run whose only event was a refusal
@@ -245,12 +280,13 @@ class PairResult:
             # place -- and the `035` collision made the copier exit 1 on every
             # run for two days under a headline that said nothing was wrong.
             n = len(self.collisions) + len(self.differing)
-            return (f"{self.pair_id}: 0 new · {n} REFUSED · "
+            return (f"{self.pair_id}: 0 new · {suppression}{n} REFUSED · "
                     f"{len(self.unchanged)} unchanged")
         if not self.copied and not self.differing:
-            return f"{self.pair_id}: 0 new · up to date ({len(self.unchanged)} unchanged)"
+            return (f"{self.pair_id}: 0 new · {suppression}up to date "
+                    f"({len(self.unchanged)} unchanged)")
         new = ", ".join(sorted(self.copied)) if self.copied else "-"
-        return (f"{self.pair_id}: {len(self.copied)} new · {new} · "
+        return (f"{self.pair_id}: {len(self.copied)} new · {suppression}{new} · "
                 f"{len(self.differing)} differing")
 
 
@@ -278,6 +314,29 @@ def sync_pair(pair: dict, dry_run: bool = False) -> PairResult:
         return r
     existing = {p.name: p for p in dest.glob(pattern) if p.is_file()}
 
+    # 069 Part A. `christoph/open/` is copy-verify-retire: the file leaves the
+    # DESTINATION when it is done, and the Drive SOURCE still holds it -- so
+    # `not in the destination -> copy it` resurrects every retired item,
+    # forever. `checks: [suppress_retired]` (config/sync.yaml, this pair only)
+    # opts a pair into reading its sibling `done/` directory and refusing to
+    # copy a source file whose leading id token is already retired there.
+    #
+    # FAIL CLOSED TOWARD COPYING. `done_ids is None` means "could not
+    # determine what is retired" -- missing directory, permission error, any
+    # reason -- and the loop below suppresses nothing in that case. A
+    # resurrected retired item is annoying and visible; a suppressed live one
+    # is invisible, and this project fails toward the annoying one.
+    done_ids: Optional[set[str]] = None
+    if "suppress_retired" in checks:
+        done_dir = dest.parent / "done"
+        try:
+            done_names = [p.name for p in done_dir.iterdir() if p.is_file()]
+        except OSError:
+            r.retirement_check_unreadable = f"{done_dir} not readable"
+        else:
+            done_ids = {tok for tok in (_leading_id(n) for n in done_names)
+                       if tok is not None}
+
     # Number -> (filename, origin), for the collision check. Seeded from the
     # DESTINATION, because that is where a reference someone holds points, and
     # then UPDATED AS FILES ARE COPIED.
@@ -300,6 +359,16 @@ def sync_pair(pair: dict, dry_run: bool = False) -> PairResult:
             continue
         r.considered += 1
         name = src.name
+
+        if done_ids is not None:
+            token = _leading_id(name)
+            if token is not None and token in done_ids:
+                # Genuinely retired, not merely missing from the destination --
+                # a distinct fact from "not in the destination" and reported as
+                # one. Never copied, and not counted as `off_convention` or any
+                # other flag below; it is suppressed, full stop.
+                r.suppressed.append(token)
+                continue
 
         if "filename_convention" in checks and not CONVENTION.match(name):
             # COPIED ANYWAY. The design session may have had a reason, and a

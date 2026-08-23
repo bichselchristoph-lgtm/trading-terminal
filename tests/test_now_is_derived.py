@@ -76,8 +76,8 @@ def test_changing_the_tree_moves_the_output(tmp_path: Path) -> None:
     after = render(compute(repo))
 
     assert before != after
-    assert "046" in compute(repo)["done"]          # type: ignore[operator]
-    assert "046" not in compute(repo)["ready"]     # type: ignore[operator]
+    assert "h046" in compute(repo)["done"]          # type: ignore[operator]
+    assert "h046" not in compute(repo)["ready"]     # type: ignore[operator]
 
 
 def test_a_hand_edit_does_not_survive(tmp_path: Path) -> None:
@@ -122,13 +122,37 @@ def test_ready_blocked_and_on_christoph(tmp_path: Path) -> None:
                "044-b": front(id="044", depends="045"),
                "047-c": front(id="047", depends="046")},
         done=(),
-        c_open=("c018-x", "c023-y"),
-        c_done=("c018-x",),
+        # **`018`/`023`, not `c018`/`c023`.** `christoph/open/` filenames carry
+        # no letter prefix -- `023-for-christoph-task-something.md` -- the `c`
+        # is `NOW.md`'s own rendering tag, applied at compute() time, never
+        # part of the id on disk. A `c`-prefixed fixture name does not match
+        # `_ID` at all, so `on_christoph` was silently empty here before this
+        # was noticed -- found while adding the assertion below, not assumed.
+        c_open=("018-x", "023-y"),
+        c_done=("018-x",),
     )
     state = compute(repo)
-    assert state["ready"] == ["045"]
-    assert ("044", ["045"]) in state["blocked"]     # type: ignore[operator]
-    assert ("047", ["046"]) in state["blocked"]     # type: ignore[operator]
+    assert state["ready"] == ["h045"]
+    assert ("h044", ["h045"]) in state["blocked"]     # type: ignore[operator]
+    assert ("h047", ["h046"]) in state["blocked"]     # type: ignore[operator]
+    # 069 Part B. christoph-space ids are tagged `c`, never `h` -- checked
+    # here because this is the one fixture in the file that builds a
+    # christoph/open/ folder at all.
+    assert state["on_christoph"] == ["c023"]           # type: ignore[operator]
+
+
+def test_the_same_bare_id_in_both_spaces_is_not_confused(tmp_path: Path) -> None:
+    """**069. Measured, not hypothetical**: `handoff/inbox/033-for-code-...`
+    and `christoph/open/033-for-christoph-task-...` both exist in the real
+    tree at once. A tag derived by looking `033` up in whichever dict is
+    checked first would call the real `c033` an `h033` -- this is the exact
+    collision `NOW.md` used to render as one indistinguishable `033` on two
+    lines."""
+    repo = tree(tmp_path, inbox={"033-h": front(id="033")},
+               c_open=("033-c",))
+    state = compute(repo)
+    assert state["ready"] == ["h033"]
+    assert state["on_christoph"] == ["c033"]
 
 
 def test_a_task_with_no_depends_is_ready(tmp_path: Path) -> None:
@@ -137,7 +161,7 @@ def test_a_task_with_no_depends_is_ready(tmp_path: Path) -> None:
     task files will never have one — and every one of them must read as ready
     rather than as blocked on something unnameable."""
     repo = tree(tmp_path, inbox={"006-old": "no frontmatter at all\n"})
-    assert compute(repo)["ready"] == ["006"]
+    assert compute(repo)["ready"] == ["h006"]
 
 
 def test_a_task_with_depends_none_is_ready(tmp_path: Path) -> None:
@@ -153,7 +177,7 @@ def test_a_task_with_depends_none_is_ready(tmp_path: Path) -> None:
     genuinely ready — found by `055`, the two tasks named next after it.
     """
     repo = tree(tmp_path, inbox={"049-x": front(id="049", depends="none")})
-    assert compute(repo)["ready"] == ["049"]
+    assert compute(repo)["ready"] == ["h049"]
 
 
 def test_a_superseded_task_is_not_ready(tmp_path: Path) -> None:
@@ -170,8 +194,8 @@ def test_a_superseded_task_is_not_ready(tmp_path: Path) -> None:
     repo = tree(tmp_path, inbox={"035-old": front(id="035"),
                                  "038-new": front(id="038", supersedes="035")})
     state = compute(repo)
-    assert state["ready"] == ["038"]
-    assert ("035", "038") in state["superseded"]    # type: ignore[operator]
+    assert state["ready"] == ["h038"]
+    assert ("h035", "h038") in state["superseded"]    # type: ignore[operator]
 
 
 def test_a_dependency_met_by_supersession_is_met(tmp_path: Path) -> None:
@@ -181,7 +205,107 @@ def test_a_dependency_met_by_supersession_is_met(tmp_path: Path) -> None:
     repo = tree(tmp_path, inbox={"035-old": front(id="035"),
                                  "035a-b": front(id="035a", depends="035"),
                                  "038-new": front(id="038", supersedes="035")})
-    assert "035a" in compute(repo)["ready"]         # type: ignore[operator]
+    assert "h035a" in compute(repo)["ready"]         # type: ignore[operator]
+
+
+# ---- 069 Part C: the four numbers, not a ratio -----------------------------
+
+
+def test_admin_naming_a_product_task_is_counted_the_others_are_not(tmp_path: Path) -> None:
+    """**The second number, rule 16's whole point.** `unblocks: NOTHING`, a
+    missing `unblocks:` line, and `unblocks:` naming another admin task all
+    count toward `admin` but not toward `admin_naming_product` -- only an
+    admin task naming a task file whose OWN `class:` is `product` (or `spec`)
+    does."""
+    repo = tree(tmp_path, inbox={
+        "060-a": front(id="060", **{"class": "admin"}, unblocks="061"),
+        "061-b": front(id="061", **{"class": "product"}),
+        "062-c": front(id="062", **{"class": "admin"}, unblocks="NOTHING"),
+        "063-d": front(id="063", **{"class": "admin"}),
+        "064-e": front(id="064", **{"class": "admin"}, unblocks="060"),
+        "065-f": front(id="065", **{"class": "product"}, unblocks="NOTHING"),
+    })
+    state = compute(repo)
+    assert state["admin"] == 4
+    assert state["admin_naming_product"] == 1, (
+        "only 060 (unblocking 061, class product) should count; 062 unblocks "
+        "NOTHING, 063 has no unblocks: at all, and 064 unblocks 060, an admin "
+        "task")
+
+
+def test_an_unblocks_line_that_is_prose_is_still_read_for_ids(tmp_path: Path) -> None:
+    """`054`'s real `unblocks:` reads *"049, 050 and 051 -- all three are held
+    only by..."* -- prose, not a clean id list, and the FIRST id in it is not
+    always the one that matters. Every id-shaped token in the raw text is a
+    candidate."""
+    repo = tree(tmp_path, inbox={
+        "070-a": front(id="070", **{"class": "admin"},
+                       unblocks="an admin cleanup with no product effect, see 071"),
+        "071-b": front(id="071", **{"class": "admin"}),
+        "072-c": front(id="072", **{"class": "admin"},
+                       unblocks="071 and, more importantly, 073"),
+        "073-d": front(id="073", **{"class": "product"}),
+    })
+    state = compute(repo)
+    assert state["admin_naming_product"] == 1, (
+        "070 names only an admin task (071) and must not count; 072 names "
+        "071 (admin) AND 073 (product) and must count on the strength of the "
+        "second id, not fail on the first")
+
+
+def _git_commit(repo: Path, rel_path: str, content: str, when: str) -> None:
+    import os
+    import subprocess
+    p = repo / rel_path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", rel_path], cwd=repo, check=True, capture_output=True)
+    env = {**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+    subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=repo, check=True,
+                   capture_output=True, env=env)
+
+
+def test_days_since_last_product_task_prefers_the_newest_and_ignores_admin(
+    tmp_path: Path,
+) -> None:
+    """**Not time-based in the sense this file's own docstring forbids** --
+    no exact day count is asserted, which would go red on whichever day this
+    happens to run. Only the RELATION is: a more recent product-class note
+    shortens the count, an admin-class note (however recently committed) is
+    ignored entirely, and a repo with no product-class note at all reports
+    why, not a number."""
+    import subprocess
+    repo = tree(tmp_path, inbox={})
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+
+    # No product-class note yet: derivation refuses with a reason, not 0.
+    assert compute(repo)["days_since_product"] is None
+    assert "no handoff/done/ note" in compute(repo)["days_since_product_reason"]
+
+    _git_commit(repo, "handoff/done/040-old-admin.md",
+               front(id="040", **{"class": "admin"}), "2020-01-01T00:00:00+00:00")
+    _git_commit(repo, "handoff/done/041-old-product.md",
+               front(id="041", **{"class": "product"}), "2020-01-01T00:00:00+00:00")
+
+    old_only = compute(repo)["days_since_product"]
+    assert old_only is not None and old_only > 1000, (
+        "a 2020 commit must report well over a thousand days, whatever day "
+        "this test happens to run")
+
+    _git_commit(repo, "handoff/done/042-recent-admin.md",
+               front(id="042", **{"class": "admin"}), "2026-01-01T00:00:00+00:00")
+    still_old = compute(repo)["days_since_product"]
+    assert still_old == old_only, (
+        "042 is class: admin and recently committed -- it must not move the "
+        "count at all")
+
+    _git_commit(repo, "handoff/done/043-recent-product.md",
+               front(id="043", **{"class": "product"}), "2026-01-01T00:00:00+00:00")
+    with_recent = compute(repo)["days_since_product"]
+    assert with_recent is not None and with_recent < old_only, (
+        "043 is a more recent product-class note and must shorten the count")
 
 
 # ---- cycles ---------------------------------------------------------------

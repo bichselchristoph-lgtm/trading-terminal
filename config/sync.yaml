@@ -54,13 +54,22 @@ pairs:
   # configured pair whose destination lands inside it -- because a lock that is
   # only a sentence in a document is not a lock.
   #
-  # **No checks.** `filename_convention` and `number_collision` are 026's and
-  # belong to the handoff pair: they encode `NNN-for-code-*.md`, which is the
-  # naming for files addressed to Claude Code. `christoph/open/` uses
-  # `NNN-*.md` addressed to a person, and a convention check calibrated on one
-  # audience would flag every correct file in the other.
+  # `filename_convention` and `number_collision` are 026's and belong to the
+  # handoff pair: they encode `NNN-for-code-*.md`, which is the naming for
+  # files addressed to Claude Code. `christoph/open/` uses `NNN-*.md`
+  # addressed to a person, and a convention check calibrated on one audience
+  # would flag every correct file in the other. Neither applies here.
+  #
+  # **`suppress_retired` (069 Part A) does, and only here.** `christoph/open/`
+  # is copy-verify-retire -- the file LEAVES the destination when Christoph is
+  # done with it -- and the Drive source still holds it, so the copier's one
+  # rule (`not in the destination -> copy it`) resurrected every retired item,
+  # forever: `c032`, `c035` and `c036` came back three times each. `pairs 1
+  # and 2 (regime_snapshots, handoff_inbox) are copy-and-keep -- nothing ever
+  # leaves them, so this check does not apply and must not be added there.
   - id:     christoph_open
     from:  'D:\claude-googledrive-sync\momentum-christoph-open'
     to:    'D:\Dev\momentum\christoph\open'
     glob:  '*.md'
-    checks: []
+    checks:
+      - suppress_retired   # a source file already in the sibling done/ is not copied

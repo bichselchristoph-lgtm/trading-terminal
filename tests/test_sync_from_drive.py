@@ -244,6 +244,113 @@ def test_the_checks_are_configured_not_hardcoded(tmp_path: Path) -> None:
     assert sorted(r.copied) == ["031-for-code-second.md", "notes-about-something.md"]
 
 
+# --------------------------------------------- 069 Part A: retire means retired
+def _pair_with_done(tmp_path: Path, checks=("suppress_retired",)) -> tuple[dict, Path]:
+    """Like `make_pair`, but the destination has a SIBLING `done/` directory,
+    matching `christoph/open/` and `christoph/done/` -- the shape
+    `suppress_retired` reads."""
+    src, dst, done = tmp_path / "drive", tmp_path / "open", tmp_path / "done"
+    src.mkdir(parents=True, exist_ok=True)
+    dst.mkdir(parents=True, exist_ok=True)
+    done.mkdir(parents=True, exist_ok=True)
+    return ({"id": "christoph_open", "from": str(src), "to": str(dst),
+             "glob": "*.md", "checks": list(checks)}, done)
+
+
+def test_a_retired_item_is_suppressed_and_a_live_one_still_copies(tmp_path: Path) -> None:
+    pair, done = _pair_with_done(tmp_path)
+    write(done, "032-for-christoph-decision-gapped-over.md", "answer")
+    write(Path(pair["from"]), "032-for-christoph-decision-gapped-over.md", "template")
+    write(Path(pair["from"]), "033-for-christoph-task-live-item.md", "still open")
+
+    r = sync_pair(pair)
+
+    assert r.suppressed == ["032"]
+    assert r.copied == ["033-for-christoph-task-live-item.md"]
+    assert "1 suppressed (032)" in r.headline()
+
+
+def test_035a_in_done_does_not_suppress_035(tmp_path: Path) -> None:
+    """The id token is taken WHOLE, letter suffix included -- `035` and `035a`
+    are different tasks, and a suppression keyed on the bare digits would let
+    one retire the other."""
+    pair, done = _pair_with_done(tmp_path)
+    write(done, "035a-for-christoph-task-something-else.md", "answer")
+    write(Path(pair["from"]), "035-for-christoph-task-live.md", "still open")
+
+    r = sync_pair(pair)
+
+    assert r.suppressed == []
+    assert r.copied == ["035-for-christoph-task-live.md"]
+
+
+def test_an_unreadable_done_directory_suppresses_nothing(tmp_path: Path) -> None:
+    """**Refusal.** Fail CLOSED toward copying: a `done/` that cannot be read
+    -- here, missing entirely -- must not be read as "nothing is retired,
+    forever", which would suppress correctly by luck today and wrongly the
+    day something is actually retired. It suppresses NOTHING and says so by
+    name.
+
+    **Seen red first, against the code before this task's patch.** The old
+    `sync_pair` has no `suppress_retired` handling at all, so
+    `r.retirement_check_unreadable` did not exist as an attribute and this
+    assertion raised `AttributeError` rather than failing cleanly -- confirmed
+    by running this test against a `git stash` of the patch, recorded in the
+    done-note rather than reproduced here, since this file cannot regress to
+    the pre-patch module inline.
+    """
+    pair, done = _pair_with_done(tmp_path)
+    import shutil as _shutil
+    _shutil.rmtree(done)
+    write(Path(pair["from"]), "032-for-christoph-decision-gapped-over.md", "template")
+
+    r = sync_pair(pair)
+
+    assert r.suppressed == []
+    assert r.copied == ["032-for-christoph-decision-gapped-over.md"]
+    assert r.retirement_check_unreadable is not None
+    assert "not readable" in r.headline()
+    assert "nothing suppressed" in r.headline()
+
+
+def test_the_four_retirement_report_lines_are_distinguishable(tmp_path: Path) -> None:
+    """§4a: silence must be meaningful. Normal, N-suppressed, done/-unreadable
+    and source-unreachable must not read alike."""
+    pair, done = _pair_with_done(tmp_path)
+    normal = sync_pair(pair).headline()
+
+    write(done, "032-for-christoph-decision-gapped-over.md", "answer")
+    write(Path(pair["from"]), "032-for-christoph-decision-gapped-over.md", "template")
+    suppressing = sync_pair(pair).headline()
+
+    import shutil as _shutil
+    _shutil.rmtree(done)
+    unreadable = sync_pair(pair).headline()
+
+    gone = dict(pair, **{"from": str(tmp_path / "does-not-exist")})
+    unreachable = sync_pair(gone).headline()
+
+    lines = {normal, suppressing, unreadable, unreachable}
+    assert len(lines) == 4, "two report lines read alike:\n" + "\n".join(sorted(lines))
+
+
+def test_pairs_without_the_check_are_unaffected_by_a_done_sibling(tmp_path: Path) -> None:
+    """`suppress_retired` is opt-in per pair. A pair that never asked for it
+    must behave exactly as before even if a `done/` sibling happens to exist
+    beside its destination."""
+    pair = make_pair(tmp_path)  # checks default to the two 026 checks, not this one
+    done = tmp_path / "done"
+    done.mkdir()
+    write(done, "031-for-code-thing.md", "irrelevant")
+    write(Path(pair["from"]), "031-for-code-thing.md", "body")
+
+    r = sync_pair(pair)
+
+    assert r.suppressed == []
+    assert r.retirement_check_unreadable is None
+    assert r.copied == ["031-for-code-thing.md"]
+
+
 # ------------------------------------------------------ silence must be meaningful
 def test_empty_and_unreachable_do_not_read_alike(tmp_path: Path) -> None:
     """`A task that prints nothing when it succeeds prints nothing when it

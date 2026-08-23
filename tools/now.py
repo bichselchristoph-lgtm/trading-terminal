@@ -22,7 +22,14 @@ survive the next `verify.ps1` run.** `tests/test_now_is_derived.py` asserts it.
     ready         in handoff/inbox/, not done, every `depends:` done
     blocked       in handoff/inbox/, not done, with an unmet dependency NAMED
     on christoph  in christoph/open/, not in christoph/done/
-    admin:product counted from `class:` in frontmatter, per rule 16
+    admin         counted from `class:` in frontmatter, per rule 16
+    naming a
+      product task admin tasks above whose `unblocks:` names a product/spec task
+    product       counted from `class:` in frontmatter, per rule 16
+    days since
+      last product the newest git commit date among handoff/done/ notes whose
+                    OWN `class:` is product/spec — printed with its reason
+                    instead of a number when it cannot be derived
 
 **`depends:` is optional and its absence means "depends on nothing".** 045 is
 explicit that task files already in the tree must not be edited to add it —
@@ -31,11 +38,27 @@ explicit that task files already in the tree must not be edited to add it —
 **A dependency cycle is REFUSED and named.** Two tasks depending on each other
 would otherwise render as `blocked` forever with no explanation, which is the
 shape of a status line that is technically true and useless.
+
+**069 Part B.** Every rendered id carries its sequence — `h` for `handoff/`,
+`c` for `christoph/` — because the two id spaces collide: a real
+`handoff/inbox/033-...` and a real `christoph/open/033-...` have both existed
+in this tree at once, and a bare `033` on two adjacent lines does not say
+which is which. **A rendering change only** — nothing on disk is renumbered,
+and every bit of matching logic (the dependency graph, `unmet`, `superseded`)
+still runs on bare ids; the tag is applied once, last, by which folder actually
+holds each id, never guessed from which report line is asking.
+
+**069 Part C.** `admin:product this stretch N:M` fused two numbers that rule 16
+asks for separately into a bare ratio and lost the two that carry the signal —
+how many of the admin count actually name a product task, and how long it has
+been since one landed. Both are rendered now, derived rather than guessed.
 """
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -95,6 +118,103 @@ def depends_on(path: Path) -> list[str]:
     if not raw or raw.lower() == "none":
         return []
     return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+#: 069 Part B. `h` for `handoff/`, `c` for `christoph/`. **Measured, not
+#: assumed, that the two id spaces collide**: `handoff/inbox/033-for-code-...`
+#: and `christoph/open/033-for-christoph-task-...` both exist in this tree at
+#: once, which is the exact case this task was written for. A first cut of
+#: this function guessed the namespace from which folders hold the bare id --
+#: `033 in inbox or done -> h`, else `033 in c_open or c_done -> c` -- and
+#: mistagged the real `c033` as `h033`, because it checked handoff membership
+#: first regardless of which section was asking. **The fix is to never guess:
+#: every call site below already knows which folder its own id came from**
+#: (`ready`/`blocked`/`superseded`/`done` are built by iterating `inbox`, `done`
+#: or `graph`, all handoff-space; `on_christoph` is built by iterating
+#: `c_open`, christoph-space), so the tag is applied AT that iteration, not
+#: recovered afterward from an ambiguous lookup.
+H = "h"
+C = "c"
+
+
+#: 069 Part C. `unblocks:` on an admin task counts toward the SECOND number
+#: only when it names a task file whose OWN `class:` is one of these -- the
+#: same bucketing rule 16's admin:product ratio already uses for the two
+#: numbers it fuses (`class: spec` counts as product-shaped work).
+_PRODUCT_CLASSES = {"product", "spec"}
+
+
+#: An `unblocks:` value is not always a clean id list -- `054`'s reads *"049,
+#: 050 and 051 -- all three are held only by the isolation ruling..."*. Every
+#: id-shaped token in the raw text is a candidate, not only the first one a
+#: comma-split would find, so a prose `unblocks:` line is read the same way
+#: `_ID` reads a filename.
+_UNBLOCKS_ID = re.compile(r"\b(\d{3}[a-z]?)\b")
+
+
+def _names_a_product_task(p: Path, inbox: dict[str, Path], done: dict[str, Path]) -> bool:
+    """Does `p`'s `unblocks:` line name AT LEAST ONE task file whose own
+    `class:` is product-shaped? `unblocks: NOTHING`, a blank line, a missing
+    line, and an `unblocks:` naming only admin tasks all answer `False` here
+    -- they still count toward the FIRST number (`compute()`'s `admin`
+    count), just not this one."""
+    raw = frontmatter(p).get("unblocks", "").strip()
+    if not raw or raw.upper() == "NOTHING":
+        return False
+    for target_id in _UNBLOCKS_ID.findall(raw):
+        target = inbox.get(target_id) or done.get(target_id)
+        if target is None:
+            continue
+        if frontmatter(target).get("class", "").strip().lower() in _PRODUCT_CLASSES:
+            return True
+    return False
+
+
+def _days_since_last_product_task(repo: Path, done: dict[str, Path]) -> tuple[Optional[int], Optional[str]]:
+    """`(days, reason)` -- exactly one is `None`. Derived from the tree: the
+    most recent `handoff/done/` note for a task file declaring `class:
+    product` (or `spec`, the same bucketing as everywhere else in this rule).
+
+    **The date is the file's OLDEST commit**, not its latest -- a done-note
+    is copy-and-keep, so a later commit touching it is a paperwork fix
+    (`bugs: []` added retroactively, a typo caught) rather than a new product
+    task landing. Using the latest commit would report "0 days" the moment
+    anyone touches an old note for an unrelated reason.
+    """
+    product_notes = [p for p in done.values()
+                     if frontmatter(p).get("class", "").strip().lower() in _PRODUCT_CLASSES]
+    if not product_notes:
+        return None, "no handoff/done/ note in the tree declares class: product (or spec)"
+
+    newest: Optional[datetime] = None
+    unresolved: list[str] = []
+    for p in product_notes:
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(repo), "log", "--format=%aI", "--", str(p)],
+                capture_output=True, text=True, check=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as exc:
+            unresolved.append(f"{p.name}: git log failed ({exc})")
+            continue
+        dates = [d for d in out.stdout.splitlines() if d.strip()]
+        if not dates:
+            unresolved.append(f"{p.name}: not in git history")
+            continue
+        # OLDEST commit for THIS file -- the last line, since git log lists
+        # newest-first.
+        try:
+            first = datetime.fromisoformat(dates[-1].strip())
+        except ValueError:
+            unresolved.append(f"{p.name}: unparseable git date {dates[-1]!r}")
+            continue
+        if newest is None or first > newest:
+            newest = first
+
+    if newest is None:
+        return None, ("every product-class done-note failed to resolve a git "
+                      "date: " + "; ".join(unresolved))
+    now = datetime.now(timezone.utc)
+    return (now - newest).days, None
 
 
 def _ids_in(folder: Path) -> dict[str, Path]:
@@ -190,19 +310,41 @@ def compute(repo: Path = REPO) -> dict[str, object]:
     # Rule 16's tax, counted from `class:` across every task file that declares
     # one. **Autonomy buys no exemption from the count** (045 Part 4 guardrail 3).
     classes: dict[str, int] = {}
+    admin_naming_product = 0
     for tid, p in sorted(inbox.items()):
         cls = frontmatter(p).get("class", "").strip().lower()
         if cls:
             classes[cls] = classes.get(cls, 0) + 1
+        if cls == "admin" and _names_a_product_task(p, inbox, done):
+            admin_naming_product += 1
 
+    days_since_product, days_since_product_reason = _days_since_last_product_task(repo, done)
+
+    # 069 Part B. Tagged HERE, as the LAST step -- every bit of matching logic
+    # above (the dependency graph, `unmet`, `superseded`) runs on bare ids, so
+    # a `depends:`/`supersedes:` cross-reference cannot fail to resolve
+    # because one side gained a prefix the other side does not have.
+    #
+    # **Applied by PROVENANCE, not by looking the id up afterward.** `ready`,
+    # `blocked` (its own id and every `unmet` dependency), `superseded` and
+    # `done` are all built above by iterating `inbox`/`done`/`graph` -- every
+    # id in them is handoff-space by construction, because `unmet` itself only
+    # ever checks membership in `done`/`superseded` (both handoff dicts), never
+    # `c_done`. `on_christoph` is built by iterating `c_open` and is
+    # christoph-space by the same construction. See `H`/`C`'s own comment for
+    # why this is not a lookup: `033` names a real task in BOTH spaces at
+    # once, and a lookup keyed on the bare id alone cannot tell them apart.
     return {
-        "ready": ready,
-        "blocked": blocked,
-        "superseded": sorted(superseded.items()),
-        "on_christoph": [t for t in sorted(c_open) if t not in c_done],
-        "done": sorted(done),
+        "ready": [f"{H}{t}" for t in ready],
+        "blocked": [(f"{H}{t}", [f"{H}{u}" for u in unmet]) for t, unmet in blocked],
+        "superseded": [(f"{H}{d}", f"{H}{b}") for d, b in sorted(superseded.items())],
+        "on_christoph": [f"{C}{t}" for t in sorted(c_open) if t not in c_done],
+        "done": [f"{H}{t}" for t in sorted(done)],
         "admin": classes.get("admin", 0),
+        "admin_naming_product": admin_naming_product,
         "product": classes.get("product", 0) + classes.get("spec", 0),
+        "days_since_product": days_since_product,
+        "days_since_product_reason": days_since_product_reason,
     }
 
 
@@ -233,12 +375,23 @@ def render(state: dict[str, object]) -> str:
             lines.append(f"             {tid} — needs {' '.join(unmet)}")
     else:
         lines.append("blocked      —")
+    # 069 Part C. Four numbers, not a ratio. The middle two carry the signal:
+    # the gap between "admin this stretch" and "naming a product task" is what
+    # makes an admin chain visible in arithmetic instead of needing a
+    # prohibition -- a bare ratio fused two numbers together and lost it.
+    days_val = state["days_since_product"]
+    days_line = (f"days since last product task  {days_val}" if days_val is not None
+                else f"days since last product task  CANNOT COMPUTE: {state['days_since_product_reason']}")
+
     lines += [
         "running      —",
         f"on christoph {' '.join(state['on_christoph']) or '—'}",  # type: ignore[index]
         f"superseded   {' '.join(f'{d}->{b}' for d, b in state['superseded']) or '—'}",  # type: ignore[index]
         f"done         {' '.join(state['done']) or '—'}",          # type: ignore[index]
-        f"admin:product this stretch   {state['admin']}:{state['product']}",
+        f"admin this stretch           {state['admin']}",
+        f"  naming a product task       {state['admin_naming_product']}",
+        f"product this stretch         {state['product']}",
+        days_line,
         "```",
         "",
         "**`running` is always `—`.** It is the one line that cannot be derived: a",
