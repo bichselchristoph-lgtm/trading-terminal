@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-23T16:17:59+02:00
+last_attempt : 2026-08-23T16:40:10+02:00
 
-last_success : 2026-08-23T16:17:59+02:00
+last_success : 2026-08-23T16:40:11+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/071-context-block-reduced-to-four-rows.md, momentum-code-handoff/inbox/071-for-code-task-attached-context-block.md, momentum-code-handoff/verify-output.md
+outcome      : 4 new - momentum-code-handoff/done/072-attach-switches-symbol.md, momentum-code-handoff/inbox/072-for-code-task-attach-does-not-switch-symbol.md, momentum-code-handoff/inbox/073-for-code-task-row-descriptors.md, momentum-code-handoff/verify-output.md
 
-head         : 73b5caa088bbb80b709477cb262ef0e4bb57a0bf 070: ADR% used lands, ATR/ADR$/room leave the panel and the record, cooldown was never actually gated
+head         : f89e57d4133578640becf60b7920a18750bd687d 071: context block reduced to four rows against mockup v1.2 -- two real defects found beyond the reduction itself

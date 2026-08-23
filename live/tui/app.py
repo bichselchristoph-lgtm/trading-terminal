@@ -602,15 +602,17 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     # symbol that is working: those are two independent facts and collapsing them
     # would make one bad ticker look like a disconnection.
     attach_rows: list[str] = []
-    for a in at:
-        attach_rows.append(f"  {a.symbol}  attached {a.since}")
-        attach_rows += context_rows(a)
-    # **058 Part 3 — the atomic swap.** The outgoing symbol's row is already
-    # gone from `record.attached` by the time this renders (`_begin_attach`
-    # removes it before the worker even starts), so there is nothing here to
-    # blend with the badge below. One screen-level state, not a per-cell
-    # pending state — `BUILD-PLAN` slice 010 §7 wins over §3's retired
-    # `fetching dailies…`.
+    # **058 Part 3 — the atomic swap, corrected by 072.** `record.attached`
+    # is NOT cleared while a gather is in flight any more (`_begin_attach`) —
+    # it has to survive a FAILED attach intact (`SPEC.md` §4.2). So the
+    # screen-level blank is enforced HERE instead: `at` renders only when
+    # neither an attach nor a cooldown-queue is in flight. One screen-level
+    # state, not a per-cell pending state — `BUILD-PLAN` slice 010 §7 wins
+    # over §3's retired `fetching dailies…`.
+    if not record.attaching and not record.attach_queued:
+        for a in at:
+            attach_rows.append(f"  {a.symbol}  attached {a.since}")
+            attach_rows += context_rows(a)
     if record.attach_queued:
         # **070 §6.** Never a silent drop: the whole gather refused before
         # step 3 ran (`attach.py`'s cooldown branch), and the panel says so
@@ -642,6 +644,15 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         provenance = f"ATTACHING {record.attaching}"
     elif not at:
         provenance = "not attached"
+    elif record.attach_refusal:
+        # **072 Defect B.** A symbol remains attached (`at` is non-empty)
+        # and the MOST RECENT attach attempt refused — the caption says so
+        # rather than staying bare, because bare is 071's signal for
+        # "nothing to report" and a refused re-attach is exactly something
+        # to report. `Cell.absent(record.attach_refusal)` already renders
+        # below, naming which symbol and why; this caption is what a reader
+        # sees before reading that far.
+        provenance = "attach refused"
     else:
         # **071 §3.** Bare when landed — "the header carries the panel
         # state, not the clock" (mockup v1.2 §1). The symbol row already
@@ -909,14 +920,34 @@ class MomentumApp(App):
 
     def _begin_attach(self, symbol: str) -> None:
         """**058 Part 3, the atomic swap's first step.** Every value
-        dependent on the outgoing symbol is dropped immediately — not left
-        on screen, not greyed. `ATTACHED` §6b.5 rules that a DETACHED symbol
-        renders `STALE`; this is a RE-ATTACH of the same symbol (or a fresh
-        one), and a value from the previous attach sitting under the new
-        header while the new one is still in flight is the §7 archetype: a
-        well-formed value answering a different question."""
-        self.record.attached = [a for a in self.record.attached
-                                if a.symbol != symbol]
+        dependent on the outgoing symbol is dropped IMMEDIATELY FROM THE
+        SCREEN — not left on screen, not greyed. `ATTACHED` §6b.5 rules that
+        a DETACHED symbol renders `STALE`; this is a RE-ATTACH of the same
+        symbol (or a fresh one), and a value from the previous attach
+        sitting under the new header while the new one is still in flight
+        is the §7 archetype: a well-formed value answering a different
+        question.
+
+        **072: does NOT clear `record.attached` any more — `render_panels`
+        does, by not rendering `at` at all while `record.attaching` is set
+        (see there).** The two used to be the same thing (clearing the
+        record WAS how the screen went blank), which is exactly what broke:
+        clearing unconditionally here (072's first attempt at this fix)
+        meant a FAILED second attach permanently lost the first symbol —
+        `_finish_attach`'s failure branches never re-add it, and nothing
+        else does either. `SPEC.md` §4.2 is explicit that a failed attach
+        must not blank a symbol that is working, so the record has to
+        survive a failed attempt intact; only the SCREEN may blank
+        immediately, and only the render layer can tell "in flight" from
+        "landed" without also needing to distinguish "the new attach
+        succeeded" from "it is about to fail," which is not yet knowable
+        here.
+
+        **`record.attached` still holds at most one entry** (`SPEC.md`
+        §12.11 — several symbols at once is deferred) — enforced in
+        `_finish_attach`'s success branch, which clears fully before
+        appending, rather than here.
+        """
         self.record.attach_refusal = ""
         self.record.attach_queued = ""
         self.record.attaching = symbol
@@ -1000,13 +1031,17 @@ class MomentumApp(App):
         else:
             # An attach that failed at steps 2-5 is still an attach, so a
             # stale refusal from a previous attempt must not survive one.
-            # `_begin_attach` already dropped this symbol's old row; this
-            # guards the case where the SYMBOL TYPED differs from the one
-            # `attach()` normalised to (defensive — `attach()` upper-cases
-            # and strips, matching `on_input_submitted`, so this is a no-op
-            # on the path that actually runs).
-            self.record.attached = [a for a in self.record.attached
-                                    if a.symbol != result.symbol]
+            # **This is the ONE place `record.attached` is ever cleared —
+            # 072 Defect A.** The old code filtered `a.symbol !=
+            # result.symbol`, which only dropped a re-attach of the SAME
+            # symbol; a DIFFERENT symbol's entry (still there, since
+            # `_begin_attach` does not touch the record — see there) simply
+            # accumulated. `record.attached` holds at most one entry
+            # (`SPEC.md` §12.11 — several symbols at once is deferred), so
+            # a SUCCESSFUL attach clears unconditionally rather than
+            # filtering, and only a successful one — a failed attach must
+            # leave whatever was there untouched (§4.2).
+            self.record.attached = []
             # **034: the context block is CARRIED, not recomputed and not
             # dropped.** `attach()` measured all of it one line ago and
             # until now every value was discarded here — the panel showed
