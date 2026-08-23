@@ -1,4 +1,4 @@
-# verify.ps1 — ten facts about this tree, and no opinion about them.
+﻿# verify.ps1 — ten facts about this tree, and no opinion about them.
 #
 # Four became five under 020 part 3, which added the export freshness check.
 # Five became seven under 043: the INBOUND copier's run record (part 2) and the

@@ -201,6 +201,24 @@ try {
         "clean (bar this script's own run record, uncommitted)"
     } else { 'clean' }
 
+    # 064 Part C. A COUNT ON THE HEAD LINE, AND THE PATHS BELOW IT. Before this,
+    # a dirty tree asserted a commit hash as the manifest's basis and buried the
+    # only evidence against that assertion -- how many paths, which ones -- one
+    # line down, behind a field a skimming reader has no reason to open. The
+    # count now rides on the line making the claim, so it cannot be missed by
+    # skimming past `**working tree**`; the paths themselves are named below it,
+    # reusing $dirty rather than re-deriving it, so this can never disagree with
+    # the count that produced $treeState.
+    #
+    # Clean tree: $headForManifest is exactly $head and $dirtySection is empty,
+    # so the manifest body is byte-identical to what it rendered before this
+    # change -- verified by re-running against a clean tree, not asserted.
+    $headForManifest = if ($dirty.Count) { "$head + $($dirty.Count) uncommitted paths (listed below)" } else { $head }
+    $dirtySection    = if ($dirty.Count) {
+        "**uncommitted paths** ($($dirty.Count))`n" +
+        (($dirty | ForEach-Object { "- ``$($_.Trim())``" }) -join "`n") + "`n"
+    } else { '' }
+
     # Before the copy. If the process is killed from here on, this is what is
     # left behind, and it says so.
     Write-RunRecord -Path $runRecord -Attempt $stamp -Success $prevSuccess `
@@ -336,9 +354,9 @@ job.
 
 **source** ``$($e.Src)``
 **exported** $stamp
-**HEAD** $head
+**HEAD** $headForManifest
 **working tree** $treeState
-**files** $($files.Count) ($copied copied, $skipped unchanged)
+$dirtySection**files** $($files.Count) ($copied copied, $skipped unchanged)
 $skippedTxt
 
 > One-way and additive. It never deletes, and nothing here is read back into the

@@ -57,6 +57,84 @@ def task_files() -> list[pathlib.Path]:
     return out
 
 
+def _load_frontmatter(p: pathlib.Path, problems: list[str]) -> dict | None:
+    """Parse `p`'s frontmatter, or record a named problem and return None.
+
+    **OBS-080.** The three checks below used to call `yaml.safe_load` directly
+    inside their loop with no per-file guard. `056` has an unquoted colon in a
+    prose value ("Rule 16: this counts...") -- invalid YAML -- and
+    `yaml.safe_load` raised `yaml.scanner.ScannerError` on it. With no
+    try/except, that exception propagated out of the loop entirely: every file
+    sorting after `056` was never reached, so class/unblocks/destination went
+    unverified for the whole tail of the inbox without any test going red for
+    the right reason (they went red for `056` alone, then stopped).
+
+    A malformed file is a violation to report by name, not a reason to abort
+    checking every file after it. Catching `yaml.YAMLError` here -- the common
+    base of `ScannerError` and `ParserError` -- keeps that failure mode local
+    to the one file that caused it.
+    """
+    fm = _FM.match(p.read_text(encoding="utf-8"))
+    if not fm:
+        problems.append(f"{p.name}: no frontmatter.")
+        return None
+    try:
+        return yaml.safe_load(fm.group(1)) or {}
+    except yaml.YAMLError as exc:
+        problems.append(
+            f"{p.name}: frontmatter is not valid YAML ({exc}) -- cannot "
+            "check class/unblocks/destination for this file")
+        return None
+
+
+def _check_declares_a_class(paths: list[pathlib.Path]) -> list[str]:
+    problems: list[str] = []
+    for p in paths:
+        data = _load_frontmatter(p, problems)
+        if data is None:
+            continue
+        if data.get("class") not in {"admin", "product", "spec"}:
+            problems.append(
+                f"{p.name}: class is {data.get('class')!r}; expected admin, "
+                "product or spec.")
+    return problems
+
+
+def _check_admin_names_what_it_unblocks(paths: list[pathlib.Path]) -> list[str]:
+    problems: list[str] = []
+    for p in paths:
+        data = _load_frontmatter(p, problems)
+        if data is None:
+            continue
+        if data.get("class") != "admin":
+            continue
+        if not str(data.get("unblocks", "")).strip():
+            problems.append(
+                f"{p.name}: class is admin with no `unblocks:`. **Admin "
+                "exists to unblock product.** An admin task that unblocks "
+                "nothing, or that unblocks only more admin, is the failure "
+                "rule 16 was written to make visible.")
+    return problems
+
+
+def _check_names_no_destination(paths: list[pathlib.Path]) -> list[str]:
+    problems: list[str] = []
+    for p in paths:
+        data = _load_frontmatter(p, problems)
+        if data is None:
+            continue
+        found = ROUTING_KEYS & set(data)
+        if found:
+            problems.append(
+                f"{p.name}: frontmatter names a destination "
+                f"({', '.join(sorted(found))}). **ROUTING IS PROTOCOL, NOT "
+                "TASK CONTENT.** Destinations come from config/sync.yaml and "
+                "the handoff protocol. A task file is authoritative about "
+                "its own work and is not authoritative about the channel -- "
+                "the channel is shared state it cannot see.")
+    return problems
+
+
 def test_the_scope_is_not_empty() -> None:
     assert task_files(), (
         f"no task files numbered {FROM_TASK}+ in {INBOX}; vacuous pass.")
@@ -72,36 +150,55 @@ def test_every_task_file_has_an_addressing_gate() -> None:
 
 
 def test_every_task_file_declares_a_class() -> None:
-    for p in task_files():
-        fm = _FM.match(p.read_text(encoding="utf-8"))
-        assert fm, f"{p.name}: no frontmatter."
-        data = yaml.safe_load(fm.group(1)) or {}
-        assert data.get("class") in {"admin", "product", "spec"}, (
-            f"{p.name}: class is {data.get('class')!r}; expected admin, "
-            "product or spec.")
+    problems = _check_declares_a_class(task_files())
+    assert not problems, "\n".join(problems)
 
 
 def test_admin_tasks_name_what_they_unblock() -> None:
-    for p in task_files():
-        fm = _FM.match(p.read_text(encoding="utf-8"))
-        data = yaml.safe_load(fm.group(1)) or {}
-        if data.get("class") != "admin":
-            continue
-        assert str(data.get("unblocks", "")).strip(), (
-            f"{p.name}: class is admin with no `unblocks:`. **Admin exists to "
-            "unblock product.** An admin task that unblocks nothing, or that "
-            "unblocks only more admin, is the failure rule 16 was written to "
-            "make visible.")
+    problems = _check_admin_names_what_it_unblocks(task_files())
+    assert not problems, "\n".join(problems)
 
 
 def test_no_task_file_names_a_destination() -> None:
-    for p in task_files():
-        fm = _FM.match(p.read_text(encoding="utf-8"))
-        data = yaml.safe_load(fm.group(1)) or {}
-        found = ROUTING_KEYS & set(data)
-        assert not found, (
-            f"{p.name}: frontmatter names a destination ({', '.join(sorted(found))}). "
-            "**ROUTING IS PROTOCOL, NOT TASK CONTENT.** Destinations come from "
-            "config/sync.yaml and the handoff protocol. A task file is "
-            "authoritative about its own work and is not authoritative about "
-            "the channel -- the channel is shared state it cannot see.")
+    problems = _check_names_no_destination(task_files())
+    assert not problems, "\n".join(problems)
+
+
+def test_malformed_frontmatter_is_a_named_violation_not_an_abort(
+    tmp_path: pathlib.Path,
+) -> None:
+    """**OBS-080, demonstrated directly.** Two scratch files -- one with `056`'s
+    unquoted-colon shape, one with syntactically valid YAML that fails a real
+    rule -- must both be reported from a single run of the per-file checker.
+    Before the fix, the first file's `yaml.scanner.ScannerError` propagated out
+    of the loop and the second file was never reached.
+    """
+    bad_yaml = tmp_path / "100-scratch-bad-yaml.md"
+    bad_yaml.write_text(
+        "---\n"
+        "class: admin\n"
+        "unblocks: something\n"
+        "reason: Rule 16: this counts against you\n"
+        "---\n"
+        "handoff/inbox/ handoff/done/\n",
+        encoding="utf-8",
+    )
+    bad_class = tmp_path / "101-scratch-bad-class.md"
+    bad_class.write_text(
+        "---\n"
+        "class: nonsense\n"
+        "---\n"
+        "handoff/inbox/ handoff/done/\n",
+        encoding="utf-8",
+    )
+
+    paths = [bad_yaml, bad_class]
+    problems = _check_declares_a_class(paths)
+
+    assert len(problems) == 2, (
+        "expected one violation per scratch file, in one run; got: "
+        f"{problems!r}")
+    assert any("not valid YAML" in msg and bad_yaml.name in msg
+                for msg in problems), problems
+    assert any("class is" in msg and bad_class.name in msg
+                for msg in problems), problems
