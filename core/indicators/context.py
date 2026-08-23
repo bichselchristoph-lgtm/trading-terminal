@@ -381,17 +381,24 @@ def adr_used(current: float, todays_open: float, adr_dol: Measured) -> Measured:
     20-session average is ordinary, and only the accompanying bar clamps at
     full.** (An earlier docstring here said the renderer would print the word
     `OVER` instead; that was never built and 070 rules it out explicitly —
-    corrected rather than left to mislead the next reader.)"""
+    corrected rather than left to mislead the next reader.)
+
+    **`sample` is just the dollar figure as of 071.** It used to read
+    `of $10.66 · from today's open · 20 sessions, excl. today` — 038 Part 6
+    row 1's answer to "what does this anchor to". `ATTACHED` mockup v1.2
+    compacts the on-screen row to `of $10.66 ADR20 RTH`, built directly from
+    this field plus `ADR_DEFAULT_N`/`basis.use_rth` in `live/tui/app.py`'s
+    `_adr_used_cell` — so the wordier anchor text has no reader left and is
+    dropped rather than carried as dead weight. It is still on `.basis` for
+    anything reading the `Measured` directly; it is just not spelled out on
+    screen any more.
+    """
     if not adr_dol.ok:
         return Measured.absent(adr_dol.unavailable)
     if adr_dol.value == 0:
         return Measured.absent("ADR $ is zero")
     return Measured(value=abs(current - todays_open) / adr_dol.value * 100,
-                    # **The referent, named.** 038 Part 2: never a bare `78%`.
-                    # And 038 Part 6 row 1 asked what this anchors to -- it is
-                    # TODAY'S OPEN, stated here so the row itself answers it.
-                    sample=f"of ${adr_dol.value:,.2f} · from today's open · "
-                           f"{adr_dol.sample}",
+                    sample=f"${adr_dol.value:,.2f}",
                     unit=Unit.PERCENT, basis=ADR_BASIS)
 
 

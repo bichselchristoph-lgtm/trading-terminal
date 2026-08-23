@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-23T15:18:10+02:00
+last_attempt : 2026-08-23T16:17:59+02:00
 
-last_success : 2026-08-23T15:18:13+02:00
+last_success : 2026-08-23T16:17:59+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/070-context-block-built-from-the-mockup.md, momentum-code-handoff/inbox/070-for-code-task-attached-context-block.md, momentum-code-handoff/verify-output.md
+outcome      : 3 new - momentum-code-handoff/done/071-context-block-reduced-to-four-rows.md, momentum-code-handoff/inbox/071-for-code-task-attached-context-block.md, momentum-code-handoff/verify-output.md
 
-head         : a2a530d75627e0cd914fd6daa72990f8e2300ca0 069: retire means retired -- pair 3 suppresses what is already done, NOW.md tags ids and renders rule 16's four numbers
+head         : 73b5caa088bbb80b709477cb262ef0e4bb57a0bf 070: ADR% used lands, ATR/ADR$/room leave the panel and the record, cooldown was never actually gated

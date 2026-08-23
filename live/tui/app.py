@@ -76,6 +76,8 @@ from textual.widgets import Input, Static
 # tests against it and NOTHING in the running application imported it. The three
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
+from core.indicators.context import ADR_DEFAULT_N
+
 from ..attach.attach import COOLDOWN_S, MarketData, attach
 # **034: the import that was missing one layer down.** `live/attach/ibkr.py` —
 # the only module in this tree that touches a broker — was imported by nothing
@@ -404,35 +406,71 @@ def measured_cell(m) -> str:
 
 
 def _adr_used_cell(m) -> str:
-    """070. `ATTACHED` mockup v1.0 §1: `64%  ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░`. The bar
-    sits right after the number — matching the drawing — and the basis still
-    rides after both, per the standing rule that every value renders what it
-    was computed over. **`m.value` is not clamped**; only `progress_bar`'s OWN
-    fill is, per `adr_used`'s docstring."""
+    """071. `ATTACHED` mockup v1.2 §1: `16.7% ▓▓▓░░░░░░░░░░ of $10.66 ADR20
+    RTH` — replaces 070's `text  bar  · sample · basis_label` join (verbose
+    enough on its own to overflow the 62-column tile without truncating,
+    which the mockup's own caption calls out as the point of this reduction).
+
+    **Bespoke, not `_cell_parts`'s generic `detail`.** `ADR20`/`RTH` is built
+    directly from `ADR_DEFAULT_N` and `m.basis.use_rth` — not routed through
+    `basis_label()`'s closed vocabulary of clock windows, because it isn't
+    one; it is this one row's own compact code. `m.sample` (still just the
+    dollar figure — see `adr_used()`'s docstring) supplies the `$10.66`.
+
+    **`m.value` is not clamped**; only `progress_bar`'s OWN fill is, per
+    `adr_used`'s docstring.
+
+    **Reported, not silently dropped:** 038 Part 6 row 1 added "from today's
+    open" specifically so the row answered what it anchors to. This compact
+    form does not say it — the mockup was drawn without it, from a live
+    screenshot, and the mockup wins on layout. The anchor is still on
+    `Measured.sample`/`.basis` for anyone reading the object directly; it is
+    just not spelled out on screen any more.
+    """
     parts = _cell_parts(m)
     if parts is None:
         return measured_cell(m)
-    text, detail = parts
+    text, _detail = parts
     bar = progress_bar(m.value)
-    return f"{text}  {bar}  · {detail}" if detail else f"{text}  {bar}"
+    window = "RTH" if m.basis is not None and m.basis.use_rth else "ETH"
+    return f"{text} {bar} of {m.sample} ADR{ADR_DEFAULT_N} {window}"
 
 
 def _rvol_rel_cell(rel, context: dict) -> str:
-    """070. `ATTACHED` mockup v1.0 §1: `1.4x · avg 0.86x · cum 18.1M sh`.
-    Three values that used to render as three separate rows (`RVOL_rel`,
-    the sector's own RVOL, `cum vol`) fold into one line here — a
-    presentation decision, so it lives in the render layer rather than in
-    `attach.py`'s `out` dict, which still exposes all three under their own
-    keys. `rel` is `RVOL_rel` itself, already confirmed present by the
-    caller; `RVOL_sector`/`cum vol` are read from `context` and each is
-    simply omitted from the line if that key is absent or itself refuses —
-    a fixture testing this row in isolation need not supply all three.
+    """`ATTACHED` mockup v1.2 §1: `1.4x · avg 0.86x · cum 22.1M sh` — three
+    values that used to render as three separate rows (`RVOL_rel`, the
+    sector's own RVOL, `cum vol`) fold into one line here, a presentation
+    decision, so it lives in the render layer rather than in `attach.py`'s
+    `out` dict, which still exposes all three under their own keys. `rel` is
+    `RVOL_rel` itself, already confirmed present by the caller;
+    `RVOL_sector`/`cum vol` are read from `context` and each is simply
+    omitted from the line if that key is absent or itself refuses — a
+    fixture testing this row in isolation need not supply all three.
+
+    **071: no trailing `sample · basis` any more.** 070 appended `RVOL_rel`'s
+    own detail after `cum` (`... · vs sector RVOL · vs 20d median at ... ·
+    04:00-20:00 ET`) — one of the two rows (alongside `ADR% used`) verbose
+    enough to overflow the 62-column tile the mockup is drawn at without
+    truncating. The mockup's own line has no trailing basis at all; dropped
+    to match, the same call made for `ADR% used` in `_adr_used_cell`.
+
+    **071 §6/exit tests: a refused `rel` no longer blanks `avg`/`cum`.** 070
+    returned bare on `rel` refusing (`if parts is None: return
+    measured_cell(rel)`), which drops `avg`/`cum` even when THEY are
+    present — the exact "one field's refusal does not blank the row"
+    failure the mockup's §5 caption names for this row specifically. The two
+    are independent in `attach.py` (`RVOL_rel` reads `RVOL`; `RVOL_sector`
+    is `sector_rvol` directly), so a state where one refuses and the other
+    doesn't is reachable even though the mockup's own illustration —
+    `no sector mapping` alongside a present `avg` — is not: if the sector
+    mapping is missing, `attach.py` sets BOTH `RVOL_rel` and `RVOL_sector`
+    to the same `no sector mapping` refusal (`rvol_rel()`'s own `sector is
+    None` branch), so that specific combination cannot occur. Built for the
+    principle regardless, since a different pair of causes reaches the same
+    shape.
     """
     parts = _cell_parts(rel)
-    if parts is None:
-        return measured_cell(rel)
-    text, detail = parts
-    bits = [text]
+    bits = [parts[0] if parts is not None else measured_cell(rel)]
     sector = context.get("RVOL_sector")
     if sector is not None:
         sector_parts = _cell_parts(sector)
@@ -443,30 +481,31 @@ def _rvol_rel_cell(rel, context: dict) -> str:
         cumvol_parts = _cell_parts(cumvol)
         if cumvol_parts is not None:
             bits.append(f"cum {cumvol_parts[0]}")
-    body = "  · ".join(bits)
-    return f"{body}  · {detail}" if detail else body
+    return "  · ".join(bits)
 
 
 def _vwap_rows(vwap, context: dict) -> list[str]:
-    """070. `ATTACHED` mockup v1.0 §1, two physical lines:
+    """071. `ATTACHED` mockup v1.2 §1: one physical line — `VWAP  $712.97 ·
+    +$1.28`. **070 rendered a second, unlabelled continuation line below it
+    carrying `VWAP`'s own `sample`** (`bar-derived · 22.1M sh · 960 min ·
+    04:00 anchor · ...`); 071 §4 removes it explicitly: *"Nothing renders
+    below a value. The row is the row."* Deleted, not moved — unlike the
+    other five rows 071 removes, this text has no new home on screen. The
+    underlying `Measured.sample`/`.basis` on `vwap` itself are untouched
+    (`_stamp()` still reads `vwap.sample` for the record's `as_of`/`lag`);
+    only this second rendered line goes.
 
-        VWAP        $730.68 · +$2.46
-                    from 04:00 · 18.4M sh · ...
-
-    The first carries the value and `VWAP_ext` (price minus VWAP, signed —
-    the mockup's `+$2.46`); the second is `VWAP`'s own `sample`, continued
-    with no label, because it does not fit the value line at 209 columns
-    alongside everything else 070 adds to it. `vwap` is confirmed present by
-    the caller; `VWAP_ext` is read from `context` and simply omitted if
-    absent. **`vwap_from_bars` is untouched** — this reads its existing
-    `sample` text; the mockup's `pre-mkt 2.1M of 18.4M` breakdown is a new
-    VWAP statistic, not a rendering change, and is out of scope here
+    `vwap` is confirmed present by the caller; `VWAP_ext` is read from
+    `context` and simply omitted if absent. **`vwap_from_bars` is
+    untouched** — the mockup's `pre-mkt 2.1M of 18.4M` breakdown (v1.0's
+    illustration, since dropped from the mockup too) would have been a new
+    VWAP statistic, not a rendering change, and stays out of scope
     (`touches:` names the ATTACHED renderer, not the VWAP statistic).
     """
     parts = _cell_parts(vwap)
     if parts is None:
         return [f"    {'VWAP':<9} {measured_cell(vwap)}"]
-    text, detail = parts
+    text, _detail = parts
     ext = context.get("VWAP_ext")
     ext_text = ""
     if ext is not None:
@@ -474,72 +513,50 @@ def _vwap_rows(vwap, context: dict) -> list[str]:
         if ext_parts is not None:
             sign = "+" if ext.value >= 0 else ""
             ext_text = f"  · {sign}{ext_parts[0]}"
-    rows = [f"    {'VWAP':<9} {text}{ext_text}"]
-    if detail:
-        rows.append(f"    {'':<9} {detail}")
-    return rows
-
-
-def _as_of_clock(ts: str) -> str:
-    """Today's as-of renders as a clock; any other day keeps its date.
-
-    **The date is dropped only when dropping it cannot mislead.** The stamp row
-    is ~72 characters with a full timestamp against a ~62-column tile, so `fit`
-    was truncating `lag` off the end — losing the one number that says how stale
-    the block is, which is precisely the value §4d refuses to let give way. But a
-    bar from LAST session rendered as a bare `16:00` would read as an hour ago,
-    so the date survives whenever it is not today's.
-
-    The record keeps the full timestamp either way; this is the renderer's
-    decision and lives with the rest of the formatting.
-    """
-    today = datetime.now(EASTERN).strftime("%Y-%m-%d")
-    if ts.startswith(today):
-        return ts[11:16] or ts
-    return ts
+    return [f"    {'VWAP':<9} {text}{ext_text}"]
 
 
 def context_rows(a: Attached) -> list[str]:
-    """The context block for one attached symbol. 034 part 4.
+    """The context block for one attached symbol: `ADR% used`, `RVOL rel`,
+    `VWAP` and, only while a gather has landed with refusals, the partial-
+    count line. 034 part 4; reduced to this from ten-plus rows by 071.
 
     **Indented one level under its symbol**, because the panel holds a list of
     attachments and a flat block would read as belonging to whichever symbol the
     eye landed on last.
 
-    **The stamp is BLOCK-LEVEL, and that is a limitation this function cannot
-    fix.** §3 and the third tenet want source, as-of and lag on every value;
-    `Measured` carries `value`, `sample` and `unavailable` and has no field for
-    an as-of or a lag. So one stamp covers the block, each row carries its own
-    `sample`, and the gap is recorded in the done-note rather than papered over
-    with a stamp computed at render time — which would say when the SCREEN was
-    painted, not when the DATA was true, and would be a well-formed value
-    answering a different question.
+    **`from`/`slot`/`tape` and the level rail are no longer this function's
+    concern.** 071 §4 moves each to a different screen (SOURCES/HEALTH, a
+    future slot indicator, TAPE, the LEVELS rail) without deleting the data
+    they were reading — `Attached` still carries `source`/`as_of`/`lag`/
+    `slot_state`/`tape`/`rail`, populated exactly as before; this function
+    just stops reading them. The block-level-stamp limitation the removed
+    `from` row used to carry a comment about (one stamp for the whole block,
+    because `Measured` has no per-value as-of/lag field) is now moot for
+    THIS panel and is recorded here only so a reader tracing the history
+    does not go looking for a comment that used to be attached to a row
+    that no longer exists.
     """
-    if not a.context and not a.rail:
+    if not a.context:
         return [f"    {Cell.not_yet('no context block measured').render()}"]
-    stamp = " · ".join(x for x in (
-        a.source,
-        f"as of {_as_of_clock(a.as_of)}" if a.as_of else "",
-        f"lag {a.lag}" if a.lag else "") if x)
-    rows = [f"    {'from':<9} {stamp}" if stamp
-            else f"    {'from':<9} {Cell.absent('no source recorded').render()}"]
-    if a.slot_state:
-        rows.append(f"    {'slot':<9} {a.slot_state}")
-    if a.tape:
-        rows.append(f"    {'tape':<9} {a.tape}")
+    rows: list[str] = []
     if a.partial:
-        # **058 Part 3.** A screen-level statement that the gather completed
-        # with refusals — tenet 3 (status inherits from the weakest),
-        # rendered rather than merely true. `flagged, not an error`: the
-        # attach itself did not fail, some of its rows did, and those rows
-        # already say why individually below.
-        rows.append(f"    {'':<9} {Cell.degraded(a.partial, FLAGGED_NOT_ERROR).render()}")
+        # **058 Part 3, reworded by 071 §6.** A screen-level statement that
+        # the gather completed with refusals — tenet 3 (status inherits from
+        # the weakest), rendered rather than merely true. **Not
+        # `Cell.degraded()` any more**: its DEGRADED marker prepends `~`
+        # unconditionally, and the mockup's own objection is exactly that —
+        # `~2 of 21` reads as *approximately*, the same complaint that
+        # retired `~level` from the LEVELS rail. `a.partial` is already an
+        # exact count (058); the only thing wrong was the marker glued in
+        # front of it, so this builds the line directly instead of through a
+        # confidence axis that cannot render exact and degraded at once.
+        rows.append(f"    {'':<9} {a.partial} ({FLAGGED_NOT_ERROR})")
     # **070.** `ADR% used`, `RVOL_rel` and `VWAP` are no longer a uniform
     # one-key-one-line loop — each has a bespoke renderer (the bar, the
-    # combined RVOL line, VWAP's two physical lines) — but `CONTEXT_ORDER`
-    # still names them, in the order they render, and each is still gated on
-    # the same `if name in a.context` presence check the rest of this
-    # function uses.
+    # combined RVOL line, VWAP's own line) — but `CONTEXT_ORDER` still names
+    # them, in the order they render, and each is still gated on the same
+    # `if name in a.context` presence check the rest of this function uses.
     for name in CONTEXT_ORDER:
         if name not in a.context:
             continue
@@ -551,9 +568,17 @@ def context_rows(a: Attached) -> list[str]:
             rows.extend(_vwap_rows(a.context[name], a.context))
         else:
             rows.append(f"    {name:<9} {measured_cell(a.context[name])}")
-    for name in RAIL_ORDER:
-        if name in a.rail:
-            rows.append(f"    {name:<9} {measured_cell(a.rail[name])}")
+    # **071 §4 removes `from`, `slot`, `tape` and the `RAIL_ORDER` loop (PDH,
+    # PDL, PMH, PML, ORH5, ORL5, ORH15, ORL15, 52wH, 52wL, `round` — eleven
+    # rows; the mockup names eight, the other three were simply absent from
+    # the screenshot it was drawn against, and the target's row count of
+    # exactly four leaves no room for any of the eleven) from THIS panel's
+    # rendering.** None of `Attached.source`/`as_of`/`lag`/`slot_state`/
+    # `tape`/`rail` is deleted from the record — `_finish_attach` still
+    # populates every one of them, because SOURCES/HEALTH, a future slot
+    # indicator, the TAPE pane and the LEVELS rail (`067`) each have a named
+    # claim on the same data per 071 §4's table. Only `ADR% used`/`RVOL_rel`/
+    # `VWAP` and the partial-count line are this panel's business now.
     return rows
 
 
@@ -597,17 +622,36 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         attach_rows.append(f"  {symbol} queued · {remaining} "
                            f"({COOLDOWN_S}s same-contract cooldown)")
     elif record.attaching:
-        attach_rows.append(f"  {Cell.attaching(record.attaching).render()}")
+        # **071 §5, verified against mockup v1.2 §3 — a real difference from
+        # what 070 shipped and reported as already matching.** The row read
+        # `[ ATTACHING QQQ ]` via `Cell.attaching().render()`; the mockup's
+        # body is the plain sentence `(values land in one paint)`, with the
+        # symbol carried only by the caption below. Not a `Cell` — nothing
+        # here is a value under refusal, just a fixed description of what
+        # is happening.
+        attach_rows.append("  (values land in one paint)")
     if record.attach_refusal:
         attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
     if record.attach_queued:
         provenance = f"queued · {record.attach_queued.split(' ', 1)[1]}"
     elif record.attaching:
-        provenance = Cell.attaching(record.attaching).render()
+        # **071 §5.** No brackets — mockup v1.2 §3's caption is plain
+        # `ATTACHING QQQ`, not the `[ ATTACHING QQQ ]` badge `Cell.attaching`
+        # renders. The symbol row inside the panel carries the attach time
+        # with seconds; this caption carries the in-flight state.
+        provenance = f"ATTACHING {record.attaching}"
     elif not at:
         provenance = "not attached"
     else:
-        provenance = f"since {at[0].since}"
+        # **071 §3.** Bare when landed — "the header carries the panel
+        # state, not the clock" (mockup v1.2 §1). The symbol row already
+        # carries `attached HH:MM:SS`; a `since HH:MM` caption duplicated
+        # the same fact in a coarser format, which is exactly the shape of
+        # defect the mockup's §2 table names for `from`: "two renderings of
+        # one fact is how a value ends up disagreeing with itself." True for
+        # a partial attach too (mockup §5's header is equally bare) — the
+        # partial-count row inside the panel already says what's wrong.
+        provenance = ""
     p["attached"] = Panel(
         "ATTACHED", provenance,
         attach_rows or [f"  {Cell.absent('nothing attached').render()}"])
@@ -972,7 +1016,10 @@ class MomentumApp(App):
             as_of, lag = self._stamp(result)
             self.record.attached.append(
                 Attached(symbol=result.symbol,
-                        since=datetime.now(EASTERN).strftime("%H:%M"),
+                        # **071 §3.** Seconds, not minutes — "09:19 and
+                        # 09:19:59 are a minute apart on a panel whose whole
+                        # job is what happened when" (mockup v1.2 §1).
+                        since=datetime.now(EASTERN).strftime("%H:%M:%S"),
                         context=result.context, rail=result.rail,
                         source=self.source_name, as_of=as_of, lag=lag,
                         tape=result.tape, slot_state=result.slot_state,

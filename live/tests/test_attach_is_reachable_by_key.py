@@ -513,24 +513,28 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         f"a value rendered with no sample beside it. S010 requires the sample "
         f"on every rendered value, and a bare number is the defect this "
         f"project is named for.\n{body}")
-    assert "IBKR 127.0.0.1:7496" in body and "as of" in body and "lag" in body, (
-        f"the block renders numbers with no source, as-of or lag. A value with "
-        f"no stamp beside a value with one is the third tenet's failure:\n{body}")
+    # **071 reduces the panel to four rows** — `ADR% used`, `RVOL rel`, `VWAP`
+    # and, when landed cleanly, nothing else. The block-level `from`/`as
+    # of`/`lag` stamp this assertion used to require is gone from THIS
+    # panel (071 §4: it moves to SOURCES/HEALTH, which already render both,
+    # per `B-006`) — replaced by each row carrying its own sample/basis,
+    # which the assertion above already confirms.
+    for gone in ("from ", "slot ", "tape ", "PDH", "PDL", "PMH", "PML",
+                "ORH5", "ORL5", "ORH15", "ORL15", "52wH", "52wL"):
+        assert gone not in body, (
+            f"the ATTACHED panel still renders {gone!r}. 071 §4 moves this "
+            f"row out of the context block; it does not belong on this "
+            f"panel any more:\n{body}")
 
     attached = record.attached[0]
     assert attached.context and attached.rail, (
         "the panel rendered a context block the RECORD does not hold, so "
         "render_panels reached around it — that breaks the one purity property "
         "everything downstream leans on")
-    assert "PDH" in attached.rail, "the level rail was not carried onto the record"
-
-    # **The rail is measured, carried, and BELOW THE FOLD at 209x54.** The panel
-    # says so rather than dropping it silently, which is §4e and is the whole
-    # difference between a short panel and a lying one. Asserted because the
-    # honest overflow is load-bearing here, not incidental — see the done-note.
-    assert "more ↓" in body or "PDH" in body, (
-        f"the context block overflows the tile and the panel does not say so. "
-        f"'nothing more here' and 'more below' must not render alike:\n{body}")
+    assert "PDH" in attached.rail, (
+        "the level rail must still be COMPUTED and CARRIED on the record "
+        "even though 071 stops rendering it here — task 067 (the LEVELS "
+        "rail) reads it from the same place")
 
     # `use_rth` at every call site, S010 §2f. The whole reason the parameter is
     # keyword-only with no default is that getting it wrong returns RTH-only
