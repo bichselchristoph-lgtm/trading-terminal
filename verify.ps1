@@ -36,11 +36,19 @@
 # script that says "PASS" is one more claim to verify, not a way of verifying
 # claims.
 #
-# IT MODIFIES NOTHING IN THE TREE, WITH EXACTLY ONE EXEMPTION. No `git add`, no
+# IT MODIFIES NOTHING IN THE TREE, WITH EXACTLY TWO EXEMPTIONS. No `git add`, no
 # fixture creation, no edits. **It writes the verify output file
 # and nothing else** (023). That file is gitignored, overwritten each run, and
 # is the artifact the design session reads instead of a pasted transcript.
 # See where it is actually named, below (057: one literal, one site).
+#
+# 068 Part A adds the second: `verify-failures.txt`, at the repository root,
+# gitignored, overwritten each run — the previous run's named-failure set, so
+# section 1 can report a DELTA (unchanged/new/fixed) instead of a note having
+# to quote a count and a reader having to trust it matches memory of an
+# earlier note. Same shape as the first exemption: generated, per-machine,
+# describes a moment, and committing it would be a second source of truth
+# that ages badly.
 #
 # The exemption is named here rather than left to be discovered, because until
 # 023 this line read "IT NEVER MODIFIES ANYTHING" without qualification, and a
@@ -146,6 +154,66 @@ if (-not (Test-Path $python)) {
         Say ''
         Say 'named failures:'
         $failed | ForEach-Object { Say "  $($_.Trim())" }
+    }
+
+    # --- 068 Part A: the failure-set DELTA, not a count a note has to quote -
+    #
+    # Three notes in a row quoted a test count and the rule says a note must
+    # not. **This removes the need to quote anything** — the same move as
+    # taking away the delete operation, not a fourth wording of the rule.
+    #
+    # `$currentSet` is the test id ONLY, stripped of pytest's trailing
+    # ` - <first line of exception>` — that suffix is not stable across runs
+    # (a changed error message would read as a different test) and is not
+    # part of what identifies which test failed.
+    $currentSet = @($failed | ForEach-Object {
+        (($_ -replace '^(FAILED|ERROR)\s+', '') -replace '\s+-\s.*$', '').Trim()
+    } | Sort-Object -Unique)
+    $failStateFile = Join-Path $repo 'verify-failures.txt'
+
+    Say ''
+    if (-not (Test-Path -LiteralPath $failStateFile)) {
+        # **Absence is not zero**, and it applies to this instrument's own
+        # state the same as every other section's. A missing state file and a
+        # run that changed nothing must not read alike.
+        Say '  no previous run recorded'
+    } else {
+        try {
+            $previousRaw = @(Get-Content -LiteralPath $failStateFile -ErrorAction Stop)
+            $previousSet = @($previousRaw | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+            $unchanged = @($currentSet | Where-Object { $previousSet -contains $_ })
+            $newOnes   = @($currentSet | Where-Object { $previousSet -notcontains $_ })
+            $fixedOnes = @($previousSet | Where-Object { $currentSet -notcontains $_ })
+            Say "  unchanged  $($unchanged.Count)"
+            Say "  new        $($newOnes.Count)"
+            Say "  fixed      $($fixedOnes.Count)"
+            if ($newOnes.Count) {
+                Say '  new failures:'
+                $newOnes | ForEach-Object { Say "    $_" }
+            }
+            if ($fixedOnes.Count) {
+                Say '  fixed since last run:'
+                $fixedOnes | ForEach-Object { Say "    $_" }
+            }
+        } catch {
+            # **Reported as unreadable, not as an empty previous set.** Same
+            # reason as the missing-file case above: a state file that cannot
+            # be read is not evidence that nothing was failing last time.
+            Say "  CANNOT COMPUTE: $failStateFile exists but could not be read: $_"
+        }
+    }
+
+    # Written LAST, after the comparison and the print. Writing first would
+    # make every run compare the current set against itself and report zero
+    # change forever — which would look exactly like a stable suite.
+    Set-Content -LiteralPath $failStateFile -Value $currentSet -Encoding utf8NoBOM
+
+    # --- 068 Part C: done-notes exempted from the bugs: guard, by name ------
+    # A content signal rather than a note nobody re-reads: it goes to zero
+    # when the exempted set empties, the same way section 9's open-question
+    # count does.
+    if (Test-Path -LiteralPath $python) {
+        & $python (Join-Path $repo 'tools\exported_notes.py') 2>&1 | ForEach-Object { Say "  $_" }
     }
 }
 

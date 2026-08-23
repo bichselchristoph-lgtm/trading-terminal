@@ -85,8 +85,13 @@ def test_verify_ps1_writes_the_path_this_test_guards() -> None:
 
 @pytest.mark.parametrize("forbidden", ["git add", "git commit", "New-Item", "Remove-Item"])
 def test_verify_ps1_still_modifies_nothing_else(forbidden: str) -> None:
-    """023's standing constraint: the output file is the ONE exemption to
-    `verify.ps1` never modifying the tree, and it must stay the only one."""
+    """023's standing constraint, widened by 068 Part A from one exemption to
+    two: `verify.ps1` writes its own output file and its own failure-delta
+    state file (`verify-failures.txt`, see
+    `test_verify_failures_state_is_ignored.py`) and nothing else in the tree.
+    Both are gitignored and generated; neither is a `git add`/`git commit`,
+    neither creates a tracked fixture, and this test still checks for exactly
+    that, unchanged by the second exemption existing."""
     script = (REPO / "verify.ps1").read_text(encoding="utf-8")
     code = "\n".join(l for l in script.splitlines() if not l.lstrip().startswith("#"))
     if forbidden == "Remove-Item":

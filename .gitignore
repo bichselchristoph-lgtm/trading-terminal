@@ -122,3 +122,10 @@ Thumbs.db
 # Tracked would mean a dirty tree after every run and three sessions colliding
 # on a file whose whole content is recomputable.
 claude/NOW.md
+
+# 068 Part A. verify.ps1's second exemption to writing nothing but its own
+# output file: the previous run's named-failure set, so section 1 can report
+# a delta instead of a note having to quote a count. Generated, per-machine,
+# describes a moment — same reasoning as /handoff/verify-output.md above.
+# Anchored: only the repo root, which is the one place verify.ps1 writes it.
+/verify-failures.txt
