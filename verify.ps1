@@ -1,9 +1,17 @@
-# verify.ps1 — seven facts about this tree, and no opinion about them.
+# verify.ps1 — ten facts about this tree, and no opinion about them.
 #
 # Four became five under 020 part 3, which added the export freshness check.
 # Five became seven under 043: the INBOUND copier's run record (part 2) and the
 # worktrees (part 3). The count is in the name of the thing, so it is maintained
 # rather than left saying "four" while printing seven.
+#
+# Seven became nine without this header being updated -- 045 added NOW (part 3)
+# and 054/043 added QUESTIONS, and the closing line at the bottom of the file
+# was kept current while this one was not, so the two disagreed until 062
+# noticed while adding a tenth. Nine becomes ten under 062, which adds
+# TWS_ORDER: a second repo, tws_order, has its own suite, path and HEAD
+# reported here because verify.ps1 previously described only $repo, and any
+# story landing in tws_order had nothing to run and nothing to read.
 #
 # 043 part 3, and it is the same shape as 020's and 037's. THIS SCRIPT RUNS
 # AFTER EVERY TASK AND REPORTED ON EVERYTHING EXCEPT THE THING THAT OUTLIVES
@@ -707,6 +715,59 @@ if (-not (Test-Path -LiteralPath $qDir)) {
     }
 }
 
+# --- 10. tws_order ------------------------------------------------------
+# 062. PROCESS v1.6 §8's first Definition-of-Done condition is tests green,
+# each seen red first -- but until this section, verify.ps1 reported on ONE
+# checkout, $repo. Any story whose work lands in tws_order (a separate repo,
+# the only one that places a live order) had nothing here to run and nothing
+# to read, so it could never reach REVIEWED no matter how good the code was.
+# S031 and S032 were blocked on exactly this.
+#
+# RUN FROM ITS OWN CHECKOUT, NEVER FROM A momentum WORKTREE. Push-Location
+# into $twsOrderPath for the duration of the pytest call and Pop-Location in a
+# finally, so a crash mid-run does not leave this script pointed at the wrong
+# repo for every section after it.
+#
+# THREE STATES, AND THEY MUST NOT READ ALIKE. Passed and failed both print the
+# raw pytest summary beside path and HEAD -- this section does not summarise
+# and does not quote a test count, same rule as section 1. UNREACHABLE -- the
+# repo missing, not a git checkout, or python absent -- prints a named
+# "SUITE COULD NOT BE RUN" line instead of nothing, because a blank section
+# here is indistinguishable from a section that was never added, and the
+# reader would conclude the instrument does not exist rather than that the
+# repo could not be reached. Same shape as B-090.
+#
+# tws_order IS THE SIBLING OF THIS CHECKOUT, derived rather than hardcoded a
+# second time -- same pattern as the worktree roots in section 7.
+Section 10 'TWS_ORDER -- a second repo''s suite, path and HEAD beside it'
+
+$twsOrderPath = Join-Path (Split-Path -Parent $repo) 'tws_order'
+
+if (-not (Test-Path -LiteralPath $twsOrderPath)) {
+    Say "  tws_order path       $twsOrderPath"
+    Say '  tws_order SUITE COULD NOT BE RUN: the path does not exist'
+} else {
+    Say "  tws_order path       $twsOrderPath"
+    $twsHead = & git -C $twsOrderPath rev-parse HEAD 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Say "  tws_order SUITE COULD NOT BE RUN: git rev-parse HEAD failed: $twsHead"
+    } elseif (-not (Test-Path $python)) {
+        Say "  tws_order HEAD       $twsHead"
+        Say "  tws_order SUITE COULD NOT BE RUN: $python not found. There is no ``python`` on PATH."
+    } else {
+        Say "  tws_order HEAD       $twsHead"
+        Push-Location -LiteralPath $twsOrderPath
+        try {
+            $twsOut = & $python -m pytest --color=no 2>&1 | Out-String
+        } finally {
+            Pop-Location
+        }
+        Say ''
+        Say '  tws_order suite, raw result:'
+        ($twsOut -split "`r?`n") | ForEach-Object { Say "    $_" }
+    }
+}
+
 # --- runtime ----------------------------------------------------------------
 $elapsed = ((Get-Date) - $start).TotalSeconds
 Say ''
@@ -726,7 +787,7 @@ if ($null -ne $suiteSeconds) {
     }
 }
 Say ''
-Say 'verify.ps1 states nine facts and draws no conclusion from them.'
+Say 'verify.ps1 states ten facts and draws no conclusion from them.'
 Say 'The reading belongs to the design session.'
 
 # --- the file ---------------------------------------------------------------
