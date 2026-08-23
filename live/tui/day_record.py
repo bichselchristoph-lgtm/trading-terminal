@@ -113,6 +113,12 @@ class Attached:
     #: generic `vs sector` — the render layer needs the STRING, not just
     #: whether a mapping exists.
     sector_etf: str = ""
+    #: **083.** `"rth"`/`"eth"`, derived from the SAME `SessionBasis`
+    #: instance `Stage2Inputs.rvol_basis` carries — set once, at stage-1
+    #: landing, because the anchor is a fact about the row known at attach,
+    #: not about a value that has landed yet (renders even while `RVOL` is
+    #: still `pending`).
+    rvol_anchor: str = ""
     #: ADR, extension, VWAP, cum vol, both RVOL readings. Merged in row by
     #: row as `compute_context_and_rail` produces them — see the class note.
     context: dict = field(default_factory=dict)

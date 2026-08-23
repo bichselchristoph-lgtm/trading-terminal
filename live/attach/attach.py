@@ -90,10 +90,14 @@ class MarketData(Protocol):
     #: still has a working no-op/real implementation to call.
     def warm(self, c: Contract) -> None: ...
     def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]: ...
-    def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]: ...
+    #: **083.** Takes `basis` explicitly, like `daily_bars` already does —
+    #: the RVOL curve's own anchor is a configured choice now, never a
+    #: literal at this call site or a module-level constant baked into the
+    #: implementation.
+    def intraday_sessions(self, c: Contract, basis: SessionBasis) -> Sequence[Sequence[Bar]]: ...
     def today_minutes(self, c: Contract) -> Sequence[Bar]: ...
     def sector_today_minutes(self, c: Contract) -> Optional[Sequence[Bar]]: ...
-    def sector_sessions(self, c: Contract) -> Optional[Sequence[Sequence[Bar]]]: ...
+    def sector_sessions(self, c: Contract, basis: SessionBasis) -> Optional[Sequence[Sequence[Bar]]]: ...
     def open_tick_stream(self, c: Contract) -> str: ...
     #: **080, stage 1.** A live, `keepUpToDate`-shaped minute-bar series.
     #: `on_update(bars)` fires with the FULL current bar list on every
@@ -252,6 +256,15 @@ class Stage2Inputs:
     sessions_failed: str = ""
     sector_sessions: Optional[Sequence[Sequence[Bar]]] = None
     sector_sessions_failed: str = ""
+    #: **083.** RVOL's basis — the ONE object both halves of the ratio read.
+    #: `app.py` sets this from `live.attach.rvol_config.load_rvol_basis()`
+    #: exactly once per attach; the default here (RTH, matching
+    #: `config/rvol.yaml`'s own default) exists so code constructing
+    #: `Stage2Inputs` directly — every test that predates this task — keeps
+    #: working, not as a second place the real value could come from.
+    rvol_basis: SessionBasis = field(default_factory=lambda: SessionBasis(
+        use_rth=True, label="09:30-16:00 ET",
+        why="default RTH — see config/rvol.yaml"))
 
 
 def _adr_terms(rth_dailies: Sequence[Bar]) -> tuple[Measured, Measured, float]:
@@ -317,14 +330,23 @@ def compute_context_and_rail(
     # else: pending.
 
     # --- RVOL -- own reading needs sessions AND the price stream -----------
+    #
+    # **083: one basis, read by both halves.** `inp.sessions`/
+    # `inp.sector_sessions` arrive already scoped to `inp.rvol_basis` — the
+    # WIRE request carries the flag (see `ibkr.py`), so the curve needs no
+    # filtering here. `inp.today`/`inp.sector_today` are the price stream's
+    # bars, always ETH-wide (VWAP needs the full window regardless of
+    # RVOL's own anchor) — `_rvol_bars` narrows them to match ONLY for
+    # RVOL's own arithmetic, never mutating what VWAP already read above.
     own: Optional[Measured] = None
+    today_for_rvol = _rvol_bars(inp.today, inp.rvol_basis) if inp.today else inp.today
     if inp.sessions_failed:
         own = Measured.absent(inp.sessions_failed)
         out["RVOL"] = own
-    elif inp.sessions and inp.today:
-        own = rvol_at(inp.today, rvol_curve(inp.sessions))
+    elif inp.sessions and today_for_rvol:
+        own = rvol_at(today_for_rvol, rvol_curve(inp.sessions))
         out["RVOL"] = own
-    elif inp.sessions is not None and not inp.today:
+    elif inp.sessions is not None and not today_for_rvol:
         # Sessions landed with no bars at all -- a real, named empty result,
         # not a pending state; `rvol_at` already refuses this correctly.
         own = Measured.absent("no bars today") if inp.today is not None else None
@@ -333,6 +355,8 @@ def compute_context_and_rail(
     # else: pending on `sessions`.
 
     # --- RVOL_rel -- NEVER 1.0. Independent readings, independent landing --
+    sector_today_for_rvol = (_rvol_bars(inp.sector_today, inp.rvol_basis)
+                             if inp.sector_today else inp.sector_today)
     if not inp.has_sector:
         if own is not None:
             out["RVOL_rel"] = Measured.absent("no sector mapping")
@@ -343,8 +367,8 @@ def compute_context_and_rail(
             if own is not None:
                 out["RVOL_rel"] = Measured.absent(reason)
             out["RVOL_sector"] = Measured.absent(reason)
-        elif inp.sector_sessions and inp.sector_today:
-            sector_rvol = rvol_at(inp.sector_today, rvol_curve(inp.sector_sessions))
+        elif inp.sector_sessions and sector_today_for_rvol:
+            sector_rvol = rvol_at(sector_today_for_rvol, rvol_curve(inp.sector_sessions))
             out["RVOL_sector"] = sector_rvol
             if own is not None:
                 out["RVOL_rel"] = rvol_rel(own, sector_rvol)
@@ -394,6 +418,17 @@ def compute_context_and_rail(
     # else: rth_dailies is genuinely pending -- the rail waits with it.
 
     return out, rail
+
+
+def _rvol_bars(bars: Sequence[Bar], basis: SessionBasis) -> list[Bar]:
+    """**083.** Narrows the price stream's always-ETH bars to RVOL's own
+    anchor, in memory, at zero wire cost — the stream itself never changes
+    shape (`VWAP` needs the full 04:00-anchored window regardless of RVOL's
+    basis). A no-op (returns every bar) when the anchor is ETH, since the
+    stream is already that window."""
+    if not basis.use_rth:
+        return list(bars)
+    return [b for b in bars if _clock(b.ts) >= "09:30"]
 
 
 def _clock(ts: str) -> str:

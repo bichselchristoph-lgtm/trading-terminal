@@ -423,28 +423,26 @@ class IBKRMarketData:
         duration = LONG_DAILY_DURATION if basis.use_rth else DAILY_DURATION
         return self._bars(c, duration, "1 day", use_rth=basis.use_rth)
 
-    def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]:
+    def intraday_sessions(self, c: Contract, basis: SessionBasis) -> Sequence[Sequence[Bar]]:
         """20 sessions of 1-minute bars, split into sessions by date.
 
         **Split by the bar's own date, never by a fixed bar count** — a half
         day is a real session with fewer bars, and a fixed stride would smear
         two days together and silently shift the whole RVOL curve.
+
+        **083: `basis` is now the caller's — `rvol_basis`, loaded from
+        `config/rvol.yaml`, never `INTRADAY_BASIS`.** RVOL's curve used to
+        share `VWAP`'s ETH constant (`SPEC.md` 2f's own history: an RTH
+        curve against an ETH numerator has no key past the close and every
+        RVOL refused). **083 gives RVOL its own, genuinely configurable
+        anchor** — the numerator (`attach.py`'s `_rvol_bars`) and this
+        request now both read the SAME `Stage2Inputs.rvol_basis` instance,
+        so the mismatch this comment used to warn about is structurally
+        prevented rather than merely avoided by convention.
         """
-        # use_rth=False, and this MATTERS -- it was wrong on the first live run.
-        # `SPEC.md` 2f: **"RVOL must simply match itself -- today and the
-        # 20-session reference on the same basis."** `today_minutes` is
-        # use_rth=False because session VWAP includes pre-market, so a curve
-        # built RTH-only puts the two sides of the ratio on different bases.
-        #
-        # The symptom was not a wrong number, which is the point: every RVOL
-        # rendered `unavailable (no 20-session reference for 20:03)`, because
-        # an RTH curve simply has no key past the close. **A basis mismatch
-        # that refuses is the lucky version of this bug** -- the same mismatch
-        # one minute earlier would have divided a pre-market-inclusive
-        # numerator by an RTH-only denominator and rendered a plausible number.
         cached = self._warmed(c, "sessions_raw")
         bars = cached if cached is not None else self._bars(
-            c, INTRADAY_DURATION, "1 min", use_rth=INTRADAY_BASIS.use_rth)
+            c, INTRADAY_DURATION, "1 min", use_rth=basis.use_rth)
         by_day: dict[str, list[Bar]] = {}
         for b in bars:
             by_day.setdefault(b.ts[:10], []).append(b)
@@ -452,7 +450,10 @@ class IBKRMarketData:
 
     def today_minutes(self, c: Contract) -> Sequence[Bar]:
         # Pre-market is IN, and the flag comes from INTRADAY_BASIS rather than
-        # from a literal here. See the module docstring.
+        # from a literal here. See the module docstring. **Unaffected by 083**
+        # — this feeds VWAP/the price stream, whose anchor stays fixed ETH;
+        # RVOL's own basis narrows it in memory (`attach.py`'s `_rvol_bars`),
+        # never by requesting a different window here.
         cached = self._warmed(c, "today")
         if cached is not None:
             return cached
@@ -471,7 +472,7 @@ class IBKRMarketData:
             return cached
         return self.today_minutes(self._etf(c.sector_etf))
 
-    def sector_sessions(self, c: Contract) -> Optional[Sequence[Sequence[Bar]]]:
+    def sector_sessions(self, c: Contract, basis: SessionBasis) -> Optional[Sequence[Sequence[Bar]]]:
         if not c.sector_etf:
             return None
         cached = self._warmed(c, "sector_sessions_raw")
@@ -480,7 +481,7 @@ class IBKRMarketData:
             for b in cached:
                 by_day.setdefault(b.ts[:10], []).append(b)
             return [by_day[k] for k in sorted(by_day)]
-        return self.intraday_sessions(self._etf(c.sector_etf))
+        return self.intraday_sessions(self._etf(c.sector_etf), basis)
 
     # ---- 080, stage 1: the live price stream -----------------------------
 

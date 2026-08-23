@@ -89,12 +89,11 @@ def test_a_daily_request_carries_the_basis_it_was_asked_with(basis: SessionBasis
         f"not.")
 
 
-def test_the_intraday_requests_carry_their_declared_basis() -> None:
-    """**Test 1, continued** — the two calls that do not take a basis argument.
-
-    `today_minutes` and `intraday_sessions` fix their own basis rather than
-    accepting one, because no caller has a choice to make. They must still
-    take it from the constant and not from a literal.
+def test_today_minutes_carries_its_fixed_basis() -> None:
+    """**Test 1, continued** — `today_minutes` fixes its own basis rather
+    than accepting one, because VWAP/`Last $`/`cum vol` have no choice to
+    make: their anchor stays ETH regardless of RVOL's own (083). It must
+    still take it from the constant and not from a literal.
 
     **058 retires `year_high_low` as a third case here** — see
     `test_a_long_range_request_now_shares_the_rth_daily_request` below for
@@ -103,14 +102,41 @@ def test_the_intraday_requests_carry_their_declared_basis() -> None:
     ib = RecordingIB()
     md = IBKRMarketData(ib)
     md.today_minutes(QQQ)
-    md.intraday_sessions(QQQ)
 
-    minute_flags = ib.use_rth_for(size="1 min")
+    minute_flags = ib.use_rth_for(size="1 min", duration="1 D")
     assert minute_flags and all(f is INTRADAY_BASIS.use_rth for f in minute_flags), (
-        f"a 1-minute request issued {minute_flags}, but INTRADAY_BASIS declares "
-        f"use_rth={INTRADAY_BASIS.use_rth}. **Both sides of RVOL must share a "
-        f"basis** — an RTH curve under an ETH numerator has no key past the "
-        f"close.")
+        f"today_minutes issued {minute_flags}, but INTRADAY_BASIS declares "
+        f"use_rth={INTRADAY_BASIS.use_rth}. VWAP's anchor is untouched by 083 "
+        f"and must not vary with RVOL's own.")
+
+
+@pytest.mark.parametrize("basis", [
+    pytest.param(SessionBasis(use_rth=True, label="09:30-16:00 ET", why="rth"), id="rth"),
+    pytest.param(SessionBasis(use_rth=False, label="04:00-20:00 ET", why="eth"), id="eth"),
+])
+def test_intraday_sessions_carries_whatever_basis_it_is_called_with(
+    basis: SessionBasis,
+) -> None:
+    """**083 corrects this test's own prior premise.** `intraday_sessions`
+    used to fix `INTRADAY_BASIS` unconditionally — 038-era, before RVOL's
+    basis was a caller's choice at all. **083 makes it genuinely one**:
+    `config/rvol.yaml`'s `rvol_anchor`, read once per attach into a
+    `SessionBasis` (`Stage2Inputs.rvol_basis`) and passed explicitly, the
+    same pattern `daily_bars` already used. This asserts the request on the
+    wire matches whatever basis the CALLER supplied, in both directions —
+    a test parameterised on one value only would pass even if the parameter
+    were silently ignored (the exact `OBS-037` shape test 2 below guards
+    against for ADR/ATR).
+    """
+    ib = RecordingIB()
+    md = IBKRMarketData(ib)
+    md.intraday_sessions(QQQ, basis)
+
+    flags = ib.use_rth_for(size="1 min", duration="20 D")
+    assert flags == [basis.use_rth], (
+        f"intraday_sessions(QQQ, {basis.label}) issued useRTH={flags}, "
+        f"expected [{basis.use_rth}] — the request must carry the basis it "
+        f"was actually called with, not a fixed constant.")
 
 
 #: **041's thirteen, grouped as Christoph ruled them.** All RTH.

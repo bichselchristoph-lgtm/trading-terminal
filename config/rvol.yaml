@@ -1,0 +1,37 @@
+# config/rvol.yaml — 083. The one place RVOL's basis is declared.
+#
+# **RVOL's basis is genuinely a choice, and TradingView exposes the same
+# one.** SPEC.md already said so -- "one flag, seven answers", and RVOL
+# "only has to match itself". Project instructions §8 said a basis is never
+# config; both were live and they contradicted each other. The instructions
+# are the document that was wrong -- corrected here, not worked around.
+#
+# **What survives from the old rule, and it is the important half: a basis
+# is always declared and always rendered.** B-049 was never about
+# configurability -- it was two halves of one ratio answering differently
+# with nothing saying so. Whether a basis is fixed (ADR%, the opening range)
+# or chosen (RVOL) depends on the indicator; ADR%/ATR/the opening range/
+# VWAP's anchor stay fixed constants in core/indicators/context.py,
+# unaffected by this file.
+#
+# **One key, read by both halves of the ratio** -- the numerator (today's
+# cumulative volume) and the denominator (the 20-session curve). Not two
+# settings that happen to agree today: `tests/test_rvol_anchor.py`'s
+# Divergence test goes red if a second, independent flag is ever introduced.
+
+settings:
+  rvol_anchor:
+    value: rth
+    note: >-
+      Ruled by Christoph 2026-08-23 (083). Default RTH: Nasdaq's Global
+      Trading Hours launch on 2026-12-06 adds a 21:00-04:00 session: the
+      09:30-16:00 RTH session and its opening/closing crosses are
+      unchanged and remain the price benchmark, so RTH is the session
+      definition that survives while the extended-hours day is redefined
+      from sixteen hours to about twenty-three. An ETH-anchored 20-session
+      curve would straddle that change for twenty sessions, mixing two
+      different shapes of day inside one median. It also makes the curve
+      request ~59% smaller (20x390 vs 20x960 bars) -- the 15-60s pull and
+      B-138's contention, directly. Unfitted: reasoned from the session
+      change and request size, not from which basis reads better in use
+      (mockup v1.6 §11).

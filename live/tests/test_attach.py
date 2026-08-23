@@ -94,10 +94,10 @@ class Fake:
         if basis.use_rth:
             return dailies()
         return dailies(hi=104.0, lo=98.0)
-    def intraday_sessions(self, c): self._maybe("intraday"); return [minutes(30) for _ in range(20)]
+    def intraday_sessions(self, c, basis=None): self._maybe("intraday"); return [minutes(30) for _ in range(20)]
     def today_minutes(self, c): self._maybe("today"); return minutes(30)
     def sector_today_minutes(self, c): return minutes(30) if self.sector else None
-    def sector_sessions(self, c): return [minutes(30) for _ in range(20)] if self.sector else None
+    def sector_sessions(self, c, basis=None): return [minutes(30) for _ in range(20)] if self.sector else None
     def open_tick_stream(self, c): self._maybe("tick"); return "tick-by-tick AllLast"
 
     def open_price_stream(self, c, on_update):
@@ -136,7 +136,7 @@ def stage2_of(md, c: Contract) -> tuple[dict, dict]:
     except Exception as exc:                            # noqa: BLE001
         inp.rth_dailies_failed = reason(exc)
     try:
-        inp.sessions = list(md.intraday_sessions(c))
+        inp.sessions = list(md.intraday_sessions(c, inp.rvol_basis))
     except Exception as exc:                            # noqa: BLE001
         inp.sessions_failed = reason(exc)
     if inp.has_sector:
@@ -146,7 +146,7 @@ def stage2_of(md, c: Contract) -> tuple[dict, dict]:
         except Exception as exc:                        # noqa: BLE001
             inp.sector_today_failed = reason(exc)
         try:
-            ss = md.sector_sessions(c)
+            ss = md.sector_sessions(c, inp.rvol_basis)
             inp.sector_sessions = list(ss) if ss is not None else None
         except Exception as exc:                        # noqa: BLE001
             inp.sector_sessions_failed = reason(exc)

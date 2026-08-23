@@ -151,10 +151,10 @@ class QQQFixture:
         """
         return _rth_dailies() if basis.use_rth else _eth_dailies()
 
-    def intraday_sessions(self, c): return [_today_minutes() for _ in range(20)]
+    def intraday_sessions(self, c, basis=None): return [_today_minutes() for _ in range(20)]
     def today_minutes(self, c): return _today_minutes()
     def sector_today_minutes(self, c): return None
-    def sector_sessions(self, c): return None
+    def sector_sessions(self, c, basis=None): return None
     def open_tick_stream(self, c): raise RuntimeError("no tape in this slice")
     def playbook_for(self, c): return ""
 

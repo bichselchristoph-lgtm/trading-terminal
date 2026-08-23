@@ -95,15 +95,17 @@ def test_green_freshness_age_advances() -> None:
 def test_green_rvol_renders_both_labelled_readings_in_ruled_order() -> None:
     """**Assert the SPECIFIC wording, not a substring** (B-126, 070's own
     finding repeated in 080 §8). Own-history reading first, sector-relative
-    second, each labelled with its basis — the exact mockup v1.5 §3 shape."""
-    a = Attached(symbol="QQQ", since="09:31:00", sector_etf="XLK", context={
+    second, each labelled with its basis — the exact mockup v1.6 §1 shape,
+    including the anchor 083 adds to the label."""
+    a = Attached(symbol="QQQ", since="09:31:00", sector_etf="XLK",
+                rvol_anchor="rth", context={
         "RVOL": Measured(value=0.86, sample="09:31", unit=Unit.MULTIPLE,
                          basis=INTRADAY_BASIS),
         "RVOL_rel": Measured(value=1.4, sample="vs sector", unit=Unit.MULTIPLE,
                              basis=INTRADAY_BASIS),
     })
     row = next(r for r in context_rows(a) if "RVOL" in r)
-    assert row.strip() == "RVOL      0.9× own  · 1.4× vs XLK", (
+    assert row.strip() == "RVOL rth     0.9× own  · 1.4× vs XLK", (
         f"exact wording mismatch:\n{row!r}")
 
 

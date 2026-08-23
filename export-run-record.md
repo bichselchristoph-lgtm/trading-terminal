@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-23T22:15:35+02:00
+last_attempt : 2026-08-24T00:28:05+02:00
 
-last_success : 2026-08-23T22:15:36+02:00
+last_success : 2026-08-24T00:28:05+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/082-for-code-task-batched-vs-concurrent.md, momentum-code-handoff/inbox/082-for-code-task-batched-vs-concurrent.md, momentum-code-handoff/verify-output.md
+outcome      : 5 new - momentum-code-handoff/done/083-for-code-task-rvol-anchor.md, momentum-code-handoff/inbox/083-for-code-task-rvol-anchor.md, momentum-code-handoff/inbox/084-for-code-task-rvol-curve-cache.md, momentum-code-handoff/inbox/085-for-code-task-answer-two-questions.md, momentum-code-handoff/verify-output.md
 
-head         : c4d3540dd71dad0747477066ac3efcdf950848da 080: attach in two stages, and four rows that keep moving (S038)
+head         : 385812b1dcc1f9ed76da325fb9017db9ce8906e3 082: batched vs concurrent dispatch, measured on live TWS -- B-138

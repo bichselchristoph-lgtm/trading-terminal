@@ -61,7 +61,7 @@ def test_every_stage2_role_call_consults_the_pacing_guard() -> None:
     assert key in md._pacing._seen, "daily_bars reached the wire unguarded"
     assert len(md._pacing._seen[key]) == 1
 
-    md.intraday_sessions(QQQ)
+    md.intraday_sessions(QQQ, ADR_BASIS)
     assert len(md._pacing._seen[key]) == 2, (
         "intraday_sessions reached the wire unguarded")
 

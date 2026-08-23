@@ -77,7 +77,8 @@ from textual.widgets import Input, Static
 # tests against it and NOTHING in the running application imported it. The three
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
-from core.indicators.context import ADR_BASIS, ADR_DEFAULT_N, Bar
+from core.indicators.context import (ADR_BASIS, ADR_DEFAULT_N, Bar,
+                                     SessionBasis)
 
 from ..attach.attach import (COOLDOWN_S, Contract, MarketData, Stage2Inputs,
                              attach, compute_context_and_rail)
@@ -85,6 +86,7 @@ from ..attach.attach import (COOLDOWN_S, Contract, MarketData, Stage2Inputs,
 # the only module in this tree that touches a broker — was imported by nothing
 # at all, not even a test, while 032 was fixing the same shape for `attach()`.
 from ..attach.ibkr import IbkrConfig, connect
+from ..attach.rvol_config import anchor_word, load_rvol_basis
 from ..attach.streaming import StreamHandle
 from .day_record import (Attached, AttachMetrics, DayRecord, RequestMetrics,
                          StreamMetrics, empty_record)
@@ -516,11 +518,17 @@ def _rvol_row(a: "Attached") -> str:
     independent stream ages — `own` the symbol stream, `rel` the sector
     stream (080 Part 3, the task's own words: "two streams, two independent
     ages").
+
+    **083: the label carries the anchor** — `RVOL rth`/`RVOL eth`, derived
+    from `a.rvol_anchor` (never a literal), which renders even while the
+    row is pending because the anchor is a fact about the row, known at
+    attach, not about a value that has landed yet.
     """
+    label = f"RVOL {a.rvol_anchor}" if a.rvol_anchor else "RVOL"
     own = a.context.get("RVOL")
     rel = a.context.get("RVOL_rel")
     if own is None and rel is None:
-        return f"    {'RVOL':<9} {PENDING}"
+        return f"    {label:<12} {PENDING}"
 
     symbol_age = _age_now(a.metrics.streams.get("symbol", StreamMetrics()).last_update_at)
     sector_age = _age_now(a.metrics.streams.get("sector", StreamMetrics()).last_update_at)
@@ -537,12 +545,12 @@ def _rvol_row(a: "Attached") -> str:
     else:
         rel_parts = _cell_parts(rel)
         if rel_parts is not None:
-            label = f"vs {a.sector_etf}" if a.sector_etf else "vs sector"
-            rel_text = f"{rel_parts[0]} {label}{_stale_suffix(sector_age)}"
+            rel_label = f"vs {a.sector_etf}" if a.sector_etf else "vs sector"
+            rel_text = f"{rel_parts[0]} {rel_label}{_stale_suffix(sector_age)}"
         else:
             rel_text = measured_cell(rel)
 
-    return f"    {'RVOL':<9} {own_text}  · {rel_text}"
+    return f"    {label:<12} {own_text}  · {rel_text}"
 
 
 def _vwap_row(vwap) -> str:
@@ -554,18 +562,18 @@ def _vwap_row(vwap) -> str:
     both numbers on screen can already do the subtraction; the row states
     the level. `vwap_from_bars` itself is untouched."""
     if vwap is None:
-        return f"    {'VWAP':<9} {PENDING}"
+        return f"    {'VWAP':<12} {PENDING}"
     parts = _cell_parts(vwap)
     if parts is None:
-        return f"    {'VWAP':<9} {measured_cell(vwap)}"
+        return f"    {'VWAP':<12} {measured_cell(vwap)}"
     text, _detail = parts
-    return f"    {'VWAP':<9} {text}"
+    return f"    {'VWAP':<12} {text}"
 
 
 def _adr_row(m) -> str:
     if m is None:
-        return f"    {'ADR% used':<9} {PENDING}"
-    return f"    {'ADR% used':<9} {_adr_used_cell(m)}"
+        return f"    {'ADR% used':<12} {PENDING}"
+    return f"    {'ADR% used':<12} {_adr_used_cell(m)}"
 
 
 def _last_price_row(m) -> str:
@@ -577,12 +585,12 @@ def _last_price_row(m) -> str:
     purpose, since it is a structurally different wait (a stream opening,
     never bounded at 60s the way a historical request is)."""
     if m is None:
-        return f"    {'Last $':<9} {Cell.not_yet().render()}"
+        return f"    {'Last $':<12} {Cell.not_yet().render()}"
     parts = _cell_parts(m)
     if parts is None:
-        return f"    {'Last $':<9} {measured_cell(m)}"
+        return f"    {'Last $':<12} {measured_cell(m)}"
     text, _detail = parts
-    return f"    {'Last $':<9} {text}"
+    return f"    {'Last $':<12} {text}"
 
 
 def context_rows(a: Attached) -> list[str]:
@@ -1062,6 +1070,18 @@ class MomentumApp(App):
         self._streams = []
         self._attach_generation += 1
         self._stage2_inputs = Stage2Inputs()
+        # **083.** Loaded fresh per attach — `config/rvol.yaml` is small and
+        # this makes an edited anchor take effect on the next attach without
+        # a restart. A load failure falls back to `Stage2Inputs`'s own
+        # default (RTH) rather than refusing the attach outright — a
+        # config file this session just wrote and validates on every read
+        # failing mid-session is not a scenario worth blanking the panel
+        # over; stated here as a deliberate, narrow exception to "fail
+        # loud," not an oversight.
+        try:
+            self._stage2_inputs.rvol_basis = load_rvol_basis()
+        except Exception:                                # noqa: BLE001
+            pass
         self._stage1_started_at = time.monotonic()
         self._stage2_started_at = None
         return self._attach_generation
@@ -1156,6 +1176,12 @@ class MomentumApp(App):
                         since=datetime.now(EASTERN).strftime("%H:%M:%S"),
                         sector_etf=(result.contract.sector_etf or ""
                                    if result.contract else ""),
+                        # **083.** Known at attach, not at landing — set from
+                        # the SAME `Stage2Inputs.rvol_basis` instance stage
+                        # 2's own dispatch will read, so the rendered word
+                        # can never name a different anchor than the one the
+                        # request actually used.
+                        rvol_anchor=anchor_word(self._stage2_inputs.rvol_basis),
                         source=self.source_name,
                         tape=result.tape, slot_state=result.slot_state)
             if self._stage1_started_at is not None:
@@ -1201,18 +1227,25 @@ class MomentumApp(App):
                 thread=True, exclusive=False, group="attach",
                 name=f"stream-sector-{contract.symbol}")
 
+        # **083.** Captured once, on the main thread, from the SAME
+        # `Stage2Inputs.rvol_basis` the numerator-filtering code reads —
+        # passed to the worker rather than read from `self._stage2_inputs`
+        # again on a different thread, so there is exactly one read of the
+        # config per attach, not one per role.
+        rvol_basis = self._stage2_inputs.rvol_basis
         self.run_worker(
             functools.partial(self._role_worker, contract, generation, "rth_dailies"),
             thread=True, exclusive=False, group="attach",
             name=f"role-rth-dailies-{contract.symbol}")
         self.run_worker(
-            functools.partial(self._role_worker, contract, generation, "sessions"),
+            functools.partial(self._role_worker, contract, generation, "sessions",
+                              rvol_basis),
             thread=True, exclusive=False, group="attach",
             name=f"role-sessions-{contract.symbol}")
         if contract.sector_etf:
             self.run_worker(
                 functools.partial(self._role_worker, contract, generation,
-                                  "sector_sessions"),
+                                  "sector_sessions", rvol_basis),
                 thread=True, exclusive=False, group="attach",
                 name=f"role-sector-sessions-{contract.symbol}")
 
@@ -1275,7 +1308,8 @@ class MomentumApp(App):
         self._recompute_and_merge(a)
         await self._rerender()
 
-    def _role_worker(self, contract: Contract, generation: int, role: str) -> None:
+    def _role_worker(self, contract: Contract, generation: int, role: str,
+                     rvol_basis: Optional[SessionBasis] = None) -> None:
         try:
             asyncio.get_event_loop()
         except RuntimeError:
@@ -1285,9 +1319,9 @@ class MomentumApp(App):
             if role == "rth_dailies":
                 bars = self.md.daily_bars(contract, ADR_BASIS)
             elif role == "sessions":
-                bars = self.md.intraday_sessions(contract)
+                bars = self.md.intraday_sessions(contract, rvol_basis)
             elif role == "sector_sessions":
-                bars = self.md.sector_sessions(contract)
+                bars = self.md.sector_sessions(contract, rvol_basis)
             else:                                        # pragma: no cover
                 raise ValueError(f"unknown stage-2 role {role!r}")
         except Exception as exc:                        # noqa: BLE001

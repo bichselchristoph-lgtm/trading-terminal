@@ -52,9 +52,9 @@ from live.attach.attach import Contract
 # They are the seam between two event loops; a test that reached them only
 # through the public surface would exercise them exactly as `FakeIB` did, which
 # is to say not at all.
-from live.attach.ibkr import (DAILY_DURATION, EASTERN, REQUIRED_SETTINGS,
-                              IBKRMarketData, IbkrConfig, _BrokerLoop,
-                              _ThreadedIB, connect)
+from live.attach.ibkr import (DAILY_DURATION, EASTERN, INTRADAY_DURATION,
+                              REQUIRED_SETTINGS, IBKRMarketData, IbkrConfig,
+                              _BrokerLoop, _ThreadedIB, connect)
 from live.tests.test_attach import Fake
 from live.tui.app import ATTACH_KEY, MomentumApp, Panel
 from live.tui.day_record import empty_record
@@ -561,9 +561,21 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
     asked = md.ib.asked
     assert {k["barSizeSetting"] for k in asked} >= {"1 day", "1 min"}
     assert all("useRTH" in k for k in asked), "a request omitted useRTH"
-    assert {k["useRTH"] for k in asked if k["barSizeSetting"] == "1 min"} == {False}, (
-        "today's minutes were requested RTH-only — session VWAP includes "
-        "pre-market and the RVOL curve must match itself")
+    # **083: the two `1 min` requests carry DIFFERENT bases now, correctly.**
+    # The price stream (`"1 D"`, feeds `Last $`/`VWAP`) stays ETH — VWAP's
+    # anchor is untouched by this task. The `sessions` role (`"20 D"`, feeds
+    # the RVOL curve) reads `config/rvol.yaml`'s `rvol_anchor`, RTH by
+    # default — the OPPOSITE of the pre-083 assertion this replaces, which
+    # required both to be ETH because they shared one hardcoded constant.
+    stream_flags = {k["useRTH"] for k in asked
+                    if k["barSizeSetting"] == "1 min" and k["durationStr"] == "1 D"}
+    curve_flags = {k["useRTH"] for k in asked
+                   if k["barSizeSetting"] == "1 min" and k["durationStr"] == INTRADAY_DURATION}
+    assert stream_flags == {False}, (
+        f"the price stream was not requested ETH — VWAP includes pre-market "
+        f"and its anchor is untouched by 083: {stream_flags}")
+    assert curve_flags == {True}, (
+        f"the RVOL curve did not use the configured (default RTH) anchor: {curve_flags}")
 
     # **058 Parts 1+2, then 070, then 080.** `StubDetails` carries no
     # industry/category, so this QQQ resolves with no sector mapping and no
