@@ -33,6 +33,14 @@ STALE = "STALE"
 FROZEN = "FROZEN"
 WARMING = "warming"
 NO_SOURCE = "no-source"
+#: **058.** New badge word — `SPEC.md` §4's vocabulary and §6b.5 are amended
+#: in the same session this adds it (058's derivation note: the dev spec
+#: states the product ruling ahead of the spec text carrying it, and the two
+#: land together rather than one waiting on the other). Dim-inverse: the
+#: system is refusing to claim anything yet, not failing — amber would say
+#: "read this and decide," and there is nothing to decide while a gather is
+#: in flight.
+ATTACHING = "ATTACHING"
 
 #: The em-dash placeholder. NOT "0.00", NOT "" — an absent value must be
 #: visually distinct from a measured zero, because zero is a finding.
@@ -148,6 +156,16 @@ class Cell:
     def no_source(cls, reason: str = NO_SOURCE) -> "Cell":
         return cls(text=EMPTY, presence=Presence.ABSENT,
                    confidence=Confidence.REFUSED, reason=reason)
+
+    @classmethod
+    def attaching(cls, symbol: str) -> "Cell":
+        """**058.** One screen-level state while an attach's gather is in
+        flight. Dim-inverse, per `SPEC.md` §4 — the system is refusing to
+        claim anything yet, not failing. Carries the symbol so a reader
+        mid-attach knows what the badge is about without a second lookup."""
+        return cls(text=f"[ {ATTACHING} {symbol} ]",
+                   presence=Presence.NOT_YET_COMPUTED,
+                   confidence=Confidence.REFUSED, reason="")
 
     @classmethod
     def degraded(cls, text: str, reason: str) -> "Cell":

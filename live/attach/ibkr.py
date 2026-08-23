@@ -48,7 +48,8 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -56,8 +57,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from core.indicators.context import (Bar, INTRADAY_BASIS, SessionBasis,
-                                     LONG_BASIS)
+from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar,
+                                     INTRADAY_BASIS, SessionBasis)
 from .attach import Contract
 
 REPO = Path(__file__).resolve().parents[2]
@@ -81,7 +82,21 @@ REQUIRED_SETTINGS = ("host", "port", "client_id",
 #: literal-in-two-places defect with the two copies already disagreeing.
 
 #: `SPEC.md` §010 2 — 20-60 sessions of dailies. 60 gives the 50-day SMA room.
+#: **058 Part 1: this now serves the ETH (ATR) fetch only.** The RTH fetch
+#: moved to `LONG_DAILY_DURATION` below — see its docstring for why.
 DAILY_DURATION = "60 D"
+
+#: **058 Part 1.** ADR%, the SMA stack and PDH/PDL only ever read the TAIL of
+#: whatever daily series they are given — `adr_pct`/`sma` slice `dailies[-n:]`
+#: — so widening the RTH window from 60D to a full year changes none of their
+#: answers. What it buys: 52wH/52wL/ATH (`LONG_BASIS`, ruled RTH by `041`)
+#: read off the SAME series instead of issuing their own `1 Y` request, which
+#: is exactly the redundant round trip `OBS-079` measured — two RTH daily
+#: requests for the same contract, differing only in how far back they went.
+#: Collapsing them takes the underlying's historical request count from five
+#: to four, which is what puts the concurrent gather in `warm()` under IBKR's
+#: six-per-two-seconds pacing limit **by construction**.
+LONG_DAILY_DURATION = "1 Y"
 
 #: The RVOL curve wants 20 sessions of 1-minute bars. **IBKR's duration ceiling
 #: for 1-minute bars is not 20 days on every account**, so this is requested and
@@ -185,6 +200,72 @@ class IbkrConfig:
                    notes=notes)
 
 
+#: **058 Part 2.** IBKR's own documented limit: six or more historical
+#: requests for the same Contract, Exchange and Tick Type inside two seconds
+#: is a pacing violation — a rule separate from `attach.py`'s same-symbol
+#: `COOLDOWN_S`. Five is the ceiling this guard enforces, one under the
+#: violating count, so the sixth request is what trips it rather than the
+#: request that would have been the violation itself.
+PACING_WINDOW_S = 2.0
+PACING_LIMIT = 5
+
+#: `whatToShow="TRADES"` is the only tick type this module ever requests —
+#: named here so the pacing key does not silently drift if that changes.
+TICK_TYPE = "TRADES"
+
+
+class _PacingGuard:
+    """**Built, not assumed.** `OBS-079` found the six-per-two-seconds limit
+    in IBKR's own docs, not in either sibling repo this project has, and
+    058's instruction is explicit: *build the guard, do not rely on the
+    arithmetic staying true.* A guard nobody has seen fail is `B-035` again.
+
+    Tracks request timestamps per `(symbol, exchange, tick type)` and refuses
+    a BATCH that would push that key's two-second window past `PACING_LIMIT`
+    — refuses the whole attach rather than half-dispatching it, because a
+    `gather()` that fires five of six requests and skips the sixth is a
+    silent, uneven refusal nothing downstream could distinguish from a slow
+    reply.
+    """
+
+    def __init__(self) -> None:
+        self._seen: dict[tuple[str, str, str], list[float]] = {}
+
+    def check(self, key: tuple[str, str, str], count: int, *, now: float) -> None:
+        if count == 0:
+            return
+        history = [t for t in self._seen.get(key, []) if now - t < PACING_WINDOW_S]
+        if len(history) + count > PACING_LIMIT:
+            raise RuntimeError(
+                f"pacing limit - {len(history) + count} historical requests "
+                f"for {key} within {PACING_WINDOW_S:.0f}s "
+                f"(IBKR allows {PACING_LIMIT + 1}+ as a violation)")
+        self._seen[key] = history + [now] * count
+
+
+def _pacing_key(c: Contract) -> tuple[str, str, str]:
+    return (c.symbol.upper(), c.exchange, TICK_TYPE)
+
+
+def _contract_for(c: Contract):
+    from ib_async import Stock
+    contract = Stock(c.symbol, "SMART", c.currency)
+    contract.conId = c.con_id
+    return contract
+
+
+def _request_kwargs(duration: str, size: str, *, use_rth: bool) -> dict:
+    return dict(endDateTime="", durationStr=duration, barSizeSetting=size,
+               whatToShow=TICK_TYPE, useRTH=use_rth, formatDate=2)
+
+
+def _convert(raw) -> list[Bar]:
+    return [Bar(ts=_eastern(b.date), open=b.open, high=b.high, low=b.low,
+               close=b.close, volume=float(b.volume),
+               wap=float(b.average) if b.average is not None else None)
+           for b in raw]
+
+
 class IBKRMarketData:
     """Implements `live.attach.attach.MarketData` against a live TWS."""
 
@@ -192,6 +273,19 @@ class IBKRMarketData:
         self.ib = ib
         self._slots = tick_slots_used
         self._last_fetch: dict[str, float] = {}
+        #: **058 Part 2.** Populated by `warm()`, a concurrent gather of
+        #: every independent historical request one attach needs. Keyed by
+        #: ROLE (`"rth_dailies"`, `"eth_dailies"`, ...) rather than by the
+        #: request shape (duration/useRTH) — a role's identity already fixes
+        #: which window it was served, so there is no request the cache could
+        #: be asked for that would need to disambiguate a narrower window
+        #: from a wider cached one. `None` symbol = never warmed; the
+        #: per-role methods below then fall back to their own single live
+        #: request, exactly as before 058 — a fixture that never calls
+        #: `warm()` is unaffected.
+        self._warm: dict[str, Any] = {}
+        self._warm_symbol: Optional[str] = None
+        self._pacing = _PacingGuard()
 
     # ---- step 1 ---------------------------------------------------------
 
@@ -231,7 +325,73 @@ class IBKRMarketData:
         import time
         self._last_fetch[symbol.upper()] = time.monotonic()
 
-    # ---- step 3: the three requests, and nothing else --------------------
+    # ---- step 3: warm, then the per-role reads ----------------------------
+
+    #: role name -> (contract-picker, duration, size, use_rth). One entry per
+    #: independent request `warm()` gathers. **Declared once here rather than
+    #: built inline** so `warm()`'s dispatch and its pacing check read off
+    #: the same list and cannot silently diverge.
+    _ROLES = (
+        ("rth_dailies", "self", LONG_DAILY_DURATION, "1 day", ADR_BASIS.use_rth),
+        ("eth_dailies", "self", DAILY_DURATION, "1 day", ATR_BASIS.use_rth),
+        ("today", "self", "1 D", "1 min", INTRADAY_BASIS.use_rth),
+        ("sessions_raw", "self", INTRADAY_DURATION, "1 min", INTRADAY_BASIS.use_rth),
+        ("sector_today", "etf", "1 D", "1 min", INTRADAY_BASIS.use_rth),
+        ("sector_sessions_raw", "etf", INTRADAY_DURATION, "1 min", INTRADAY_BASIS.use_rth),
+    )
+
+    def warm(self, c: Contract) -> None:
+        """**058 Part 2.** Every independent historical request this attach
+        needs, gathered CONCURRENTLY via `asyncio.gather` on the existing
+        `ibkr-broker` loop — not a second thread. `reqHistoricalDataMany`
+        (below, on the transport) is the one seam that does that; this method
+        just decides WHAT to ask for and stores what comes back.
+
+        **Failure is per-role, never all-or-nothing.** Each entry in the
+        result is either the converted bars or the exception that request
+        raised — `_context_block`'s existing per-row refusal handling reads
+        straight through this, because `daily_bars`/`today_minutes`/etc.
+        below re-raise a cached exception exactly as a live call would have.
+
+        Contract resolution (step 1) still gates this — `attach()` calls it
+        only after a contract qualified — so the pacing guard's `check()` is
+        the only thing standing between four-to-six requests and IBKR's
+        actual limit, and it is checked BEFORE anything is dispatched.
+        """
+        self._note_fetch(c.symbol)
+        etf = self._etf(c.sector_etf) if c.sector_etf else None
+        roles = [r for r in self._ROLES if r[1] == "self" or etf is not None]
+        contracts = {"self": c, "etf": etf}
+
+        by_key: dict[tuple[str, str, str], int] = {}
+        for _, which, *_r in roles:
+            key = _pacing_key(contracts[which])
+            by_key[key] = by_key.get(key, 0) + 1
+        for key, count in by_key.items():
+            self._pacing.check(key, count, now=time.monotonic())
+
+        requests = [(_contract_for(contracts[which]),
+                    _request_kwargs(duration, size, use_rth=use_rth))
+                   for _, which, duration, size, use_rth in roles]
+        outcomes = self.ib.reqHistoricalDataMany(requests)
+
+        warm: dict[str, Any] = {}
+        for (role, *_r), outcome in zip(roles, outcomes):
+            warm[role] = outcome if isinstance(outcome, BaseException) else _convert(outcome)
+        self._warm = warm
+        self._warm_symbol = c.symbol.upper()
+
+    def _warmed(self, c: Contract, role: str):
+        """`None` = not warmed for this symbol/role — the caller falls back
+        to its own live request. A cached EXCEPTION is re-raised rather than
+        returned, so every caller's existing `try/except` handles a cache hit
+        exactly like it handles a live failure."""
+        if self._warm_symbol != c.symbol.upper() or role not in self._warm:
+            return None
+        outcome = self._warm[role]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
     def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]:
         """**The caller passes the indicator's own basis constant.**
@@ -240,9 +400,20 @@ class IBKRMarketData:
         request comes from the constant declared beside the definition, so a
         reader who wants to know which bars `ATR14` is built on reads `ATR_BASIS`
         and is done.
+
+        **058 Part 1: the RTH duration is `LONG_DAILY_DURATION` (1 Y), not
+        `DAILY_DURATION`.** ADR/the SMA stack/PDH-PDL only ever read the tail
+        of what they are given, so the wider window changes none of their
+        answers — and the same series is what `_context_block` now reads
+        52wH/52wL off, with no second request.
         """
+        role = "rth_dailies" if basis.use_rth else "eth_dailies"
+        cached = self._warmed(c, role)
+        if cached is not None:
+            return cached
         self._note_fetch(c.symbol)
-        return self._bars(c, DAILY_DURATION, "1 day", use_rth=basis.use_rth)
+        duration = LONG_DAILY_DURATION if basis.use_rth else DAILY_DURATION
+        return self._bars(c, duration, "1 day", use_rth=basis.use_rth)
 
     def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]:
         """20 sessions of 1-minute bars, split into sessions by date.
@@ -263,8 +434,9 @@ class IBKRMarketData:
         # that refuses is the lucky version of this bug** -- the same mismatch
         # one minute earlier would have divided a pre-market-inclusive
         # numerator by an RTH-only denominator and rendered a plausible number.
-        bars = self._bars(c, INTRADAY_DURATION, "1 min",
-                          use_rth=INTRADAY_BASIS.use_rth)
+        cached = self._warmed(c, "sessions_raw")
+        bars = cached if cached is not None else self._bars(
+            c, INTRADAY_DURATION, "1 min", use_rth=INTRADAY_BASIS.use_rth)
         by_day: dict[str, list[Bar]] = {}
         for b in bars:
             by_day.setdefault(b.ts[:10], []).append(b)
@@ -273,16 +445,33 @@ class IBKRMarketData:
     def today_minutes(self, c: Contract) -> Sequence[Bar]:
         # Pre-market is IN, and the flag comes from INTRADAY_BASIS rather than
         # from a literal here. See the module docstring.
+        cached = self._warmed(c, "today")
+        if cached is not None:
+            return cached
         return self._bars(c, "1 D", "1 min", use_rth=INTRADAY_BASIS.use_rth)
 
     def sector_today_minutes(self, c: Contract) -> Optional[Sequence[Bar]]:
         if not c.sector_etf:
             return None
+        # **`_warmed(c, ...)` — the UNDERLYING contract, not the ETF.**
+        # `warm()` keys its cache on the symbol it was called with, so a
+        # sector role's cache hit is looked up against `c`, exactly as
+        # `warm()` stored it — looking it up against the ETF would always
+        # miss and silently fall through to a redundant live request.
+        cached = self._warmed(c, "sector_today")
+        if cached is not None:
+            return cached
         return self.today_minutes(self._etf(c.sector_etf))
 
     def sector_sessions(self, c: Contract) -> Optional[Sequence[Sequence[Bar]]]:
         if not c.sector_etf:
             return None
+        cached = self._warmed(c, "sector_sessions_raw")
+        if cached is not None:
+            by_day: dict[str, list[Bar]] = {}
+            for b in cached:
+                by_day.setdefault(b.ts[:10], []).append(b)
+            return [by_day[k] for k in sorted(by_day)]
         return self.intraday_sessions(self._etf(c.sector_etf))
 
     # ---- steps 4 and 5 ---------------------------------------------------
@@ -293,32 +482,19 @@ class IBKRMarketData:
     def playbook_for(self, c: Contract) -> str:
         return ""          # no playbook binding in this slice
 
-    def year_high_low(self, c: Contract) -> tuple[Optional[float], Optional[float]]:
-        # **LONG_BASIS is RULED RTH by 041** -- 038 left it inherited, which is
-        # not a decision. The year is the maximum of its months, the month of
-        # its weeks, the week of its days, and 038 made the day RTH; an ETH
-        # year would sit above every month inside it.
-        bars = self._bars(c, "1 Y", "1 day", use_rth=LONG_BASIS.use_rth)
-        if not bars:
-            return (None, None)
-        return (max(b.high for b in bars), min(b.low for b in bars))
-
-    # ---- the one place a request is made --------------------------------
+    # ---- the one place a SINGLE request is made ---------------------------
 
     def _bars(self, c: Contract, duration: str, size: str, *, use_rth: bool) -> list[Bar]:
         """**`use_rth` is keyword-only and has no default.** Omitting it is a
-        TypeError rather than a silently RTH-only answer."""
-        from ib_async import Stock
-        contract = Stock(c.symbol, "SMART", c.currency)
-        contract.conId = c.con_id
+        TypeError rather than a silently RTH-only answer.
+
+        **The fallback path only** — `warm()` (Part 2) is what a live attach
+        actually goes through. This survives for any caller that reads a
+        single role without warming first, which is every existing test of
+        `daily_bars`/`today_minutes`/etc. in isolation."""
         raw = self.ib.reqHistoricalData(
-            contract, endDateTime="", durationStr=duration,
-            barSizeSetting=size, whatToShow="TRADES",
-            useRTH=use_rth, formatDate=2)
-        return [Bar(ts=_eastern(b.date), open=b.open, high=b.high, low=b.low,
-                    close=b.close, volume=float(b.volume),
-                    wap=float(b.average) if b.average is not None else None)
-                for b in raw]
+            _contract_for(c), **_request_kwargs(duration, size, use_rth=use_rth))
+        return _convert(raw)
 
     def _etf(self, symbol: str) -> Contract:
         return Contract(symbol=symbol, con_id=0, exchange="SMART")
@@ -406,8 +582,11 @@ def _sector_etf(details) -> Optional[str]:
 # **The cost, stated because it is real and is a finding rather than a secret:
 # the calling thread BLOCKS while a request runs, so an attach freezes the UI
 # for the length of its historical requests.** `request_timeout_s` bounds it.
-# Unfreezing it needs the attach moved to a Textual worker, which changes the
-# binding 034 requires unchanged — see the done-note.
+# Unfreezing it needed the attach moved to a Textual worker, which changes the
+# binding 034 required unchanged — **done in 058**, see `live/tui/app.py` and
+# its done-note. `warm()` below (058 Part 2) is the other half: it shrinks
+# what the frozen window WAS, by dispatching the independent historical
+# requests concurrently instead of one blocking round trip after another.
 
 
 class _BrokerLoop:
@@ -465,18 +644,39 @@ class _BrokerLoop:
                 f"no answer in {timeout or self._timeout}s "
                 f"(request_timeout_s)") from None
 
+    def call_many(self, factories, *, timeout: Optional[float] = None):
+        """**058 Part 2.** Like `call()`, but N factories at once, via
+        `asyncio.gather` on the SAME broker loop — one round trip instead of
+        N. `return_exceptions=True` is the whole reason this is safe to use
+        under Refusal A: one factory's exception comes back as a VALUE in the
+        result list rather than aborting the others, so a caller reads
+        through it exactly as it would a single `call()` that raised.
+        """
+        async def _run():
+            return await asyncio.gather(
+                *(make() for make in factories), return_exceptions=True)
+
+        future = asyncio.run_coroutine_threadsafe(_run(), self._loop)
+        try:
+            return future.result(timeout if timeout is not None else self._timeout)
+        except TimeoutError:
+            future.cancel()
+            raise TimeoutError(
+                f"no answer in {timeout or self._timeout}s "
+                f"(request_timeout_s)") from None
+
     def close(self) -> None:
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5)
 
 
 class _ThreadedIB:
-    """The two calls `IBKRMarketData` makes, marshalled onto the broker loop.
+    """The three calls `IBKRMarketData` makes, marshalled onto the broker loop.
 
-    **Deliberately two methods and not a general proxy.** A `__getattr__` that
-    forwarded anything would silently forward `placeOrder`, and the one property
-    this connection must have is that it cannot place one. What is not written
-    here cannot be reached through here.
+    **Deliberately three methods and not a general proxy.** A `__getattr__`
+    that forwarded anything would silently forward `placeOrder`, and the one
+    property this connection must have is that it cannot place one. What is
+    not written here cannot be reached through here.
     """
 
     def __init__(self, loop: _BrokerLoop, ib) -> None:
@@ -488,6 +688,20 @@ class _ThreadedIB:
     def reqHistoricalData(self, contract, **kwargs):
         return self._loop.call(
             lambda: self._ib.reqHistoricalDataAsync(contract, **kwargs))
+
+    def reqHistoricalDataMany(self, requests):
+        """**058 Part 2, the seam itself.** N `reqHistoricalDataAsync`
+        coroutines, dispatched CONCURRENTLY via `asyncio.gather` on the
+        existing `ibkr-broker` loop — not a second thread.
+        `live/tests/test_attach_is_reachable_by_key.py::test_the_thread_bridge_carries_a_real_async_client`
+        pins every call onto this one thread; `asyncio.gather` inside
+        `call_many` satisfies that because it is concurrency WITHIN one loop,
+        not a second loop running anywhere.
+        """
+        return self._loop.call_many(
+            [lambda contract=contract, kw=kwargs:
+             self._ib.reqHistoricalDataAsync(contract, **kw)
+             for contract, kwargs in requests])
 
 
 @dataclass
@@ -541,6 +755,25 @@ def connect(cfg: IbkrConfig) -> BrokerConnection:
         return BrokerConnection(source=source,
                                 state=f"not connected - ib_async unavailable ({exc})")
 
+    # **058 Part 4.** `StartupFetch(0)` tells `ib_async` to skip its default
+    # post-connect account/order/position sync — `ibkr_tape_tools`'
+    # `test_conn.py:19-43` does exactly this. This connection is read-only
+    # market data (`readonly=True` below) and never reads a position, an
+    # order or an account balance, so that sync buys nothing here and costs
+    # a second or two on every attach for free.
+    #
+    # **Feature-detected, not version-string-parsed, and not shimmed if
+    # absent.** `OBS-079` found `StartupFetch` in `ibkr_tape_tools`'s use of
+    # `ib_async`; this repo's own installed version (2.1.0, checked while
+    # building 058) exposes it as `ib_async.ib.StartupFetch`. A future
+    # downgrade or a machine without it still connects correctly — it just
+    # pays for the sync it does not need, exactly as before this task.
+    try:
+        from ib_async.ib import StartupFetch
+        fetch_nothing: dict[str, Any] = {"fetchFields": StartupFetch(0)}
+    except ImportError:
+        fetch_nothing = {}
+
     async def _make():
         # **`IB()` is constructed ON the broker loop.** It binds to whatever
         # loop is current at construction, so building it on the calling thread
@@ -548,7 +781,8 @@ def connect(cfg: IbkrConfig) -> BrokerConnection:
         # loop nobody is running.
         ib = IB()
         await ib.connectAsync(cfg.host, cfg.port, clientId=cfg.client_id,
-                              timeout=cfg.connect_timeout_s, readonly=True)
+                              timeout=cfg.connect_timeout_s, readonly=True,
+                              **fetch_nothing)
         return ib
 
     try:

@@ -9,7 +9,7 @@ than a function that returns a symbol or raises.
     |---|-------------------------------|----------|-------------------------------|
     | 1 | resolve the contract          | YES      | ambiguous -> render, ask      |
     | 2 | check the tick slot           | no       | render NOW, name what to drop |
-    | 3 | three historical requests     | no       | per-row unavailable(reason)   |
+    | 3 | 4-6 historical requests, GATHERED CONCURRENTLY | no | per-row unavailable(reason) |
     | 4 | open the tick-by-tick stream  | no       | attach SUCCEEDS, tape absent  |
     | 5 | bind the playbook             | no       | `no trigger level declared`   |
 
@@ -80,6 +80,13 @@ class MarketData(Protocol):
     def resolve(self, symbol: str) -> Sequence[Contract]: ...
     def tick_slots_in_use(self) -> int: ...
     def cooldown_remaining_s(self, symbol: str) -> int: ...
+    #: **058 Part 2.** Fire every independent historical request this attach
+    #: needs, CONCURRENTLY, before the per-role methods below are read. A
+    #: fixture that never implements this as anything but a no-op is
+    #: unaffected — each per-role method still answers on its own; `warm` is
+    #: an optimisation the live client makes real, not a new contract the
+    #: numbers depend on.
+    def warm(self, c: Contract) -> None: ...
     def daily_bars(self, c: Contract, basis: SessionBasis) -> Sequence[Bar]: ...
     def intraday_sessions(self, c: Contract) -> Sequence[Sequence[Bar]]: ...
     def today_minutes(self, c: Contract) -> Sequence[Bar]: ...
@@ -87,7 +94,6 @@ class MarketData(Protocol):
     def sector_sessions(self, c: Contract) -> Optional[Sequence[Sequence[Bar]]]: ...
     def open_tick_stream(self, c: Contract) -> str: ...
     def playbook_for(self, c: Contract) -> str: ...
-    def year_high_low(self, c: Contract) -> tuple[Optional[float], Optional[float]]: ...
 
 
 @dataclass
@@ -107,6 +113,12 @@ class AttachResult:
     playbook: str = ""
     context: dict[str, Measured] = field(default_factory=dict)
     rail: dict[str, Measured] = field(default_factory=dict)
+    #: **058 Part 3.** "N of M rows unavailable" when the gather completed
+    #: with SOME requests refusing. Empty when everything measured. Tenet 3
+    #: — status inherits from the weakest — has to be RENDERED, not merely
+    #: true: four values and two refusals must not be indistinguishable from
+    #: a complete attach of an illiquid name.
+    partial: str = ""
 
     @property
     def qualified(self) -> bool:
@@ -172,6 +184,15 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
     except Exception:                              # noqa: BLE001
         r.playbook = "no trigger level declared"
 
+    # **058 Part 3.** A screen-level statement that the gather completed
+    # with refusals — the per-row `— (reason)` cells already say WHICH rows,
+    # this says the attach as a whole is not a clean one, so a reader
+    # scanning the header cannot mistake a partial attach for a complete one.
+    values = {**r.context, **r.rail}
+    refused = [k for k, v in values.items() if getattr(v, "ok", True) is False]
+    if refused:
+        r.partial = f"{len(refused)} of {len(values)} rows unavailable"
+
     r.attached = True
     return r
 
@@ -180,6 +201,18 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     """The three requests. **Each row refuses on its own** — a failure in the
     intraday request must not blank ADR, which came from a different call."""
     out: dict[str, Measured] = {}
+
+    # --- 058 Part 2: fire every independent historical request at once -----
+    #
+    # A failure here is not fatal — every fetch below still tries its own
+    # live request if warming did not populate it (a `Fake` never populates
+    # anything; it is a no-op). That is Refusal A extended to the gather
+    # rather than a new failure mode: one dead round trip must not cost the
+    # rows that a second, working round trip could still answer.
+    try:
+        md.warm(c)
+    except Exception:                              # noqa: BLE001
+        pass
 
     # --- request 1: dailies, ONCE PER DISTINCT BASIS -----------------------
     #
@@ -295,9 +328,18 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     out["RVOL_rel"] = rvol_rel(out.get("RVOL", Measured.absent("no RVOL")), sector_rvol)
 
     # --- the level rail -----------------------------------------------------
-    try:
-        yh, yl = md.year_high_low(c)
-    except Exception:                              # noqa: BLE001
+    #
+    # **058 Part 1. 52wH/52wL come off `rth_dailies` — no second request.**
+    # `daily_bars(c, ADR_BASIS)` now fetches a full year of RTH dailies (not
+    # 60D), because ADR%/the SMA stack/PDH-PDL only ever read the TAIL of
+    # whatever they are given (`adr_pct`/`sma` slice `[-n:]`), so extending
+    # the window changes nothing they compute — and the same series already
+    # holds everything 52wH/52wL need. `year_high_low` is retired as a
+    # separate `MarketData` call for exactly this reason: the two "requests"
+    # were always the same RTH daily series at two different windows.
+    if rth_dailies:
+        yh, yl = (max(b.high for b in rth_dailies), min(b.low for b in rth_dailies))
+    else:
         yh = yl = None
     # **PDH/PDL come from the RTH dailies** (038 Part 1). On ETH bars `PDL`
     # would be the prior session's extended-hours low — which is `AML`, a

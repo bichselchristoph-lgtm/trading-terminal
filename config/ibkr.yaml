@@ -67,6 +67,10 @@ settings:
       `no answer in 30s` on a live QQQ attach at 13:24 ET on 2026-08-13, while
       task 021 held five keepUpToDate streams on the same account. An earlier
       attach in the same session answered inside 30s, so this is near the edge
-      rather than past it, and pacing is per account and shared. **Raising this
-      lengthens the worst-case UI freeze by the same amount** — see the
-      done-note; the real fix is to stop attaching on the UI thread.
+      rather than past it, and pacing is per account and shared. **058 landed
+      both halves of the real fix**: the attach runs on a Textual worker
+      (`live/tui/app.py`), so a slow request no longer freezes the terminal,
+      and the independent historical requests are gathered concurrently
+      (`live/attach/ibkr.py`'s `warm()`), so this bound is hit once per
+      attach rather than once per request. This value is unchanged — it
+      still bounds the single slowest request within the gather.

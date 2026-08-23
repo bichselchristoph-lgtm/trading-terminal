@@ -279,9 +279,11 @@ Three orthogonal axes, each with its own channel, **never collapsed into one gre
 
 A cell that is fresh, present and full-confidence renders as a plain number. **Any deviation renders differently *and* renders the reason.**
 
-**Vocabulary** (from the mockups, now canonical): `unfitted` · `n/a — <reason>` · `untested` · `partial` · `unavailable (<reason>)` · `absent, not zero` · `superseded` · `flagged, not an error` · `reduced denominator` · `NOT BUILT` · `STALE` · `FROZEN` · `warming` · `no-source`.
+**Vocabulary** (from the mockups, now canonical): `unfitted` · `n/a — <reason>` · `untested` · `partial` · `unavailable (<reason>)` · `absent, not zero` · `superseded` · `flagged, not an error` · `reduced denominator` · `NOT BUILT` · `STALE` · `FROZEN` · `warming` · `no-source` · `ATTACHING`.
 
-**Badges:** amber-inverse = read this and decide (`[ AGE ]`, `[ PRESS SUBMIT IN TWS ]`). Dim-inverse = the system is refusing, not failing (`[ STALE ]`, `[ FROZEN ]`, `[ NOT BUILT ]`, `[ NO SOURCE ]`) — moved off red per §4.1, because a value that never arrived cannot have failed. **Red-inverse is reserved for one badge**: `[ STOPPED — DAILY LIMIT ]`. `[ HALF SIZE ]` is **removed** — it was a verdict, not a state.
+**Badges:** amber-inverse = read this and decide (`[ AGE ]`, `[ PRESS SUBMIT IN TWS ]`). Dim-inverse = the system is refusing, not failing (`[ STALE ]`, `[ FROZEN ]`, `[ NOT BUILT ]`, `[ NO SOURCE ]`, `[ ATTACHING <symbol> ]`) — moved off red per §4.1, because a value that never arrived cannot have failed. **Red-inverse is reserved for one badge**: `[ STOPPED — DAILY LIMIT ]`. `[ HALF SIZE ]` is **removed** — it was a verdict, not a state.
+
+**`ATTACHING`, added 2026-08-22 under `058`.** One screen-level state, not a per-cell one: `BUILD-PLAN` slice 010 §7 already said a cell is fetched or `unavailable (reason)` — there is no third state — and §3's `fetching dailies…` contradicted it. §7 wins and `fetching dailies…` is retired. While an attach's gather is in flight the whole `ATTACHED` panel carries `[ ATTACHING <symbol> ]` in place of its provenance caption; no individual row renders a pending state of its own. This is a dev-spec revision landing ahead of the ruling that required it — see `058`'s task file for the ruling itself (worker + grouped concurrency, atomic swap, no progressive fill) and §6b.5 below for how it composes with the atomic swap.
 
 **Panel captions are provenance.** The right-hand end of every panel border carries source, as-of time, sample window, or safety state: `computed 08:00 ET` · `IBKR · 07 Aug` · `intraday_orb · last 20` · `not transmitted` · `updates · last 09:47:12`. A live panel without an update stamp is the `[ STALE ]` anti-state.
 
@@ -1795,6 +1797,8 @@ Recalibration procedure for the grader, when there is finally an outcome log: lo
 Beyond the general grammar in §4:
 
 - **Detached symbol renders `STALE`**, not frozen-looking-live. The old symbol's last values are still true; they are just no longer now.
+- **An attach IN FLIGHT renders `ATTACHING`, never a blend of old and new.** Added under `058`. On attach: every value dependent on the outgoing symbol is dropped immediately — not left on screen, not greyed — and the panel carries `[ ATTACHING <symbol> ]` for the whole gather; when it completes, every value lands in one paint. This is a different case from the detach/`STALE` row above: `STALE` is the old symbol's values, still true, just no longer current; `ATTACHING` is the NEW symbol's attempt, which has not yet produced anything true to show. A value from the previous attach sitting under the new symbol's header while the new one is still in flight is the §7 archetype — a well-formed value answering a different question — so neither state may borrow the other's rendering.
+- **A completed attach that refused some rows carries a screen-level statement, not only per-row `unavailable (reason)` cells.** Added under `058`. Tenet 3 — status inherits from the weakest — must be *rendered*, not merely true: four values and two refusals must not be indistinguishable from a complete attach of an illiquid name.
 - **Slot exhaustion** is a named state with the current count and what to detach.
 - **Re-attach inside 15 s** is queued and says so.
 - **Backfill gap** reads `unavailable` for the pre-attach window, and the indicators depending on it read `N/A`, not zero.

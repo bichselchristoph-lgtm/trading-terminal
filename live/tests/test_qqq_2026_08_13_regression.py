@@ -139,6 +139,7 @@ class QQQFixture:
     def resolve(self, symbol): return [QQQ]
     def tick_slots_in_use(self): return 0
     def cooldown_remaining_s(self, symbol): return 0
+    def warm(self, c): pass    # 058 Part 2 — no-op for a fixture answering instantly
 
     def daily_bars(self, c, basis):
         """**The series differs by basis, which is the whole subject.**
@@ -154,7 +155,6 @@ class QQQFixture:
     def sector_sessions(self, c): return None
     def open_tick_stream(self, c): raise RuntimeError("no tape in this slice")
     def playbook_for(self, c): return ""
-    def year_high_low(self, c): return (748.65, 690.00)
 
 
 def _attached():

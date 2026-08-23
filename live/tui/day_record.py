@@ -79,6 +79,10 @@ class Attached:
     #: What step 4 said. An attach with no tape is still an attach (S010).
     tape: str = ""
     slot_state: str = ""
+    #: **058 Part 3.** `AttachResult.partial` — "N of M rows unavailable"
+    #: when the gather completed with some requests refusing. Empty when
+    #: everything measured. Tenet 3, rendered rather than merely true.
+    partial: str = ""
 
 
 @dataclass
@@ -131,6 +135,12 @@ class DayRecord:
     #: `AttachResult.refusal`. It is cleared on the next successful attach, so it
     #: describes the last attempt and never accumulates.
     attach_refusal: str = ""
+    #: **058 Part 3 — the one screen-level state an attach's gather is in
+    #: flight under.** The symbol being attached, or `""` when nothing is.
+    #: Not a layer either: it is a rendered reason for why the panel shows
+    #: nothing new yet, cleared the instant the gather lands (success or
+    #: refusal) so it never survives past the attach it names.
+    attaching: str = ""
 
 
 def empty_record() -> DayRecord:

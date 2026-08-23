@@ -89,18 +89,21 @@ def test_a_daily_request_carries_the_basis_it_was_asked_with(basis: SessionBasis
         f"not.")
 
 
-def test_the_intraday_and_year_requests_carry_their_declared_bases() -> None:
-    """**Test 1, continued** — the three calls that do not take a basis argument.
+def test_the_intraday_requests_carry_their_declared_basis() -> None:
+    """**Test 1, continued** — the two calls that do not take a basis argument.
 
-    `today_minutes`, `intraday_sessions` and `year_high_low` fix their own basis
-    rather than accepting one, because no caller has a choice to make. They must
-    still take it from the constant and not from a literal.
+    `today_minutes` and `intraday_sessions` fix their own basis rather than
+    accepting one, because no caller has a choice to make. They must still
+    take it from the constant and not from a literal.
+
+    **058 retires `year_high_low` as a third case here** — see
+    `test_a_long_range_request_now_shares_the_rth_daily_request` below for
+    where the 52-week check moved.
     """
     ib = RecordingIB()
     md = IBKRMarketData(ib)
     md.today_minutes(QQQ)
     md.intraday_sessions(QQQ)
-    md.year_high_low(QQQ)
 
     minute_flags = ib.use_rth_for(size="1 min")
     assert minute_flags and all(f is INTRADAY_BASIS.use_rth for f in minute_flags), (
@@ -108,11 +111,6 @@ def test_the_intraday_and_year_requests_carry_their_declared_bases() -> None:
         f"use_rth={INTRADAY_BASIS.use_rth}. **Both sides of RVOL must share a "
         f"basis** — an RTH curve under an ETH numerator has no key past the "
         f"close.")
-
-    year_flags = ib.use_rth_for(size="1 day", duration="1 Y")
-    assert year_flags == [LONG_BASIS.use_rth], (
-        f"the 52-week request issued {year_flags}, LONG_BASIS declares "
-        f"use_rth={LONG_BASIS.use_rth}.")
 
 
 #: **041's thirteen, grouped as Christoph ruled them.** All RTH.
@@ -155,41 +153,53 @@ def test_the_thirteen_levels_are_ruled_rth(levels: str, basis: SessionBasis) -> 
         f"regular session.")
 
 
-def test_a_long_range_request_carries_the_ruled_basis() -> None:
+def test_a_long_range_request_now_shares_the_rth_daily_request() -> None:
     """**The two of the thirteen that are built, checked on the wire.**
 
     `52wH`/`52wL` are the only levels of 041's thirteen with a computation
-    behind them, and they come off `year_high_low`'s own `1 Y` daily request.
-    **041 asks for the request actually issued, not for a constant that exists**
-    — and this is the one place among the thirteen where that is possible.
+    behind them. **058 Part 1 retires `year_high_low` as a separate request**
+    — `OBS-079` measured it as a redundant round trip against the RTH daily
+    fetch `ADR_BASIS` already issues, differing only in how far back it went.
+    `daily_bars(c, ADR_BASIS)` now asks for `1 Y` (`LONG_DAILY_DURATION`), not
+    `60 D`, and `_context_block` (`live/attach/attach.py`) takes 52wH/52wL as
+    the max/min over that same series rather than issuing its own request.
+
+    LONG_BASIS's ruling (041, RTH) survives unchanged — it is what makes
+    sharing the RTH daily request with ADR_BASIS correct rather than a
+    coincidence: both declare `use_rth=True` for the same reason.
     """
     ib = RecordingIB()
-    IBKRMarketData(ib).year_high_low(QQQ)
+    IBKRMarketData(ib).daily_bars(QQQ, ADR_BASIS)
     flags = ib.use_rth_for(size="1 day", duration="1 Y")
-    assert flags == [LONG_BASIS.use_rth] == [True], (
-        f"the 52-week request issued {flags}; LONG_BASIS declares "
-        f"use_rth={LONG_BASIS.use_rth} and 041 rules it True.")
+    assert flags == [ADR_BASIS.use_rth] == [True] == [LONG_BASIS.use_rth], (
+        f"the RTH daily request issued {flags} at duration != 1 Y; ADR_BASIS "
+        f"and LONG_BASIS both declare use_rth=True and 058 Part 1 collapses "
+        f"them onto one request.")
 
 
-def test_the_thirteen_do_not_share_a_request_with_anything_038_settled() -> None:
-    """**041 report item 2**, asserted rather than only checked by eye.
+def test_the_rth_daily_request_is_the_only_one_058_collapsed() -> None:
+    """**058 Part 1, asserted by count.** Exactly ONE historical request for
+    `daily_bars(QQQ, ADR_BASIS)` — no separate `60 D` request survives
+    alongside the `1 Y` one. `OBS-079` measured the pre-058 shape as two RTH
+    daily requests for the same contract at two different windows; this is
+    the collapse, checked on the wire rather than only in prose.
 
-    *"If changing the thirteen would move something `038` settled, stop and
-    report."* The long-range request is issued by `year_high_low` through
-    `_bars` directly — **it does not go through `_context_block`'s
-    `dailies_on()` memo**, which is the one place a shared flag could couple two
-    indicators. So ruling the thirteen cannot move ADR, ATR, PDH or PDL.
-
-    Asserted by count: one `1 Y` request, and no `60 D` request issued by a call
-    that only wanted the long range.
+    **Supersedes `test_the_thirteen_do_not_share_a_request_with_anything_
+    038_settled` (041/038-era), which asserted the OPPOSITE** — that the
+    long-range request must never share a round trip with anything ADR or
+    the SMA stack use. 058 is a later, explicit product ruling that
+    overturns that isolation deliberately: `ADR%`/the SMA stack/PDH-PDL only
+    ever read the TAIL of whatever daily series they are given, so widening
+    the window to a year changes none of their answers, and sharing the
+    request is the entire point of the collapse.
     """
     ib = RecordingIB()
-    IBKRMarketData(ib).year_high_low(QQQ)
+    IBKRMarketData(ib).daily_bars(QQQ, ADR_BASIS)
     durations = [c["durationStr"] for c in ib.calls]
     assert durations == ["1 Y"], (
-        f"year_high_low issued {durations}. If it ever shares the 60 D daily "
-        f"request, 041's ruling and 038's would be carried by one flag and "
-        f"neither could move without the other.")
+        f"daily_bars(ADR_BASIS) issued {durations}; 058 Part 1 collapses the "
+        f"RTH daily fetch onto a single 1 Y request that also serves "
+        f"52wH/52wL.")
 
 
 def test_no_call_site_passes_a_use_rth_literal() -> None:

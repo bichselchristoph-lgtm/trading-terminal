@@ -58,12 +58,14 @@ pass a check while every tile was far under what it needed.
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
 import re
 import sys
 import unicodedata
 
 from datetime import datetime
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from textual.app import App, ComposeResult
@@ -80,7 +82,7 @@ from ..attach.attach import MarketData, attach
 # at all, not even a test, while 032 was fixing the same shape for `attach()`.
 from ..attach.ibkr import IbkrConfig, connect
 from .day_record import Attached, DayRecord, empty_record
-from .grammar import Cell
+from .grammar import Cell, FLAGGED_NOT_ERROR
 from .layout import Layout
 from .numbers import NO_BASIS, basis_label, format_value, needs_basis
 
@@ -428,6 +430,13 @@ def context_rows(a: Attached) -> list[str]:
         rows.append(f"    {'slot':<9} {a.slot_state}")
     if a.tape:
         rows.append(f"    {'tape':<9} {a.tape}")
+    if a.partial:
+        # **058 Part 3.** A screen-level statement that the gather completed
+        # with refusals — tenet 3 (status inherits from the weakest),
+        # rendered rather than merely true. `flagged, not an error`: the
+        # attach itself did not fail, some of its rows did, and those rows
+        # already say why individually below.
+        rows.append(f"    {'':<9} {Cell.degraded(a.partial, FLAGGED_NOT_ERROR).render()}")
     for name in CONTEXT_ORDER:
         if name in a.context:
             rows.append(f"    {name:<9} {measured_cell(a.context[name])}")
@@ -460,10 +469,24 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     for a in at:
         attach_rows.append(f"  {a.symbol}  attached {a.since}")
         attach_rows += context_rows(a)
+    # **058 Part 3 — the atomic swap.** The outgoing symbol's row is already
+    # gone from `record.attached` by the time this renders (`_begin_attach`
+    # removes it before the worker even starts), so there is nothing here to
+    # blend with the badge below. One screen-level state, not a per-cell
+    # pending state — `BUILD-PLAN` slice 010 §7 wins over §3's retired
+    # `fetching dailies…`.
+    if record.attaching:
+        attach_rows.append(f"  {Cell.attaching(record.attaching).render()}")
     if record.attach_refusal:
         attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
+    if record.attaching:
+        provenance = Cell.attaching(record.attaching).render()
+    elif not at:
+        provenance = "not attached"
+    else:
+        provenance = f"since {at[0].since}"
     p["attached"] = Panel(
-        "ATTACHED", "not attached" if not at else f"since {at[0].since}",
+        "ATTACHED", provenance,
         attach_rows or [f"  {Cell.absent('nothing attached').render()}"])
 
     p["tape"] = Panel(
@@ -681,59 +704,148 @@ class MomentumApp(App):
             await widget.remove()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Submit — the only place a typed symbol becomes an attach."""
+        """Submit — the only place a typed symbol becomes an attach.
+
+        **058 Part 3: the freeze fix.** `attach()` blocks on IBKR round trips
+        even after Part 2's concurrent dispatch — Part 2 shrinks the window,
+        it does not remove it. So the actual call runs on a Textual worker
+        thread; this coroutine only does the ATOMIC SWAP's first step (drop
+        the outgoing symbol's values, declare `ATTACHING`) and returns —
+        the UI stays responsive for the whole of the gather, which is
+        `test_the_ui_stays_responsive_during_an_attach` in
+        `live/tests/test_attaching_state.py`.
+
+        `md is None` is the one case with no network to wait on — it renders
+        synchronously rather than round-tripping through a worker for
+        nothing.
+        """
         typed = event.value.strip()
         await self._close_prompt()
         if not typed:
             return
-        self._record_attach(typed)
-        await self._rerender()
-
-    def _record_attach(self, symbol: str) -> None:
-        """Call `attach()` and put its answer on the record. **Nothing else.**
-
-        032's first constraint: *the binding calls `live.attach.attach()` and does
-        not reimplement any of it.* So there is no resolution here, no slot
-        arithmetic, no refusal wording of this module's own invention — every
-        string below is either `AttachResult`'s or names the one thing
-        `AttachResult` cannot know, which is that no `MarketData` exists at all.
-
-        **`origin="typed"` is passed rather than left to the default.** S010
-        anticipated a typed attach and §8.2a's four populations depend on that
-        field meaning one thing; a new origin value invented here would split one
-        of them silently.
-        """
+        symbol = typed.strip().upper()
         if self.md is None:
+            self.record.attaching = ""
+            self.record.attached = [a for a in self.record.attached
+                                    if a.symbol != symbol]
             self.record.attach_refusal = (
-                f"{symbol.strip().upper()}: no market data - the app connects to "
+                f"{symbol}: no market data - the app connects to "
                 "no broker in this slice")
+            await self._rerender()
             return
-        result = attach(symbol, self.md, origin="typed")
-        if not result.attached:
+        self._begin_attach(symbol)
+        await self._rerender()
+        self.run_worker(functools.partial(self._attach_worker, symbol),
+                        thread=True, exclusive=False, group="attach",
+                        name=f"attach-{symbol}")
+
+    def _begin_attach(self, symbol: str) -> None:
+        """**058 Part 3, the atomic swap's first step.** Every value
+        dependent on the outgoing symbol is dropped immediately — not left
+        on screen, not greyed. `ATTACHED` §6b.5 rules that a DETACHED symbol
+        renders `STALE`; this is a RE-ATTACH of the same symbol (or a fresh
+        one), and a value from the previous attach sitting under the new
+        header while the new one is still in flight is the §7 archetype: a
+        well-formed value answering a different question."""
+        self.record.attached = [a for a in self.record.attached
+                                if a.symbol != symbol]
+        self.record.attach_refusal = ""
+        self.record.attaching = symbol
+
+    def _attach_worker(self, symbol: str) -> None:
+        """**Runs OFF the Textual event loop thread.** Computes only — the
+        record is mutated back on the MAIN thread via `call_from_thread`,
+        because `self.record` is read by `_apply_fit`/render calls that can
+        run concurrently with this thread, and Textual is explicit that its
+        own objects are not thread-safe to touch from here.
+
+        032's first constraint still holds: *the binding calls
+        `live.attach.attach()` and does not reimplement any of it.* Every
+        string below is either `AttachResult`'s or names the one thing
+        `AttachResult` cannot know, which is that no `MarketData` exists —
+        and that branch is handled in `on_input_submitted` before a worker is
+        ever started, so it cannot appear here.
+
+        **A bare worker thread has no asyncio event loop of its own, and
+        `ib_async`'s dependency `eventkit` reads `asyncio.get_event_loop()`
+        at IMPORT time.** Python's default policy raises on any non-main
+        thread with no loop set — found live, the first time this path ran:
+        `resolve()` rendered `contract lookup failed (RuntimeError)` naming
+        `There is no current event loop in thread 'ThreadPoolExecutor-...'`,
+        and because the failed import is never cached, EVERY later test in
+        the same process (including ones with no worker at all) inherited
+        the failure once the main thread's own loop slot was later spent by
+        an unrelated `asyncio.run()`. Giving this thread a loop OBJECT (never
+        run — `_BrokerLoop` is the loop that actually carries traffic) is
+        enough to satisfy `eventkit` and let the import succeed once, cached,
+        for the rest of the process.
+        """
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        try:
+            result = attach(symbol, self.md, origin="typed")
+        except Exception as exc:                        # noqa: BLE001
+            # `attach()` is documented to report rather than raise, but a
+            # worker thread with an unhandled exception fails silently by
+            # Textual's default — surfaced here rather than trusted away, so
+            # a genuinely unexpected fault still renders instead of leaving
+            # `ATTACHING` on screen forever (Refusal, never a stuck badge).
+            self.call_from_thread(self._finish_attach, symbol, None,
+                                  f"{symbol}: attach failed "
+                                  f"({type(exc).__name__}: {exc})")
+            return
+        self.call_from_thread(self._finish_attach, symbol, result, None)
+
+    async def _finish_attach(self, symbol: str, result, worker_refusal: Optional[str]) -> None:
+        """**058 Part 3, the atomic swap's last step: every value lands in
+        ONE paint.** Runs on the main thread (via `call_from_thread`), so
+        this and `_begin_attach` are the only two places that mutate
+        `record.attached`/`record.attaching` — there is no window where a
+        reader of `self.record` sees a half-applied result.
+
+        **Partial failure must not look like success.** `result.partial`
+        (set by `attach()` when the gather completed with some rows
+        refusing) rides onto `Attached` unchanged; `context_rows` renders it
+        as a screen-level line beside the per-row refusals, so four values
+        and two refusals cannot read as a complete attach of an illiquid
+        name.
+        """
+        self.record.attaching = ""
+        if worker_refusal is not None:
+            self.record.attach_refusal = worker_refusal
+        elif not result.attached:
             # `AttachResult` already carries the failure — render it, do not
             # re-word it. Ambiguity in particular carries its candidate count,
             # and a shorter message would drop the number that makes it useful.
             self.record.attach_refusal = f"{result.symbol}: {result.refusal}"
-            return
-        # An attach that failed at steps 2-5 is still an attach, so a stale
-        # refusal from a previous attempt must not survive one. Detaching is out
-        # of scope; re-attaching the same symbol replaces its row rather than
-        # growing a second one.
-        self.record.attached = [a for a in self.record.attached
-                                if a.symbol != result.symbol]
-        # **034: the context block is CARRIED, not recomputed and not dropped.**
-        # `attach()` measured all of it one line ago and until now every value
-        # was discarded here — the panel showed that a symbol was attached and
-        # nothing about it. `render_panels` is pure over the record, so a value
-        # the record does not hold is a value that cannot render.
-        as_of, lag = self._stamp(result)
-        self.record.attached.append(
-            Attached(symbol=result.symbol,
-                     since=datetime.now(EASTERN).strftime("%H:%M"),
-                     context=result.context, rail=result.rail,
-                     source=self.source_name, as_of=as_of, lag=lag,
-                     tape=result.tape, slot_state=result.slot_state))
-        self.record.attach_refusal = ""
+        else:
+            # An attach that failed at steps 2-5 is still an attach, so a
+            # stale refusal from a previous attempt must not survive one.
+            # `_begin_attach` already dropped this symbol's old row; this
+            # guards the case where the SYMBOL TYPED differs from the one
+            # `attach()` normalised to (defensive — `attach()` upper-cases
+            # and strips, matching `on_input_submitted`, so this is a no-op
+            # on the path that actually runs).
+            self.record.attached = [a for a in self.record.attached
+                                    if a.symbol != result.symbol]
+            # **034: the context block is CARRIED, not recomputed and not
+            # dropped.** `attach()` measured all of it one line ago and
+            # until now every value was discarded here — the panel showed
+            # that a symbol was attached and nothing about it.
+            # `render_panels` is pure over the record, so a value the record
+            # does not hold is a value that cannot render.
+            as_of, lag = self._stamp(result)
+            self.record.attached.append(
+                Attached(symbol=result.symbol,
+                        since=datetime.now(EASTERN).strftime("%H:%M"),
+                        context=result.context, rail=result.rail,
+                        source=self.source_name, as_of=as_of, lag=lag,
+                        tape=result.tape, slot_state=result.slot_state,
+                        partial=result.partial))
+            self.record.attach_refusal = ""
+        await self._rerender()
 
     def _stamp(self, result) -> tuple[str, str]:
         """As-of and lag for the block, **derived from the DATA, never the clock

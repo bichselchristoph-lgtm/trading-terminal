@@ -71,6 +71,13 @@ class Fake:
     def tick_slots_in_use(self): return self.slots
     def cooldown_remaining_s(self, symbol): return self.cooldown
 
+    def warm(self, c):
+        """058 Part 2. A no-op here — `Fake` answers every per-role method
+        instantly, so there is nothing a gather would buy. `attach()` calls
+        this unconditionally, so every `MarketData` implementation needs it;
+        the real gather is `IBKRMarketData`'s alone."""
+        self._maybe("warm")
+
     def daily_bars(self, c, basis):
         """**Answers a DIFFERENT series per basis, on purpose** (038 Part 1).
 
@@ -91,7 +98,6 @@ class Fake:
     def sector_sessions(self, c): return [minutes(30) for _ in range(20)] if self.sector else None
     def open_tick_stream(self, c): self._maybe("tick"); return "tick-by-tick AllLast"
     def playbook_for(self, c): return self.playbook
-    def year_high_low(self, c): return (120.0, 80.0)
 
 
 # ---- the arithmetic, against hand-checkable fixtures ----------------------

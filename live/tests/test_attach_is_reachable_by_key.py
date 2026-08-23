@@ -87,12 +87,22 @@ def attached_panel(app: MomentumApp) -> Panel:
 
 
 async def type_symbol(pilot, symbol: str) -> None:
-    """Press the key, type the ticker, submit. **The whole point of the file.**"""
+    """Press the key, type the ticker, submit. **The whole point of the file.**
+
+    **058 Part 3.** The attach itself now runs on a Textual worker thread
+    (the freeze fix — OBS-041), so `pilot.pause()` alone no longer means the
+    attach has landed: it processes pending Textual messages, not a
+    background thread. `workers.wait_for_complete()` is what actually waits
+    for the worker, and a `pause()` after it lets the `call_from_thread`
+    re-render finish composing before the next assertion reads the screen.
+    """
     await pilot.press(ATTACH_KEY)
     await pilot.pause()
     for ch in symbol:
         await pilot.press(ch)
     await pilot.press("enter")
+    await pilot.pause()
+    await pilot.app.workers.wait_for_complete()
     await pilot.pause()
 
 
@@ -387,6 +397,18 @@ class FakeIB:
     def reqContractDetails(self, contract):
         return [StubDetails()]
 
+    def reqHistoricalDataMany(self, requests):
+        """**058 Part 2.** `IBKRMarketData.warm()` reads this — without it,
+        `warm()` raises `AttributeError`, `_context_block`'s wrapping
+        `try/except` swallows it, and every row falls back to its own single
+        live request. That degrade-gracefully path is real and tested
+        elsewhere; this fixture exists so the GATHER path is exercised too,
+        sequentially rather than concurrently — `FakeIB` has no broker loop
+        to be concurrent on, only `_ThreadedIB` does (see `AsyncFakeIB`
+        below)."""
+        return [self.reqHistoricalData(contract, **kwargs)
+               for contract, kwargs in requests]
+
     def reqHistoricalData(self, contract, **kw):
         self.asked.append(kw)
         size, duration = kw["barSizeSetting"], kw["durationStr"]
@@ -513,6 +535,28 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
     assert {k["useRTH"] for k in asked if k["barSizeSetting"] == "1 min"} == {False}, (
         "today's minutes were requested RTH-only — session VWAP includes "
         "pre-market and the RVOL curve must match itself")
+
+    # **058 Parts 1+2.** `StubDetails` carries no industry/category, so this
+    # QQQ resolves with no sector mapping and no sector requests — the
+    # pre-058 shape here was 5 historical requests: RTH 60D dailies, ETH 60D
+    # dailies, RTH 1Y dailies (year_high_low), today's minutes, 20D intraday.
+    # Part 1 collapses the two RTH daily requests into one, taking the
+    # underlying from five to four "by construction rather than by stagger"
+    # (058 Part 1) — the exact count `OBS-079` named as what puts the
+    # concurrent gather under IBKR's pacing limit with one to spare.
+    daily_1y = [k for k in asked if k["barSizeSetting"] == "1 day"
+               and k["durationStr"] == "1 Y"]
+    daily_60d = [k for k in asked if k["barSizeSetting"] == "1 day"
+                and k["durationStr"] == DAILY_DURATION]
+    assert len(daily_1y) == 1, (
+        f"expected exactly one 1 Y RTH daily request (Part 1's collapse), "
+        f"got {len(daily_1y)}: {daily_1y}")
+    assert len(daily_60d) == 1, (
+        f"expected exactly one {DAILY_DURATION} ETH daily request (ATR14, "
+        f"unaffected by the collapse), got {len(daily_60d)}: {daily_60d}")
+    assert len(asked) == 4, (
+        f"expected 4 historical requests after 058's collapse (was 5), got "
+        f"{len(asked)}:\n" + "\n".join(str(a) for a in asked))
 
 
 # ---- 2. a refused connection is rendered, and the app survives --------------
