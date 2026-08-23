@@ -36,7 +36,14 @@ from typing import Iterable, Optional, Sequence
 ADR_DEFAULT_N = 20
 
 #: Wilder's period. `atr_d14` is what the 3×ATR stop floor consumes.
-ATR_DEFAULT_N = 14
+#: **20, not 14 — B-091, ruled twice and confirmed directly by Christoph on
+#: 2026-08-22: there is one ATR, it is 20-day, and it is ETH.** The function
+#: keeps its `atr_d14` name (renaming it is a larger, unscoped change reaching
+#: every caller and docstring that says "Wilder's ATR" generically); the
+#: rendered label changes from `ATR14` to `ATR20` at the two places that name
+#: it for a reader — `live/attach/attach.py`'s context key and
+#: `live/tui/app.py`'s `CONTEXT_ORDER`.
+ATR_DEFAULT_N = 20
 
 #: §8.4 — the RVOL denominator is a curve over the last N sessions.
 RVOL_SESSIONS = 20

@@ -344,7 +344,7 @@ class Panel(Static):
 #: whether there is room left in the day at all; then the SMA extensions; then
 #: today's session. A dict's insertion order would work until `_context_block`
 #: was reordered for an unrelated reason, so the screen declares its own.
-CONTEXT_ORDER = ("ADR%", "ADR%avail", "ATR14",
+CONTEXT_ORDER = ("ADR%", "ADR%avail", "ATR20",
                  "ext 10", "ext 20", "ext 50", "VWAP", "cum vol", "RVOL",
                  "RVOL_rel")
 

@@ -17,9 +17,10 @@ from typing import Optional, Sequence
 
 import pytest
 
-from core.indicators.context import (Bar, Measured, adr_dollar, adr_pct,
-                                     adr_used, atr_d14, rvol_at, rvol_curve,
-                                     rvol_rel, true_ranges, vwap_from_bars)
+from core.indicators.context import (ATR_DEFAULT_N, Bar, Measured, adr_dollar,
+                                     adr_pct, adr_used, atr_d14, rvol_at,
+                                     rvol_curve, rvol_rel, true_ranges,
+                                     vwap_from_bars)
 from live.attach.attach import (COOLDOWN_S, ORIGINS, TICK_SLOTS, AttachResult,
                                 Contract, attach)
 
@@ -136,7 +137,12 @@ def test_atr_is_wilder_not_a_simple_mean() -> None:
     bars = dailies(40)
     bars[5] = Bar(ts="2026-06-06", open=100, high=140, low=100, close=101,
                   volume=1_000_000)
-    wilder = atr_d14(bars)
+    # **n=14 explicit, decoupled from `ATR_DEFAULT_N`.** This test's property —
+    # Wilder never fully forgets a spike, unlike a windowed simple mean — holds
+    # at any period; pinning the period here means a future retune of the
+    # default (065/B-091 moved it 14 -> 20) cannot silently change what this
+    # test is comparing against.
+    wilder = atr_d14(bars, n=14)
     trs = true_ranges(bars)
     simple_mean_last_14 = sum(trs[-14:]) / 14
     assert wilder.ok
@@ -144,6 +150,27 @@ def test_atr_is_wilder_not_a_simple_mean() -> None:
         "Wilder's RMA agreed with a simple mean of the last 14 true ranges on a "
         "fixture built to separate them — the smoothing is not being applied")
     assert "Wilder RMA" in wilder.sample
+
+
+def test_atr_is_20_period_by_default_and_refuses_a_short_series() -> None:
+    """**065/B-091.** Christoph, 2026-08-22: one ATR, 20-day, ETH. B-033:
+    IBKR returned 204 bars for a request of 205 with no error, so a caller
+    must not assume the series arrived whole — `atr_d14`'s own length check
+    is what stands between a quietly-short window and a wrong number, and
+    this pins it at the new period rather than trusting it by inference.
+    """
+    assert ATR_DEFAULT_N == 20, (
+        "the default period moved from 14 under 065/B-091 and something put "
+        "it back")
+    # Wilder needs n true ranges, i.e. n+1 daily bars. 20 bars -> 19 true
+    # ranges -> one short of 20 -> refuses, naming exactly what it received.
+    short = atr_d14(dailies(20))
+    assert not short.ok
+    assert "need 21 daily bars, have 20" in short.unavailable
+    # 21 bars -> exactly 20 true ranges -> computes.
+    whole = atr_d14(dailies(21))
+    assert whole.ok, f"21 daily bars must be enough for a 20-period ATR: {whole.unavailable}"
+    assert "n=20" in whole.sample
 
 
 def test_true_range_uses_the_prior_close_including_the_gap() -> None:
@@ -229,7 +256,7 @@ def test_a_clean_attach_fills_the_context_block() -> None:
     assert r.origin == "typed"
     # 042 Part 3 deleted `ADR $`, `ADR used`, `room up` and `room down` from the
     # panel. `ADR%avail` replaces all four.
-    for k in ("ADR%", "ADR%avail", "ATR14", "VWAP", "RVOL", "RVOL_rel"):
+    for k in ("ADR%", "ADR%avail", "ATR20", "VWAP", "RVOL", "RVOL_rel"):
         assert k in r.context, f"{k} missing from the context block"
     for gone in ("ADR $", "ADR used", "room up", "room down"):
         assert gone not in r.context, (
@@ -238,8 +265,13 @@ def test_a_clean_attach_fills_the_context_block() -> None:
             f"as `clear for`, which is a different question.")
     assert r.context["ADR%"].ok
     # 042 Part 1: four opening-range levels, and no bare `ORH`/`ORL` anywhere.
+    # **065 Part A: ORL5, ORL15 and 52wL explicitly, not merely covered by
+    # `>=`.** Christoph, 2026-08-22: all three are intentional and must render.
     assert set(r.rail) >= {"PDH", "PDL", "PMH", "PML",
-                           "ORH5", "ORL5", "ORH15", "ORL15", "VWAP"}
+                           "ORH5", "ORL5", "ORH15", "ORL15", "52wH", "52wL",
+                           "VWAP"}
+    for k in ("ORL5", "ORL15", "52wL"):
+        assert r.rail[k].ok, f"{k} rendered but did not measure: {r.rail[k]}"
     assert "ORH" not in r.rail and "ORL" not in r.rail, (
         "a bare ORH/ORL is a well-formed name answering two different questions")
 
@@ -281,7 +313,7 @@ def test_the_slot_is_checked_before_any_historical_request_is_spent() -> None:
     # The tape is what is missing, and it says so by name.
     assert r.tape == "absent - no free tick slot"
     # ...and the context block is fully populated anyway. THIS IS THE POINT.
-    assert r.context["ADR%"].ok and r.context["ATR14"].ok and r.context["VWAP"].ok
+    assert r.context["ADR%"].ok and r.context["ATR20"].ok and r.context["VWAP"].ok
 
 
 def test_refusal_b_the_same_symbol_twice_inside_the_cooldown() -> None:
@@ -299,7 +331,7 @@ def test_refusal_a_a_failed_request_leaves_the_others_rendering() -> None:
     `unavailable (reason)`, never a partial ADR.**"""
     r = attach("QQQ", Fake(fail=["daily"]))
     assert r.attached, "one failed request must not fail the attach"
-    for k in ("ADR%", "ADR%avail", "ATR14"):
+    for k in ("ADR%", "ADR%avail", "ATR20"):
         assert not r.context[k].ok, f"{k} rendered a value from a failed request"
         assert "pacing limit, retry in 42s" in r.context[k].unavailable, (
             "pacing is a display state, not an error, and the reason must survive")

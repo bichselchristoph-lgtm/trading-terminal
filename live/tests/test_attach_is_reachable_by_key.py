@@ -491,7 +491,7 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
     body, record = drive("QQQ", md, record=stamped, at_tile_size=True)
 
     assert "QQQ" in body, f"the symbol did not attach at all:\n{body}"
-    for row in ("ADR%", "ATR14", "VWAP"):
+    for row in ("ADR%", "ATR20", "VWAP"):
         assert row in body, (
             f"the ATTACHED panel does not render {row!r}. attach() computed it "
             f"and the record dropped it, which is 034.\nATTACHED renders:\n{body}")
@@ -552,7 +552,7 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         f"expected exactly one 1 Y RTH daily request (Part 1's collapse), "
         f"got {len(daily_1y)}: {daily_1y}")
     assert len(daily_60d) == 1, (
-        f"expected exactly one {DAILY_DURATION} ETH daily request (ATR14, "
+        f"expected exactly one {DAILY_DURATION} ETH daily request (ATR20, "
         f"unaffected by the collapse), got {len(daily_60d)}: {daily_60d}")
     assert len(asked) == 4, (
         f"expected 4 historical requests after 058's collapse (was 5), got "

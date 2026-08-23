@@ -30,10 +30,11 @@ There is no literal `use_rth=` anywhere in this module, and
 constant's flag.
 
 * **daily bars are requested ONCE PER DISTINCT BASIS.** `ADR%`, the SMA stack and
-  `PDH`/`PDL` are RTH; **`ATR14` is ETH**, because the true range spans the prior
-  close and the gap IS the measurement. Before 038 one RTH request served all
-  four and `ATR14` read `13.14` against a true ~`15.6` — **-16 %, straight into
-  the 3xATR stop floor and therefore into every share count.**
+  `PDH`/`PDL` are RTH; **`ATR20` (`ATR14` before 065/B-091 moved the period) is
+  ETH**, because the true range spans the prior close and the gap IS the
+  measurement. Before 038 one RTH request served all four and `ATR14` read
+  `13.14` against a true ~`15.6` — **-16 %, straight into the 3xATR stop floor
+  and therefore into every share count.**
 * **`SPEC.md:999` asserted that `useRTH` cannot alter a daily bar** — *"excluded,
   unchangeably — ETH cannot alter a daily bar."* **That is factually wrong and
   038 corrects it**; IBKR returns different daily highs, lows and volumes for the
@@ -398,7 +399,7 @@ class IBKRMarketData:
 
         Not a literal, and not a default. 038 Part 3: the value that reaches the
         request comes from the constant declared beside the definition, so a
-        reader who wants to know which bars `ATR14` is built on reads `ATR_BASIS`
+        reader who wants to know which bars `ATR20` is built on reads `ATR_BASIS`
         and is done.
 
         **058 Part 1: the RTH duration is `LONG_DAILY_DURATION` (1 Y), not

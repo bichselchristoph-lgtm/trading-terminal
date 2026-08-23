@@ -183,23 +183,33 @@ def test_the_four_matched_levels_still_match() -> None:
             f"project has.")
 
 
-def test_atr14_is_extended_hours_and_reads_about_15_6() -> None:
-    """**The row that was wrong.** `13.14` against a true ~`15.6`, −16 %.
+def test_atr20_is_extended_hours_and_reads_about_15_6() -> None:
+    """**The row that was wrong, at the period it renders under today.**
+    `13.14` against a true ~`15.6`, −16 %, under the pre-038 defect (RTH
+    instead of ETH). **065/B-091 separately moved the rendered period from 14
+    to 20** — unrelated to the basis bug this fixture was built for, and this
+    fixture still pins it: every bar's true range is exactly `ATR14 = 15.60`
+    (the fixture constant keeps its original name — it names the *value*, not
+    the period), so Wilder's RMA of a constant series is that constant **at
+    any window length**, and the expected value does not move with the period.
 
     ATR's true range spans the prior close, so the gap across the close IS the
     measurement — it must come off the series whose close-to-close relationship
     is the real one. Computed on RTH bars it is a different quantity wearing
     ATR's name, and it lands in the 3×ATR stop floor and therefore in the size.
     """
-    atr = _attached().context["ATR14"]
-    assert atr.ok, f"ATR14 refused: {atr.unavailable}"
+    atr = _attached().context["ATR20"]
+    assert atr.ok, f"ATR20 refused: {atr.unavailable}"
     assert abs(atr.value - ATR14) < 0.01, (
-        f"ATR14 reads {atr.value:.2f}; the ETH fixture's true range is exactly "
+        f"ATR20 reads {atr.value:.2f}; the ETH fixture's true range is exactly "
         f"{ATR14:.2f} on every bar. A value near 13.14 means the RTH series was "
         f"used — the pre-038 defect.")
     assert atr.basis is not None and atr.basis.use_rth is False, (
-        "ATR14 must declare the extended-hours basis")
+        "ATR20 must declare the extended-hours basis")
     assert atr.basis.label == "04:00-20:00 ET"
+    assert "n=20" in atr.sample, (
+        f"ATR20 must actually be a 20-period Wilder RMA, not a renamed ATR14: "
+        f"{atr.sample!r}")
 
 
 def test_pdl_is_the_regular_session_low_and_not_the_extended_hours_low() -> None:
@@ -234,7 +244,7 @@ def test_adr_is_regular_session_and_disagrees_with_atr_on_purpose() -> None:
     rows apart that a reader will compare and must not.
     """
     r = _attached()
-    adr, atr = r.context["ADR%"], r.context["ATR14"]
+    adr, atr = r.context["ADR%"], r.context["ATR20"]
     assert adr.ok and atr.ok
     assert adr.basis.use_rth is True and atr.basis.use_rth is False
     assert adr.basis.label != atr.basis.label, (

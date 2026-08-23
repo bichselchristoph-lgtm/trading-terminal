@@ -291,8 +291,13 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
         for n in (10, 20, 50):
             out[f"ext {n}"] = Measured.absent(daily_why(SMA_BASIS))
 
-    # **ATR14 — ETH.** The one value 038 moves.
-    out["ATR14"] = atr_d14(eth_dailies) if eth_dailies         else Measured.absent(daily_why(ATR_BASIS))
+    # **ATR20 — ETH.** 038 moved the basis; 065/B-091 moves the period, ruled
+    # twice and confirmed directly by Christoph on 2026-08-22: one ATR, 20-day,
+    # ETH. `atr_d14` keeps its name — `ATR_DEFAULT_N` in `core/indicators/context.py`
+    # is what actually changed, to 20 — but the RENDERED key changes with it,
+    # because a label one character wrong is the defect this project keeps
+    # cataloguing.
+    out["ATR20"] = atr_d14(eth_dailies) if eth_dailies         else Measured.absent(daily_why(ATR_BASIS))
 
     # --- request 3: today, from the open -----------------------------------
     try:
