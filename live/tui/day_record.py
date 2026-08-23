@@ -141,6 +141,14 @@ class DayRecord:
     #: nothing new yet, cleared the instant the gather lands (success or
     #: refusal) so it never survives past the attach it names.
     attaching: str = ""
+    #: **070 §6 — a re-attach refused inside the same-contract cooldown.**
+    #: `"<symbol> <remaining>"` (e.g. `"QQQ 11s"`), never split into two
+    #: fields: `attach_refusal` already carries a colon-joined symbol+reason
+    #: for the same reason, and one field is enough for a state this
+    #: short-lived. Cleared the instant the next attach begins or lands, so
+    #: it never survives past the attempt it names — same lifecycle as
+    #: `attaching` and `attach_refusal`, which it is mutually exclusive with.
+    attach_queued: str = ""
 
 
 def empty_record() -> DayRecord:

@@ -76,7 +76,7 @@ from textual.widgets import Input, Static
 # tests against it and NOTHING in the running application imported it. The three
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
-from ..attach.attach import MarketData, attach
+from ..attach.attach import COOLDOWN_S, MarketData, attach
 # **034: the import that was missing one layer down.** `live/attach/ibkr.py` —
 # the only module in this tree that touches a broker — was imported by nothing
 # at all, not even a test, while 032 was fixing the same shape for `attach()`.
@@ -84,7 +84,8 @@ from ..attach.ibkr import IbkrConfig, connect
 from .day_record import Attached, DayRecord, empty_record
 from .grammar import Cell, FLAGGED_NOT_ERROR
 from .layout import Layout
-from .numbers import NO_BASIS, basis_label, format_value, needs_basis
+from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
+                      progress_bar)
 
 #: Session logic is US/Eastern via `zoneinfo`, never machine locale — the
 #: workspace convention, applied to the one clock this module reads.
@@ -339,20 +340,49 @@ class Panel(Static):
             self.update(self.body(w, h or None))
 
 
-#: The order the context block renders in, and it is **the order the numbers are
-#: used in**, not alphabetical: the range budget first, because ADR is what says
-#: whether there is room left in the day at all; then the SMA extensions; then
-#: today's session. A dict's insertion order would work until `_context_block`
-#: was reordered for an unrelated reason, so the screen declares its own.
-CONTEXT_ORDER = ("ADR%", "ADR%avail", "ATR20",
-                 "ext 10", "ext 20", "ext 50", "VWAP", "cum vol", "RVOL",
-                 "RVOL_rel")
+#: 070. `ATTACHED` mockup v1.0 §1: four rows, ruled by Christoph 2026-08-23 —
+#: `ADR% used`, no ATR, no other ADR metric. `RVOL_rel`, `RVOL_sector` and
+#: `cum vol` fold into one combined `RVOL rel` line (mockup: `1.4x · avg
+#: 0.86x · cum 18.1M sh`) and `VWAP` renders across two physical lines (value
+#: + extension, then its sample on a continuation line) — both handled as
+#: bespoke cases in `context_rows`, not by the generic per-key loop this tuple
+#: used to drive alone. `ADR%avail`, `ATR20` and `ext 10`/`ext 20`/`ext 50`
+#: are gone from here on purpose: the first two no longer exist in
+#: `_context_block`'s `out` dict at all (070 Part 3's leak check), and the SMA
+#: stack is still computed and recorded there — "chart work," per the
+#: mockup's own §2 — just never rendered on this panel.
+CONTEXT_ORDER = ("ADR% used", "RVOL_rel", "VWAP")
 
 #: The level rail. **`VWAP` is deliberately absent** — `level_rail` carries it
 #: and so does the context block, and rendering one value twice is how two rows
 #: come to disagree after somebody fixes one of them.
 RAIL_ORDER = ("PDH", "PDL", "PMH", "PML", "ORH5", "ORL5", "ORH15", "ORL15",
               "52wH", "52wL", "round")
+
+
+def _cell_parts(m) -> Optional[tuple[str, str]]:
+    """`(value text, detail text)` for a nominal `Measured`, or `None` when it
+    must render as a refusal instead — the shared refusal check both
+    `measured_cell` and 070's compound rows (`ADR% used`'s bar, the combined
+    `RVOL rel` line, `VWAP`'s extension) go through, so a row that folds
+    several `Measured` values into one line cannot skip the no-basis check by
+    accident.
+    """
+    if not getattr(m, "ok", False):
+        return None
+    # **A value with no declared basis REFUSES.** 038's exit test, and it is a
+    # refusal rather than a blank label on purpose: an unlabelled number on this
+    # panel is the whole defect 038 exists to close. ADR and ATR sit four rows
+    # apart, are both labelled volatility, and are computed on different sessions
+    # deliberately — a reader who cannot see that compares them.
+    if needs_basis(m) and basis_label(m) is None:
+        return None
+    text = Cell.value(format_value(m)).render()
+    # **Basis last, after the sample.** The sample says what it was computed
+    # OVER — `20 sessions, excl. today` — and the basis says WHICH BARS those
+    # sessions were, which is the qualifier on everything before it.
+    detail = " · ".join(x for x in (m.sample, basis_label(m)) if x)
+    return text, detail
 
 
 def measured_cell(m) -> str:
@@ -364,23 +394,90 @@ def measured_cell(m) -> str:
     already names its own reason, so it goes through `Cell.absent` and renders
     `— (need 21 daily bars, have 5)` rather than a blank.
     """
-    if not getattr(m, "ok", False):
-        return Cell.absent(getattr(m, "unavailable", "") or "absent").render()
-
-    # **A value with no declared basis REFUSES.** 038's exit test, and it is a
-    # refusal rather than a blank label on purpose: an unlabelled number on this
-    # panel is the whole defect 038 exists to close. ADR and ATR sit four rows
-    # apart, are both labelled volatility, and are computed on different sessions
-    # deliberately — a reader who cannot see that compares them.
-    if needs_basis(m) and basis_label(m) is None:
+    parts = _cell_parts(m)
+    if parts is None:
+        if not getattr(m, "ok", False):
+            return Cell.absent(getattr(m, "unavailable", "") or "absent").render()
         return Cell.absent(NO_BASIS).render()
-
-    text = Cell.value(format_value(m)).render()
-    # **Basis last, after the sample.** The sample says what it was computed
-    # OVER — `20 sessions, excl. today` — and the basis says WHICH BARS those
-    # sessions were, which is the qualifier on everything before it.
-    detail = " · ".join(x for x in (m.sample, basis_label(m)) if x)
+    text, detail = parts
     return f"{text}  · {detail}" if detail else text
+
+
+def _adr_used_cell(m) -> str:
+    """070. `ATTACHED` mockup v1.0 §1: `64%  ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░`. The bar
+    sits right after the number — matching the drawing — and the basis still
+    rides after both, per the standing rule that every value renders what it
+    was computed over. **`m.value` is not clamped**; only `progress_bar`'s OWN
+    fill is, per `adr_used`'s docstring."""
+    parts = _cell_parts(m)
+    if parts is None:
+        return measured_cell(m)
+    text, detail = parts
+    bar = progress_bar(m.value)
+    return f"{text}  {bar}  · {detail}" if detail else f"{text}  {bar}"
+
+
+def _rvol_rel_cell(rel, context: dict) -> str:
+    """070. `ATTACHED` mockup v1.0 §1: `1.4x · avg 0.86x · cum 18.1M sh`.
+    Three values that used to render as three separate rows (`RVOL_rel`,
+    the sector's own RVOL, `cum vol`) fold into one line here — a
+    presentation decision, so it lives in the render layer rather than in
+    `attach.py`'s `out` dict, which still exposes all three under their own
+    keys. `rel` is `RVOL_rel` itself, already confirmed present by the
+    caller; `RVOL_sector`/`cum vol` are read from `context` and each is
+    simply omitted from the line if that key is absent or itself refuses —
+    a fixture testing this row in isolation need not supply all three.
+    """
+    parts = _cell_parts(rel)
+    if parts is None:
+        return measured_cell(rel)
+    text, detail = parts
+    bits = [text]
+    sector = context.get("RVOL_sector")
+    if sector is not None:
+        sector_parts = _cell_parts(sector)
+        if sector_parts is not None:
+            bits.append(f"avg {sector_parts[0]}")
+    cumvol = context.get("cum vol")
+    if cumvol is not None:
+        cumvol_parts = _cell_parts(cumvol)
+        if cumvol_parts is not None:
+            bits.append(f"cum {cumvol_parts[0]}")
+    body = "  · ".join(bits)
+    return f"{body}  · {detail}" if detail else body
+
+
+def _vwap_rows(vwap, context: dict) -> list[str]:
+    """070. `ATTACHED` mockup v1.0 §1, two physical lines:
+
+        VWAP        $730.68 · +$2.46
+                    from 04:00 · 18.4M sh · ...
+
+    The first carries the value and `VWAP_ext` (price minus VWAP, signed —
+    the mockup's `+$2.46`); the second is `VWAP`'s own `sample`, continued
+    with no label, because it does not fit the value line at 209 columns
+    alongside everything else 070 adds to it. `vwap` is confirmed present by
+    the caller; `VWAP_ext` is read from `context` and simply omitted if
+    absent. **`vwap_from_bars` is untouched** — this reads its existing
+    `sample` text; the mockup's `pre-mkt 2.1M of 18.4M` breakdown is a new
+    VWAP statistic, not a rendering change, and is out of scope here
+    (`touches:` names the ATTACHED renderer, not the VWAP statistic).
+    """
+    parts = _cell_parts(vwap)
+    if parts is None:
+        return [f"    {'VWAP':<9} {measured_cell(vwap)}"]
+    text, detail = parts
+    ext = context.get("VWAP_ext")
+    ext_text = ""
+    if ext is not None:
+        ext_parts = _cell_parts(ext)
+        if ext_parts is not None:
+            sign = "+" if ext.value >= 0 else ""
+            ext_text = f"  · {sign}{ext_parts[0]}"
+    rows = [f"    {'VWAP':<9} {text}{ext_text}"]
+    if detail:
+        rows.append(f"    {'':<9} {detail}")
+    return rows
 
 
 def _as_of_clock(ts: str) -> str:
@@ -437,8 +534,22 @@ def context_rows(a: Attached) -> list[str]:
         # attach itself did not fail, some of its rows did, and those rows
         # already say why individually below.
         rows.append(f"    {'':<9} {Cell.degraded(a.partial, FLAGGED_NOT_ERROR).render()}")
+    # **070.** `ADR% used`, `RVOL_rel` and `VWAP` are no longer a uniform
+    # one-key-one-line loop — each has a bespoke renderer (the bar, the
+    # combined RVOL line, VWAP's two physical lines) — but `CONTEXT_ORDER`
+    # still names them, in the order they render, and each is still gated on
+    # the same `if name in a.context` presence check the rest of this
+    # function uses.
     for name in CONTEXT_ORDER:
-        if name in a.context:
+        if name not in a.context:
+            continue
+        if name == "ADR% used":
+            rows.append(f"    {name:<9} {_adr_used_cell(a.context[name])}")
+        elif name == "RVOL_rel":
+            rows.append(f"    {'RVOL rel':<9} {_rvol_rel_cell(a.context[name], a.context)}")
+        elif name == "VWAP":
+            rows.extend(_vwap_rows(a.context[name], a.context))
+        else:
             rows.append(f"    {name:<9} {measured_cell(a.context[name])}")
     for name in RAIL_ORDER:
         if name in a.rail:
@@ -475,11 +586,23 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     # blend with the badge below. One screen-level state, not a per-cell
     # pending state — `BUILD-PLAN` slice 010 §7 wins over §3's retired
     # `fetching dailies…`.
-    if record.attaching:
+    if record.attach_queued:
+        # **070 §6.** Never a silent drop: the whole gather refused before
+        # step 3 ran (`attach.py`'s cooldown branch), and the panel says so
+        # in plain text — not a `Cell` badge, matching `slot_state`'s own
+        # `queued - Ns` string, which this supersedes for the SAME cooldown
+        # clock at the moment it blocks the entire attach rather than just
+        # the tape.
+        symbol, remaining = record.attach_queued.split(" ", 1)
+        attach_rows.append(f"  {symbol} queued · {remaining} "
+                           f"({COOLDOWN_S}s same-contract cooldown)")
+    elif record.attaching:
         attach_rows.append(f"  {Cell.attaching(record.attaching).render()}")
     if record.attach_refusal:
         attach_rows.append(f"  {Cell.absent(record.attach_refusal).render()}")
-    if record.attaching:
+    if record.attach_queued:
+        provenance = f"queued · {record.attach_queued.split(' ', 1)[1]}"
+    elif record.attaching:
         provenance = Cell.attaching(record.attaching).render()
     elif not at:
         provenance = "not attached"
@@ -726,6 +849,7 @@ class MomentumApp(App):
         symbol = typed.strip().upper()
         if self.md is None:
             self.record.attaching = ""
+            self.record.attach_queued = ""
             self.record.attached = [a for a in self.record.attached
                                     if a.symbol != symbol]
             self.record.attach_refusal = (
@@ -750,6 +874,7 @@ class MomentumApp(App):
         self.record.attached = [a for a in self.record.attached
                                 if a.symbol != symbol]
         self.record.attach_refusal = ""
+        self.record.attach_queued = ""
         self.record.attaching = symbol
 
     def _attach_worker(self, symbol: str) -> None:
@@ -815,11 +940,19 @@ class MomentumApp(App):
         self.record.attaching = ""
         if worker_refusal is not None:
             self.record.attach_refusal = worker_refusal
+            self.record.attach_queued = ""
+        elif result.queued:
+            # **070 §6.** Checked before `not result.attached` — a queued
+            # re-attach never set `refusal`, so falling through to that
+            # branch would render `SYMBOL: ` with nothing after the colon.
+            self.record.attach_queued = f"{result.symbol} {result.queued}"
+            self.record.attach_refusal = ""
         elif not result.attached:
             # `AttachResult` already carries the failure — render it, do not
             # re-word it. Ambiguity in particular carries its candidate count,
             # and a shorter message would drop the number that makes it useful.
             self.record.attach_refusal = f"{result.symbol}: {result.refusal}"
+            self.record.attach_queued = ""
         else:
             # An attach that failed at steps 2-5 is still an attach, so a
             # stale refusal from a previous attempt must not survive one.
@@ -845,6 +978,7 @@ class MomentumApp(App):
                         tape=result.tape, slot_state=result.slot_state,
                         partial=result.partial))
             self.record.attach_refusal = ""
+            self.record.attach_queued = ""
         await self._rerender()
 
     def _stamp(self, result) -> tuple[str, str]:

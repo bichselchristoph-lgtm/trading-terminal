@@ -491,17 +491,23 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
     body, record = drive("QQQ", md, record=stamped, at_tile_size=True)
 
     assert "QQQ" in body, f"the symbol did not attach at all:\n{body}"
-    for row in ("ADR%", "ATR20", "VWAP"):
+    # **070, ruled by Christoph 2026-08-23: `ADR% used`, no ATR anywhere in
+    # this panel.** `ATR20` dropped from the check with the row itself.
+    for row in ("ADR% used", "VWAP"):
         assert row in body, (
             f"the ATTACHED panel does not render {row!r}. attach() computed it "
             f"and the record dropped it, which is 034.\nATTACHED renders:\n{body}")
+    assert "ATR" not in body, (
+        f"the ATTACHED panel renders something ATR-shaped. 070: no ATR "
+        f"anywhere in this panel — TRADE's stop selector is its only "
+        f"surface in the terminal.\n{body}")
     # **One decimal and a `%`, not two decimals and nothing** (038 Part 2 and
     # Part 6 row 3). `SPEC.md` §4.0a puts percentages at one decimal; this
     # assertion previously required `\.\d\d`, which is the pre-038 renderer's
     # hardcoded `f"{value:,.2f}"` written into a test — so the test was holding
     # the defect in place rather than catching it.
-    assert re.search(r"ADR%\s+[\d,]+\.\d%", body), (
-        f"ADR% rendered without a number — a refusal where a value was "
+    assert re.search(r"ADR% used\s+[\d,]+\.\d%", body), (
+        f"ADR% used rendered without a number — a refusal where a value was "
         f"measured, or without its unit:\n{body}")
     assert "· " in body, (
         f"a value rendered with no sample beside it. S010 requires the sample "
@@ -536,14 +542,14 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
         "today's minutes were requested RTH-only — session VWAP includes "
         "pre-market and the RVOL curve must match itself")
 
-    # **058 Parts 1+2.** `StubDetails` carries no industry/category, so this
-    # QQQ resolves with no sector mapping and no sector requests — the
-    # pre-058 shape here was 5 historical requests: RTH 60D dailies, ETH 60D
-    # dailies, RTH 1Y dailies (year_high_low), today's minutes, 20D intraday.
-    # Part 1 collapses the two RTH daily requests into one, taking the
-    # underlying from five to four "by construction rather than by stagger"
-    # (058 Part 1) — the exact count `OBS-079` named as what puts the
-    # concurrent gather under IBKR's pacing limit with one to spare.
+    # **058 Parts 1+2, then 070.** `StubDetails` carries no industry/category,
+    # so this QQQ resolves with no sector mapping and no sector requests.
+    # Pre-058 shape: 5 historical requests — RTH 60D dailies, ETH 60D dailies
+    # (ATR), RTH 1Y dailies (year_high_low), today's minutes, 20D intraday.
+    # 058 Part 1 collapsed the two RTH daily requests into one, five to four.
+    # **070, ruled by Christoph 2026-08-23: no ATR anywhere in ATTACHED** —
+    # `_context_block` no longer fetches the ETH 60D series at all, since
+    # nothing else consumed it, taking the count from four to three.
     daily_1y = [k for k in asked if k["barSizeSetting"] == "1 day"
                and k["durationStr"] == "1 Y"]
     daily_60d = [k for k in asked if k["barSizeSetting"] == "1 day"
@@ -551,12 +557,13 @@ def test_a_key_press_renders_the_context_block_not_only_the_symbol() -> None:
     assert len(daily_1y) == 1, (
         f"expected exactly one 1 Y RTH daily request (Part 1's collapse), "
         f"got {len(daily_1y)}: {daily_1y}")
-    assert len(daily_60d) == 1, (
-        f"expected exactly one {DAILY_DURATION} ETH daily request (ATR20, "
-        f"unaffected by the collapse), got {len(daily_60d)}: {daily_60d}")
-    assert len(asked) == 4, (
-        f"expected 4 historical requests after 058's collapse (was 5), got "
-        f"{len(asked)}:\n" + "\n".join(str(a) for a in asked))
+    assert len(daily_60d) == 0, (
+        f"expected zero {DAILY_DURATION} ETH daily requests — 070 removed "
+        f"the only consumer (ATR) from ATTACHED and the fetch went with it — "
+        f"got {len(daily_60d)}: {daily_60d}")
+    assert len(asked) == 3, (
+        f"expected 3 historical requests after 070 dropped the ETH ATR "
+        f"fetch (was 4), got {len(asked)}:\n" + "\n".join(str(a) for a in asked))
 
 
 # ---- 2. a refused connection is rendered, and the app survives --------------

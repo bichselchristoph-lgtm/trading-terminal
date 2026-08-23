@@ -376,8 +376,12 @@ def adr_dollar(adr_percent: Measured, todays_open: float) -> Measured:
 
 
 def adr_used(current: float, todays_open: float, adr_dol: Measured) -> Measured:
-    """`(current - open) / ADR$`, as a percentage. **Over 100 % renders `OVER`**
-    — that is the renderer's job; this returns the number that produces it."""
+    """`(current - open) / ADR$`, as a percentage. **070/`ATTACHED` mockup v1.0:
+    the number renders past 100 %, uncapped — a day whose range exceeds its
+    20-session average is ordinary, and only the accompanying bar clamps at
+    full.** (An earlier docstring here said the renderer would print the word
+    `OVER` instead; that was never built and 070 rules it out explicitly —
+    corrected rather than left to mislead the next reader.)"""
     if not adr_dol.ok:
         return Measured.absent(adr_dol.unavailable)
     if adr_dol.value == 0:

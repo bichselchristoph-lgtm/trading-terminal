@@ -156,3 +156,19 @@ def needs_basis(m: Measured) -> bool:
     true. Every other unit is a measurement over bars.
     """
     return m.unit is not Unit.COUNT
+
+
+#: 070. `ATTACHED` mockup v1.0 §1: `▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░` — twenty blocks.
+BAR_WIDTH = 20
+
+
+def progress_bar(pct: float, width: int = BAR_WIDTH) -> str:
+    """A `width`-block bar. **The bar clamps at full; the number beside it does
+    not** — `adr_used`'s own docstring states why: a day whose range exceeds
+    its 20-session average is ordinary, and clamping the NUMBER would render
+    the most informative reading identically to a merely-full one. Clamped
+    only on the high side — `adr_used` takes `abs(...)`, so `pct` is never
+    negative in practice, but a negative input still renders an empty bar
+    rather than raising."""
+    filled = max(0, min(width, round(pct / 100 * width)))
+    return "▓" * filled + "░" * (width - filled)

@@ -254,16 +254,21 @@ def test_a_clean_attach_fills_the_context_block() -> None:
     assert r.attached and r.qualified
     assert r.contract.symbol == "QQQ"
     assert r.origin == "typed"
-    # 042 Part 3 deleted `ADR $`, `ADR used`, `room up` and `room down` from the
-    # panel. `ADR%avail` replaces all four.
-    for k in ("ADR%", "ADR%avail", "ATR20", "VWAP", "RVOL", "RVOL_rel"):
+    for k in ("ADR% used", "VWAP", "VWAP_ext", "RVOL", "RVOL_rel", "RVOL_sector"):
         assert k in r.context, f"{k} missing from the context block"
-    for gone in ("ADR $", "ADR used", "room up", "room down"):
+    # **070 Part 3, the leak check.** Christoph, 2026-08-23: the context block
+    # carries `ADR% used` and NO other ADR metric, and no ATR anywhere in this
+    # panel. `B-028`/`B-091`'s shape is a field that keeps reaching the record
+    # after its row was deleted from `CONTEXT_ORDER` -- so this asserts the
+    # field is absent from the STRUCTURE `_context_block` returns, not merely
+    # unrendered by `live/tui/app.py`.
+    for gone in ("ADR%", "ADR%avail", "ADR $", "ADR used", "room up",
+                 "room down", "ATR14", "ATR20"):
         assert gone not in r.context, (
-            f"{gone} is back in the context block. 042 Part 3 removed it: it "
-            f"measured the same quantity as `ADR used` and invited being read "
-            f"as `clear for`, which is a different question.")
-    assert r.context["ADR%"].ok
+            f"{gone} is back in the context block. 070, ruled by Christoph "
+            f"2026-08-23: no ATR anywhere in ATTACHED and no other ADR metric "
+            f"— TRADE's stop selector is ATR's only surface in the terminal.")
+    assert r.context["ADR% used"].ok
     # 042 Part 1: four opening-range levels, and no bare `ORH`/`ORL` anywhere.
     # **065 Part A: ORL5, ORL15 and 52wL explicitly, not merely covered by
     # `>=`.** Christoph, 2026-08-22: all three are intentional and must render.
@@ -313,16 +318,27 @@ def test_the_slot_is_checked_before_any_historical_request_is_spent() -> None:
     # The tape is what is missing, and it says so by name.
     assert r.tape == "absent - no free tick slot"
     # ...and the context block is fully populated anyway. THIS IS THE POINT.
-    assert r.context["ADR%"].ok and r.context["ATR20"].ok and r.context["VWAP"].ok
+    assert r.context["ADR% used"].ok and r.context["VWAP"].ok
 
 
 def test_refusal_b_the_same_symbol_twice_inside_the_cooldown() -> None:
-    """**Refusal B.** The second attach renders the cooldown with its remaining
-    seconds. **Never a silent drop.**"""
+    """**Refusal B.** 070 §6, ruled by the mockup — this used to assert the
+    OPPOSITE of what it now does: `r.attached` was `True` and the context
+    block was fully populated, with only `r.slot_state` naming the cooldown.
+    The mockup draws a re-attach inside the cooldown as ONE line and nothing
+    else (`1 of 1 · end`, no ADR/RVOL/VWAP), because step 3's per-role
+    fallback requests (`dailies_on()` and its siblings) do not themselves
+    check the pacing guard — only `warm()` does — so letting them run during
+    the cooldown would spend a second, unguarded round of the same requests
+    the guard exists to keep under IBKR's limit. **Never a silent drop**: the
+    whole gather refuses before any historical request fires, with its
+    remaining seconds on screen."""
     r = attach("QQQ", Fake(cooldown=11))
-    assert r.attached
-    assert r.slot_state == "queued - 11s"
-    assert "11" in r.slot_state, "the remaining seconds must render"
+    assert not r.attached
+    assert r.queued == "11s"
+    assert not r.context and not r.rail, (
+        "a queued re-attach must not spend any of step 3's historical "
+        "requests — the whole point of refusing before it starts")
     assert COOLDOWN_S == 15
 
 
@@ -331,7 +347,7 @@ def test_refusal_a_a_failed_request_leaves_the_others_rendering() -> None:
     `unavailable (reason)`, never a partial ADR.**"""
     r = attach("QQQ", Fake(fail=["daily"]))
     assert r.attached, "one failed request must not fail the attach"
-    for k in ("ADR%", "ADR%avail", "ATR20"):
+    for k in ("ADR% used",):
         assert not r.context[k].ok, f"{k} rendered a value from a failed request"
         assert "pacing limit, retry in 42s" in r.context[k].unavailable, (
             "pacing is a display state, not an error, and the reason must survive")
@@ -341,15 +357,11 @@ def test_refusal_a_a_failed_request_leaves_the_others_rendering() -> None:
 
 
 def test_a_partial_adr_is_impossible_by_construction() -> None:
-    """Refusal A's real content: there is no state in which ADR $ exists and
-    ADR% does not, because each is derived from the other and both carry the
-    same refusal."""
+    """Refusal A's real content: there is no state in which `round` exists
+    and `ADR% used` does not, because each is derived from the same ADR $
+    and both carry the same refusal."""
     r = attach("QQQ", Fake(fail=["daily"]))
-    assert r.context["ADR%"].value is None
-    # 042 Part 3: `ADR $` no longer RENDERS, but the value still exists inside
-    # the attach path -- `ADR%avail` divides by it and `round` spans by it. The
-    # invariant is unchanged and is now checked through the row that survived.
-    assert r.context["ADR%avail"].value is None
+    assert r.context["ADR% used"].value is None
     assert r.rail["round"].value is None, (
         "`round` spans by ADR $; a failed daily request must blank it too")
 
@@ -368,7 +380,7 @@ def test_the_tape_failing_does_not_fail_the_attach() -> None:
     r = attach("QQQ", Fake(fail=["tick"]))
     assert r.attached
     assert r.tape.startswith("absent - ")
-    assert r.context["ADR%"].ok
+    assert r.context["ADR% used"].ok
 
 
 def test_no_playbook_says_so_rather_than_binding_nothing_silently() -> None:

@@ -332,9 +332,15 @@ class IBKRMarketData:
     #: independent request `warm()` gathers. **Declared once here rather than
     #: built inline** so `warm()`'s dispatch and its pacing check read off
     #: the same list and cannot silently diverge.
+    #: **070, ruled by Christoph 2026-08-23: no ATR anywhere in ATTACHED.**
+    #: The `eth_dailies` role (`ATR_BASIS`, `DAILY_DURATION`) is gone from
+    #: this table — it fed only `_context_block`'s old ATR row, and that row
+    #: no longer exists. `daily_bars(c, ATR_BASIS)` itself is unchanged and
+    #: still correct for whoever calls it directly (TRADE's own task, when it
+    #: needs ATR) — it simply falls through to a live, uncached fetch, the
+    #: same as any role this table does not warm.
     _ROLES = (
         ("rth_dailies", "self", LONG_DAILY_DURATION, "1 day", ADR_BASIS.use_rth),
-        ("eth_dailies", "self", DAILY_DURATION, "1 day", ATR_BASIS.use_rth),
         ("today", "self", "1 D", "1 min", INTRADAY_BASIS.use_rth),
         ("sessions_raw", "self", INTRADAY_DURATION, "1 min", INTRADAY_BASIS.use_rth),
         ("sector_today", "etf", "1 D", "1 min", INTRADAY_BASIS.use_rth),

@@ -41,9 +41,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, Sequence
 
-from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar, Measured,
+from core.indicators.context import (ADR_BASIS, Bar, INTRADAY_BASIS, Measured,
                                      PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
-                                     adr_available, adr_dollar, adr_pct, atr_d14,
+                                     Unit, adr_dollar, adr_pct, adr_used,
                                      cumulative_volume, extension_in_adr,
                                      level_rail, rvol_at, rvol_curve,
                                      rvol_rel, sma, vwap_from_bars)
@@ -108,6 +108,12 @@ class AttachResult:
     #: Set only when step 1 refused. Carries the candidates, never a choice.
     ambiguous: list[Contract] = field(default_factory=list)
     refusal: str = ""
+    #: **070 §6.** Set only when step 2 finds the SAME contract inside
+    #: `COOLDOWN_S` of its last historical fetch. Holds the remaining time
+    #: (`"11s"`), never a bare int — every other rendered-reason field on
+    #: this object is already a display string, and a lone `int` here would
+    #: be the one field a caller has to remember to format.
+    queued: str = ""
     slot_state: str = ""
     tape: str = ""
     playbook: str = ""
@@ -156,12 +162,22 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
     # ---- step 2: the tick slot, BEFORE any historical request --------------
     cooldown = md.cooldown_remaining_s(r.symbol)
     if cooldown > 0:
-        r.slot_state = f"queued - {cooldown}s"
-    else:
-        in_use = md.tick_slots_in_use()
-        r.slot_state = (f"{in_use}/{TICK_SLOTS} slots used"
-                        if in_use < TICK_SLOTS
-                        else f"no tick slot - detach one of {in_use} to free it")
+        # **070 §6, ruled by the mockup: refuses BEFORE step 3, not merely
+        # renders differently after it.** `cooldown_remaining_s` and `warm`'s
+        # own pacing guard read the same `_note_fetch` clock — but
+        # `dailies_on()` and its siblings (below) fall back to their own
+        # live request whenever `warm()` did not populate the cache, and
+        # that fallback path calls `md.daily_bars()` etc. directly, with no
+        # pacing check of its own. Letting step 3 run here would spend a
+        # second, unguarded round of the same requests `warm()`'s check
+        # exists to keep under IBKR's limit — so the whole gather stops here
+        # instead, and the panel says how long until it can run.
+        r.queued = f"{cooldown}s"
+        return r
+    in_use = md.tick_slots_in_use()
+    r.slot_state = (f"{in_use}/{TICK_SLOTS} slots used"
+                    if in_use < TICK_SLOTS
+                    else f"no tick slot - detach one of {in_use} to free it")
 
     # ---- step 3: three historical requests, each failing alone -------------
     r.context, r.rail = _context_block(r.contract, md)
@@ -248,40 +264,47 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
         return _daily_failed.get(basis.use_rth, "no daily bars")
 
     rth_dailies = dailies_on(ADR_BASIS)
-    eth_dailies = dailies_on(ATR_BASIS)
 
-    # **ADR% and ADR%avail — RTH.** Each row still refuses on its own; a failure
-    # on the ETH request must not blank ADR and vice versa.
+    # **ADR% used — RTH, the panel's only ADR/ATR row.** 070, ruled by Christoph
+    # 2026-08-23: the context block carries `ADR% used` and NO other ADR
+    # metric, and NO ATR anywhere in this panel — TRADE's stop selector is
+    # ATR's only surface in the whole terminal. `ADR%avail`, `ADR $`, `room
+    # up`/`room down` and any ATR row all leave `out` entirely here, not merely
+    # `CONTEXT_ORDER` — B-028 is exactly a value that kept reaching the
+    # renderer after its row was deleted, and a field absent from this
+    # dict cannot repeat that by accident.
     #
-    # **042 Part 3 deletes four rows and adds one.** `ADR used`, `ADR $`,
-    # `room up` and `room down` leave the panel — `room up`/`room down`
-    # measured the same quantity as `ADR used` in dollars and invited being read
-    # as `clear for`, which is distance to the next obstacle and a different
-    # question. `ADR%avail` is the reading Christoph actually takes.
+    # **`adr_used` is the existing function, not a new formula.** 070 Part 2:
+    # `ADR%avail = 100 - adr_used`, so the row this task adds is what
+    # `adr_available` was already computing internally before returning its
+    # complement — reused directly rather than re-derived.
     #
-    # **`dol` IS STILL COMPUTED AND IS NOT A DEAD LOCAL.** `ADR $` leaves the
-    # PANEL; the value does not leave the system. `adr_available` divides by it
-    # and `level_rail` spans `round` with it. 042: *"`ADR` itself is not
-    # deleted... only the four display rows go."* Dropping the computation would
-    # silently blank `round` as well, which is the kind of second-order deletion
-    # a row-removal task invites.
+    # **The ETH daily request that fed ATR is also gone.** Nothing else in this
+    # block consumed `eth_dailies`; keeping the fetch alive for a value nobody
+    # reads would spend part of IBKR's pacing budget for nothing. TRADE's own
+    # task adds its own request when it needs one — this function serves
+    # ATTACHED specifically, not a shared cache of everything any panel might
+    # ever want.
+    #
+    # **`dol` IS STILL COMPUTED AND IS NOT A DEAD LOCAL.** `level_rail` spans
+    # `round` with it, and `adr_used` divides by it. Only the display rows go.
     if rth_dailies:
         todays_open = rth_dailies[-1].open
         price = rth_dailies[-1].close
         pct = adr_pct(rth_dailies)
         dol = adr_dollar(pct, todays_open)
-        out["ADR%"] = pct
-        out["ADR%avail"] = adr_available(price, todays_open, dol)
+        out["ADR% used"] = adr_used(price, todays_open, dol)
     else:
         why = daily_why(ADR_BASIS)
-        for k in ("ADR%", "ADR%avail"):
-            out[k] = Measured.absent(why)
+        out["ADR% used"] = Measured.absent(why)
         dol = Measured.absent(why)
         price = 0.0
 
-    # **The SMA stack is UNRULED by 038** and keeps the RTH basis it had. It asks
-    # with `SMA_BASIS` rather than reusing `rth_dailies` directly, so a future
-    # ruling changes one constant and nothing else.
+    # **The SMA stack is UNRULED by 038, computed and recorded, never
+    # displayed** — the `ATTACHED` mockup v1.0 §2 removes it from this panel
+    # on the same footing as ATR ("Chart work"), but does not say the
+    # computation stops; `live/tui/app.py`'s `CONTEXT_ORDER` is what actually
+    # keeps it off screen, not this function.
     sma_dailies = dailies_on(SMA_BASIS)
     if sma_dailies:
         sma_price = sma_dailies[-1].close
@@ -290,14 +313,6 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     else:
         for n in (10, 20, 50):
             out[f"ext {n}"] = Measured.absent(daily_why(SMA_BASIS))
-
-    # **ATR20 — ETH.** 038 moved the basis; 065/B-091 moves the period, ruled
-    # twice and confirmed directly by Christoph on 2026-08-22: one ATR, 20-day,
-    # ETH. `atr_d14` keeps its name — `ATR_DEFAULT_N` in `core/indicators/context.py`
-    # is what actually changed, to 20 — but the RENDERED key changes with it,
-    # because a label one character wrong is the defect this project keeps
-    # cataloguing.
-    out["ATR20"] = atr_d14(eth_dailies) if eth_dailies         else Measured.absent(daily_why(ATR_BASIS))
 
     # --- request 3: today, from the open -----------------------------------
     try:
@@ -309,6 +324,18 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     if today:
         out["VWAP"] = vwap_from_bars(today)
         out["cum vol"] = cumulative_volume(today)
+
+    # **070. `VWAP_ext` — how far price sits above/below VWAP, in dollars.**
+    # `ATTACHED` mockup v1.0 §1: `VWAP $730.68 · +$2.46`. Not a new VWAP
+    # statistic — `vwap_from_bars` is untouched — this is the renderer's own
+    # derived value (today's latest close minus VWAP), scoped to `attach.py`
+    # since `touches:` names the ATTACHED renderer, not the VWAP statistic.
+    if today and out["VWAP"].ok:
+        out["VWAP_ext"] = Measured(value=today[-1].close - out["VWAP"].value,
+                                   sample="price - VWAP", unit=Unit.DOLLAR,
+                                   basis=INTRADAY_BASIS)
+    else:
+        out["VWAP_ext"] = Measured.absent(out["VWAP"].unavailable)
 
     # --- request 2: 20 sessions intraday -> the RVOL curve ------------------
     try:
@@ -331,6 +358,12 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
         except Exception as exc:                   # noqa: BLE001
             sector_rvol = Measured.absent(_reason(exc))
     out["RVOL_rel"] = rvol_rel(out.get("RVOL", Measured.absent("no RVOL")), sector_rvol)
+    # **070. Exposed under its own key, not left a dead local.** `ATTACHED`
+    # mockup v1.0 §1 folds the sector's own RVOL into the same line as
+    # `RVOL_rel` (`avg 0.86x`) — it was already computed here for
+    # `rvol_rel`'s sake and simply never reached `out` before this task.
+    out["RVOL_sector"] = sector_rvol if sector_rvol is not None \
+        else Measured.absent("no sector mapping")
 
     # --- the level rail -----------------------------------------------------
     #

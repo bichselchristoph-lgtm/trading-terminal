@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-22T22:37:37+02:00
+last_attempt : 2026-08-23T15:18:10+02:00
 
-last_success : 2026-08-22T22:37:37+02:00
+last_success : 2026-08-23T15:18:13+02:00
 
-outcome      : 3 new - momentum-code-handoff/inbox/061-for-code-task-permission-policy-test.md, momentum-christoph-done/035-for-christoph-task-claude-permissions-and-databento-history.md, momentum-christoph-done/036-for-christoph-task-uat-060-panels-render-once.md
+outcome      : 3 new - momentum-code-handoff/done/070-context-block-built-from-the-mockup.md, momentum-code-handoff/inbox/070-for-code-task-attached-context-block.md, momentum-code-handoff/verify-output.md
 
-head         : 8d0d46b8f68b0241c8139d181d34c712390c4b3c 060: B-001 fixed -- async check-then-act race in _apply_fit
+head         : a2a530d75627e0cd914fd6daa72990f8e2300ca0 069: retire means retired -- pair 3 suppresses what is already done, NOW.md tags ids and renders rule 16's four numbers

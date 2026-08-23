@@ -29,7 +29,7 @@ if str(REPO) not in sys.path:
 
 from core.indicators.context import Measured, Unit
 from live.attach.attach import attach
-from live.tui.app import CONTEXT_ORDER, RAIL_ORDER, measured_cell
+from live.tui.app import measured_cell
 from live.tui.numbers import FORMATS, NO_BASIS, format_value, needs_basis
 
 from .test_attach import Fake
@@ -63,22 +63,29 @@ SPACING = (
 
 
 def numeric_rows() -> list[tuple[str, Measured, str]]:
-    """`(row name, the Measured, the rendered line)` for every row with a NUMBER.
+    """`(row name, the Measured, the rendered line)` for every VALUE with a
+    NUMBER, in the context block or the rail.
 
     Refusals are excluded deliberately: an absent `Measured` already names its
     own reason and has nothing to declare a basis for.
 
-    **The `Measured` is carried alongside the string rather than the string
-    being sniffed**, so the basis exemption below can be taken from the renderer's
-    own `needs_basis` instead of from a substring. Two copies of that rule would
-    drift, and the copy in the test is the one that would quietly widen.
+    **070.** This used to iterate `(*CONTEXT_ORDER, *RAIL_ORDER)` — every key
+    that gets its OWN plain `measured_cell()` row. 070 folds several values
+    (`RVOL_rel`, `RVOL_sector`, `cum vol` into one line; `VWAP`/`VWAP_ext`
+    across two) into bespoke compound rows that `CONTEXT_ORDER` still names
+    but no longer renders generically — so iterating that tuple would silently
+    stop checking every value it no longer drives directly (`RVOL`,
+    `RVOL_sector`, `cum vol`, `VWAP_ext`, the SMA stack). **Iterating every key
+    actually present in `context`/`rail` instead** checks the same property
+    the docstring states — every numeric VALUE this record holds declares a
+    basis and a unit — independent of which row, compound or plain, it ends
+    up inside.
     """
     result = attach("QQQ", Fake())
     assert result.attached and result.context, "the fixture attach did not fill"
     out = []
-    for name in (*CONTEXT_ORDER, *RAIL_ORDER):
-        m = result.context.get(name) or result.rail.get(name)
-        if m is None or not m.ok:
+    for name, m in {**result.context, **result.rail}.items():
+        if not m.ok:
             continue
         out.append((name, m, f"{name:<9} {measured_cell(m)}"))
     return out

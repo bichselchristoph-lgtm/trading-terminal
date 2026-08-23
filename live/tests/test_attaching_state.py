@@ -86,14 +86,14 @@ def test_the_screen_shows_attaching_while_the_gather_is_in_flight() -> None:
             body = attached_panel(app).body()
             assert "ATTACHING" in body and "QQQ" in body, (
                 f"the screen does not name the in-flight attach:\n{body}")
-            assert "ADR%" not in body, (
+            assert "ADR% used" not in body, (
                 f"a context row rendered before the gather completed — the "
                 f"screen could be mistaken for a finished attach:\n{body}")
             release.set()
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             after = attached_panel(app).body()
-            assert "ADR%" in after and "ATTACHING" not in after, (
+            assert "ADR% used" in after and "ATTACHING" not in after, (
                 f"the completed attach still shows ATTACHING or never landed "
                 f"its values:\n{after}")
     asyncio.run(go())
@@ -136,16 +136,16 @@ def test_re_attaching_drops_the_old_values_immediately() -> None:
         record = empty_record()
         record.attached.append(Attached(
             symbol="QQQ", since="09:31",
-            context={"ADR%": _stale_measured()}, rail={}))
+            context={"ADR% used": _stale_measured()}, rail={}))
         app = MomentumApp(record=record, md=BlockingFake(release=release))
         async with app.run_test(size=UAT_SIZE) as pilot:
             await pilot.pause()
             before = attached_panel(app).body()
-            assert "ADR%" in before, "the fixture did not seed a prior attach"
+            assert "ADR% used" in before, "the fixture did not seed a prior attach"
 
             await _type(pilot, "QQQ")
             mid = attached_panel(app).body()
-            assert "ADR%" not in mid, (
+            assert "ADR% used" not in mid, (
                 f"the previous attach's numbers are still on screen while "
                 f"the new attach for the SAME symbol is in flight — a value "
                 f"from the outgoing attach sitting under the new header is "
@@ -156,13 +156,41 @@ def test_re_attaching_drops_the_old_values_immediately() -> None:
             await pilot.app.workers.wait_for_complete()
             await pilot.pause()
             after = attached_panel(app).body()
-            assert "ADR%" in after and "ATTACHING" not in after
+            assert "ADR% used" in after and "ATTACHING" not in after
     asyncio.run(go())
 
 
 def _stale_measured():
     from core.indicators.context import Measured, Unit
     return Measured(value=2.0, sample="stale fixture", unit=Unit.PERCENT)
+
+
+# ---- 070 §6 — a re-attach inside the cooldown refuses whole, not partly --
+
+
+def test_a_re_attach_inside_the_cooldown_shows_one_line_and_nothing_else() -> None:
+    """`ATTACHED mockup — the context block and its states` v1.0 §6: the
+    panel's caption reads `queued · 11s`, the body is exactly the one
+    `queued` line, and the footer is `1 of 1 · end` — no ADR/RVOL/VWAP rows,
+    because step 3 never ran."""
+    async def go():
+        app = MomentumApp(md=Fake(cooldown=11))
+        async with app.run_test(size=UAT_SIZE) as pilot:
+            await pilot.pause()
+            await _type(pilot, "QQQ")
+            await pilot.app.workers.wait_for_complete()
+            await pilot.pause()
+            panel = attached_panel(app)
+            body = panel.body()
+            assert "queued · 11s" in body and "QQQ" in body, (
+                f"the queued badge did not render:\n{body}")
+            assert "(15s same-contract cooldown)" in body
+            assert "1 of 1 · end" in body, (
+                f"a row beyond the one queued line rendered:\n{body}")
+            assert "ADR% used" not in body and "RVOL" not in body and "VWAP" not in body, (
+                f"the context block rendered during a refused cooldown "
+                f"re-attach — step 3 must not have run:\n{body}")
+    asyncio.run(go())
 
 
 # ---- partial failure must not look like success -------------------------

@@ -101,27 +101,33 @@ def test_pacing_key_is_symbol_exchange_tick_type() -> None:
 # ---- through `IBKRMarketData.warm()`, against a recording transport -------
 
 
-def test_warm_dispatches_four_requests_for_a_symbol_with_no_sector() -> None:
+def test_warm_dispatches_three_requests_for_a_symbol_with_no_sector() -> None:
     """058 Part 1 + Part 2, together: no sector mapping means no ETF
-    requests, so the underlying's own four (the RTH/ETH daily pair, today,
-    and the 20-session intraday) are what `warm()` gathers — well under the
-    five-request ceiling, by construction rather than by stagger."""
+    requests, so the underlying's own three (the RTH daily, today, and the
+    20-session intraday) are what `warm()` gathers — well under the
+    five-request ceiling, by construction rather than by stagger.
+
+    **070 dropped this from four to three**, removing the `eth_dailies`
+    role from `_ROLES`: the ATTACHED panel no longer computes or renders
+    ATR, and TRADE (its only remaining surface) does not warm on attach.
+    """
     ib = RecordingManyIB()
     IBKRMarketData(ib).warm(NOSECTOR)
     assert len(ib.batches) == 1, "warm() must be ONE round trip, not several"
-    assert len(ib.batches[0]) == 4, (
-        f"expected 4 requests for a symbol with no sector, got "
+    assert len(ib.batches[0]) == 3, (
+        f"expected 3 requests for a symbol with no sector, got "
         f"{len(ib.batches[0])}")
 
 
-def test_warm_dispatches_six_requests_for_a_symbol_with_a_sector() -> None:
+def test_warm_dispatches_five_requests_for_a_symbol_with_a_sector() -> None:
     """The sector ETF adds its own today + 20-session pair — two more
     requests, for a DIFFERENT contract, so it does not push the underlying's
-    own pacing key anywhere near the limit."""
+    own pacing key anywhere near the limit. **070: five, not six** — see
+    `test_warm_dispatches_three_requests_for_a_symbol_with_no_sector`."""
     ib = RecordingManyIB()
     IBKRMarketData(ib).warm(QQQ)
-    assert len(ib.batches[0]) == 6, (
-        f"expected 6 requests for a symbol with a sector mapping, got "
+    assert len(ib.batches[0]) == 5, (
+        f"expected 5 requests for a symbol with a sector mapping, got "
         f"{len(ib.batches[0])}")
 
 

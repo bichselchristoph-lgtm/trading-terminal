@@ -183,33 +183,38 @@ def test_the_four_matched_levels_still_match() -> None:
             f"project has.")
 
 
-def test_atr20_is_extended_hours_and_reads_about_15_6() -> None:
-    """**The row that was wrong, at the period it renders under today.**
-    `13.14` against a true ~`15.6`, −16 %, under the pre-038 defect (RTH
-    instead of ETH). **065/B-091 separately moved the rendered period from 14
-    to 20** — unrelated to the basis bug this fixture was built for, and this
-    fixture still pins it: every bar's true range is exactly `ATR14 = 15.60`
-    (the fixture constant keeps its original name — it names the *value*, not
-    the period), so Wilder's RMA of a constant series is that constant **at
-    any window length**, and the expected value does not move with the period.
-
-    ATR's true range spans the prior close, so the gap across the close IS the
-    measurement — it must come off the series whose close-to-close relationship
-    is the real one. Computed on RTH bars it is a different quantity wearing
-    ATR's name, and it lands in the 3×ATR stop floor and therefore in the size.
+def test_atr_still_reads_about_15_6_though_070_removed_it_from_this_panel() -> None:
+    """**The externally-checked value survives; its wiring into ATTACHED does
+    not.** `13.14` against a true `~15.6`, −16 %, under the pre-038 defect
+    (RTH instead of ETH) — that history is real and this fixture (every ETH
+    bar's true range exactly `ATR14 = 15.60`) is the only externally-anchored
+    proof this project has that Wilder's RMA reads the gap correctly. **070,
+    ruled by Christoph 2026-08-23: no ATR anywhere in the ATTACHED panel —
+    TRADE's stop selector is its only surface in the whole terminal** — so
+    `_context_block` no longer computes it at all (confirmed: `"ATR20" not in
+    _attached().context`, in the refusal test below). This test therefore
+    calls `atr_d14` directly rather than through `attach()`, preserving the
+    external verification for whichever future task wires ATR into TRADE.
     """
-    atr = _attached().context["ATR20"]
-    assert atr.ok, f"ATR20 refused: {atr.unavailable}"
+    from core.indicators.context import atr_d14
+    atr = atr_d14(_eth_dailies())
+    assert atr.ok, f"atr_d14 refused: {atr.unavailable}"
     assert abs(atr.value - ATR14) < 0.01, (
-        f"ATR20 reads {atr.value:.2f}; the ETH fixture's true range is exactly "
-        f"{ATR14:.2f} on every bar. A value near 13.14 means the RTH series was "
-        f"used — the pre-038 defect.")
+        f"atr_d14 reads {atr.value:.2f}; the ETH fixture's true range is "
+        f"exactly {ATR14:.2f} on every bar. A value near 13.14 means the RTH "
+        f"series was used — the pre-038 defect.")
     assert atr.basis is not None and atr.basis.use_rth is False, (
-        "ATR20 must declare the extended-hours basis")
+        "ATR must declare the extended-hours basis")
     assert atr.basis.label == "04:00-20:00 ET"
-    assert "n=20" in atr.sample, (
-        f"ATR20 must actually be a 20-period Wilder RMA, not a renamed ATR14: "
-        f"{atr.sample!r}")
+
+
+def test_no_atr_anywhere_in_the_attached_context() -> None:
+    """**070 Part 3's leak check, against this file's own real fixture** — not
+    a synthetic stand-in. `B-091`/`B-028`'s shape: a field absent from
+    `CONTEXT_ORDER` but still reaching the record is not actually removed."""
+    context = _attached().context
+    assert "ATR20" not in context and "ATR14" not in context, (
+        f"an ATR key survives in the ATTACHED context: {sorted(context)}")
 
 
 def test_pdl_is_the_regular_session_low_and_not_the_extended_hours_low() -> None:
@@ -235,34 +240,30 @@ def test_pdl_is_the_regular_session_low_and_not_the_extended_hours_low() -> None
         "PDL must declare the regular session")
 
 
-def test_adr_is_regular_session_and_disagrees_with_atr_on_purpose() -> None:
-    """**ADR and ATR are both volatility and are computed differently, by design.**
-
-    ADR is the mean of each session's own high−low with **no gap term** — that
-    is what distinguishes it from ATR — so it measures the session actually
-    traded. If these two ever share a basis, the panel shows two numbers four
-    rows apart that a reader will compare and must not.
-    """
-    r = _attached()
-    adr, atr = r.context["ADR%"], r.context["ATR20"]
-    assert adr.ok and atr.ok
-    assert adr.basis.use_rth is True and atr.basis.use_rth is False
-    assert adr.basis.label != atr.basis.label, (
-        "ADR and ATR render the same basis label. They are computed on "
-        "different sessions on purpose, and the labels are what stop a reader "
-        "comparing them.")
+#: **070 retires this test, deliberately, rather than renaming it.** ADR and
+#: ATR were "computed differently, on purpose, and must never share a basis
+#: label" -- a property about two rows on one panel. 070 removes one of the
+#: two rows from the panel entirely (Christoph, 2026-08-23: no ATR in
+#: ATTACHED), so the property this test asserted no longer describes anything
+#: a reader can compare on screen. `test_atr_still_reads_about_15_6_though_
+#: 070_removed_it_from_this_panel` keeps the ADR-basis-is-RTH /
+#: ATR-basis-is-ETH facts alive independently, via `atr_d14` called directly.
 
 
 def test_adr_percent_is_not_pinned_against_tws() -> None:
     """**Recorded as an assertion so the omission cannot read as an oversight.**
 
-    `ADR%` and `ADR $` have no external check and must not acquire one from TWS:
-    TWS has no native ADR, so any figure it shows comes from a different
-    computation over a different bar set. This test exists to state that, and
-    asserts only that the row computes and declares its basis.
+    `ADR% used` and `ADR $` have no external check and must not acquire one
+    from TWS: TWS has no native ADR, so any figure it shows comes from a
+    different computation over a different bar set. This test exists to
+    state that, and asserts only that the row computes and declares its
+    basis. **070 renamed the key** from the raw `ADR%` (mean session
+    high/low, never itself rendered any more) to `ADR% used` (the complement
+    of the old `ADR%avail`, per Christoph's 2026-08-23 ruling) — the basis
+    (RTH, `09:30-16:00 ET`) is unchanged, because both are `ADR_BASIS`.
     """
-    adr = _attached().context["ADR%"]
-    assert adr.ok, f"ADR% refused: {adr.unavailable}"
+    adr = _attached().context["ADR% used"]
+    assert adr.ok, f"ADR% used refused: {adr.unavailable}"
     assert adr.basis is not None and adr.basis.label == "09:30-16:00 ET"
 
 
