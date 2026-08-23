@@ -498,7 +498,22 @@ class IBKRMarketData:
         **The fallback path only** — `warm()` (Part 2) is what a live attach
         actually goes through. This survives for any caller that reads a
         single role without warming first, which is every existing test of
-        `daily_bars`/`today_minutes`/etc. in isolation."""
+        `daily_bars`/`today_minutes`/etc. in isolation.
+
+        **078/B-133: consults `_PacingGuard` too, same as `warm()` does.**
+        Every historical request passes the same guard, whichever path
+        issues it — before this, a `warm()` failure meant every subsequent
+        fallback request for the same key was invisible to `_seen`, so a
+        second wave of requests against a key already near the ceiling
+        could push it over with nothing to catch it. 075 measured no
+        pacing violation across twelve live runs with the guard entirely
+        absent here — latent, not observed, and this closes it either way.
+        A refusal raised here propagates exactly like any other `_bars`
+        exception already does (`daily_bars`/`today_minutes`/etc. in
+        `attach.py` each catch it and render `unavailable (reason)`), so no
+        caller needed to change to receive it correctly.
+        """
+        self._pacing.check(_pacing_key(c), 1, now=time.monotonic())
         raw = self.ib.reqHistoricalData(
             _contract_for(c), **_request_kwargs(duration, size, use_rth=use_rth))
         return _convert(raw)

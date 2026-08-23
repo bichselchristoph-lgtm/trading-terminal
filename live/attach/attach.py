@@ -180,7 +180,7 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
                     else f"no tick slot - detach one of {in_use} to free it")
 
     # ---- step 3: three historical requests, each failing alone -------------
-    r.context, r.rail = _context_block(r.contract, md)
+    r.context, r.rail, warm_failure = _context_block(r.contract, md)
 
     # ---- step 4: the tape. DOES NOT GATE STEP 3 ---------------------------
     if r.slot_state.startswith("no tick slot"):
@@ -206,17 +206,55 @@ def attach(symbol: str, md: MarketData, *, origin: str = "typed") -> AttachResul
     # scanning the header cannot mistake a partial attach for a complete one.
     values = {**r.context, **r.rail}
     refused = [k for k, v in values.items() if getattr(v, "ok", True) is False]
-    if refused:
+    # **078/B-130.** `warm_failure` and `refused` are independent facts and
+    # neither may silently swallow the other. A row can refuse for reasons
+    # that have nothing to do with `warm()` (PMH/PML with no pre-market
+    # bars yet, for instance) — if that alone suppressed the degraded-gather
+    # sentence, the one morning both happen together is exactly the morning
+    # this task exists to make legible, and it would go quiet again.
+    if refused and warm_failure:
+        r.partial = (f"{len(refused)} of {len(values)} rows unavailable "
+                     f"(gather degraded - {warm_failure})")
+    elif refused:
+        # **058 Part 3.** A screen-level statement that the gather
+        # completed with refusals — the per-row `— (reason)` cells already
+        # say WHICH rows, this says the attach as a whole is not a clean
+        # one, so a reader scanning the header cannot mistake a partial
+        # attach for a complete one.
         r.partial = f"{len(refused)} of {len(values)} rows unavailable"
+    elif warm_failure:
+        # `warm()` failed but every row still measured — each one fell
+        # back to its own individual, unguarded request and got there
+        # anyway, so `refused` above is empty and this attach would
+        # otherwise look completely clean. It was not: reusing the SAME
+        # field, the SAME rendered row and the SAME `flagged, not an
+        # error` suffix `refused` already uses (no new token, no new
+        # colour, no new row — 078 §3) — just a different sentence for a
+        # different cause, since "N of M rows unavailable" would be false
+        # here (every row DID measure; the fast, guarded path did not).
+        r.partial = f"gather degraded - {warm_failure}"
 
     r.attached = True
     return r
 
 
-def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], dict[str, Measured]]:
+def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], dict[str, Measured], str]:
     """The three requests. **Each row refuses on its own** — a failure in the
-    intraday request must not blank ADR, which came from a different call."""
+    intraday request must not blank ADR, which came from a different call.
+
+    **078/B-130: the third return value.** `warm()`'s own failure used to be
+    a bare `except Exception: pass` — swallowed with no trace anywhere. 075
+    measured this live: `warm()` timed out on 3 of 6 AMZN attaches, every
+    per-role read then fell back to its own individual request, and every
+    one of those fallbacks succeeded — so `refused` (below, in `attach()`)
+    stayed empty and the attach LOOKED clean. It was not: it took the
+    unguarded, pre-058 sequential path for 70-83 extra seconds, and nothing
+    on screen or in any log said so. `warm_failure` carries the reason
+    (empty string when `warm()` did not raise) so `attach()` can surface it
+    even when every row still measured successfully.
+    """
     out: dict[str, Measured] = {}
+    warm_failure = ""
 
     # --- 058 Part 2: fire every independent historical request at once -----
     #
@@ -227,8 +265,8 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
     # rows that a second, working round trip could still answer.
     try:
         md.warm(c)
-    except Exception:                              # noqa: BLE001
-        pass
+    except Exception as exc:                       # noqa: BLE001
+        warm_failure = _reason(exc)
 
     # --- request 1: dailies, ONCE PER DISTINCT BASIS -----------------------
     #
@@ -401,7 +439,7 @@ def _context_block(c: Contract, md: MarketData) -> tuple[dict[str, Measured], di
                       # `ADR $` no longer renders (042 Part 3) so it is no
                       # longer in `out` — passed directly from the local.
                       adr_dol=dol)
-    return out, rail
+    return out, rail, warm_failure
 
 
 def _clock(ts: str) -> str:

@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-23T17:39:50+02:00
+last_attempt : 2026-08-23T18:28:33+02:00
 
-last_success : 2026-08-23T17:39:51+02:00
+last_success : 2026-08-23T18:28:33+02:00
 
-outcome      : 5 new - momentum-code-handoff/done/075-attach-still-slow-measured.md, momentum-code-handoff/inbox/075-for-code-task-attach-still-slow.md, momentum-code-handoff/inbox/076-for-code-task-tws-order-latency.md, momentum-code-handoff/inbox/077-for-code-task-levels-rail.md, momentum-code-handoff/verify-output.md
+outcome      : 3 new - momentum-code-handoff/done/078-surface-the-silent-degrade.md, momentum-code-handoff/inbox/078-for-code-task-surface-the-silent-degrade.md, momentum-code-handoff/verify-output.md
 
-head         : 11309f6c9dc04f297df777b1456c14c5c45e5065 072: attaching a second symbol accumulated instead of replacing the first -- and the first fix broke SPEC.md 4.2 before it landed
+head         : 8c1a9f9e3cadc3e04827f5c034d0e9be8fcc7128 075: a symbol switch takes over twenty seconds -- measured live, not fixed
