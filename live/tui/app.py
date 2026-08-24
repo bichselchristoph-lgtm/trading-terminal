@@ -1193,6 +1193,13 @@ class MomentumApp(App):
         self._streams = []
         self._attach_generation += 1
         self._stage2_inputs = Stage2Inputs()
+        # **088.** Captured once per attach, the same moment `since` (below,
+        # at `_finish_stage1`) is — `compute_context_and_rail` cannot read a
+        # clock itself (it is called from `core`-adjacent, basis-only code
+        # that must stay a pure function of `Stage2Inputs`), so the ET
+        # calendar date is threaded in here, from the one layer allowed to
+        # touch one.
+        self._stage2_inputs.today_et = datetime.now(EASTERN).strftime("%Y-%m-%d")
         # **083.** Loaded fresh per attach — `config/rvol.yaml` is small and
         # this makes an edited anchor take effect on the next attach without
         # a restart. A load failure falls back to `Stage2Inputs`'s own

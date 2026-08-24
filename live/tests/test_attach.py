@@ -88,12 +88,24 @@ class Fake:
         wrong flag — the fixture would be agreeing with itself. The ETH series
         carries a wider high/low, which is what extended hours actually does to a
         daily bar and what `SPEC.md:999` wrongly said was impossible.
+
+        **088.** Every test here drives `MomentumApp` for real, so
+        `_begin_attach` stamps `Stage2Inputs.today_et` from the ACTUAL
+        current ET date — `dailies()`'s own fixture dates are fixed in
+        `2026-06`, which is "today" on no machine. Without this, every one
+        of those tests would trip 088's day-boundary refusal on `ADR% used`,
+        which is not what any of them are testing. The last bar's date is
+        stamped to today; nothing else about the series changes.
         """
         self._maybe("daily")
         self.basis_asked.append(basis)
-        if basis.use_rth:
-            return dailies()
-        return dailies(hi=104.0, lo=98.0)
+        bars = dailies() if basis.use_rth else dailies(hi=104.0, lo=98.0)
+        from dataclasses import replace
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        bars[-1] = replace(bars[-1], ts=today)
+        return bars
     def intraday_sessions(self, c, basis=None): self._maybe("intraday"); return [minutes(30) for _ in range(20)]
     def today_minutes(self, c): self._maybe("today"); return minutes(30)
     def sector_today_minutes(self, c): return minutes(30) if self.sector else None

@@ -278,6 +278,18 @@ class Stage2Inputs:
     #: default) exists so code constructing `Stage2Inputs` directly — every
     #: test that predates this task — keeps working.
     pending_timeout_s: float = 90.0
+    #: **088.** Today's ET calendar date (`YYYY-MM-DD`), captured once by
+    #: `app.py`'s `_begin_attach` the same way `since` is. **Not a basis and
+    #: not a setting** — it is wall-clock fact, which `core` may never read
+    #: (its own docstring: "nothing here fetches, caches, writes"), so it is
+    #: threaded in from the one layer allowed to touch a clock.
+    #:
+    #: `""` (the default every test that predates 088 leaves it at) means
+    #: *unknown* and the day-boundary check below does not run — the same
+    #: absent-means-pending idiom `rvol_basis`'s own default note uses,
+    #: chosen so this field's arrival changes no test this task does not
+    #: itself write.
+    today_et: str = ""
 
 
 def _adr_terms(rth_dailies: Sequence[Bar]) -> tuple[Measured, Measured, float]:
@@ -327,19 +339,44 @@ def compute_context_and_rail(
     # the price stream's** — unchanged from the retired `_context_block`.
     # `adr_used`'s existing call is reused verbatim; only WHEN it fires
     # changed, not what it is fed.
+    #
+    # **088.** `daily_bars(ADR_BASIS)` is `useRTH=True`, `endDateTime=""` —
+    # IBKR's own answer to "now". Before today's RTH session has printed a
+    # single trade, that request has nothing to report for today at all, so
+    # `rth_dailies[-1]` is the LAST COMPLETED session, not today in
+    # progress. Read directly: this is Candidate A, not Candidate B — the
+    # numerator (`current`, `todays_open`) and the denominator (`ADR_BASIS`)
+    # were never on different bases; both are the same `rth_dailies[-1]`
+    # RTH bar, so there is no divergence to guard, only a stale bar being
+    # read as a fresh one. A whole closed session's `high/low` fed to
+    # `adr_used` as if it were partial produced 106.8% at a 04:00 attach —
+    # a full day's range over a 20-session average lands near 100% by
+    # construction, and the "8" of drift is the ordinary day-to-day spread
+    # any single session has around its own mean.
     dol: Optional[Measured] = None
     if inp.rth_dailies_failed:
         out["ADR% used"] = Measured.absent(inp.rth_dailies_failed)
     elif inp.rth_dailies:
-        pct, dol, todays_open = _adr_terms(inp.rth_dailies)
-        out["ADR% used"] = adr_used(inp.rth_dailies[-1].close, todays_open, dol)
-        # **The SMA stack is UNRULED, computed and recorded, never
-        # displayed** (unchanged from the retired `_context_block`) — the
-        # mockup keeps it off this panel; `app.py`'s `CONTEXT_ORDER` is what
-        # keeps it off screen, not this function.
-        sma_price = inp.rth_dailies[-1].close
-        for n in (10, 20, 50):
-            out[f"ext {n}"] = extension_in_adr(sma_price, sma(inp.rth_dailies, n), dol)
+        last_bar_date = inp.rth_dailies[-1].ts[:10]
+        if inp.today_et and last_bar_date != inp.today_et:
+            # **The refusal, not the computation.** `RVOL rth`'s "no bars
+            # today" is the precedent: a row that knows its own window has
+            # not started says so, rather than answering a different
+            # question with a well-formed number. Distinguishable from both
+            # a computed value and `inp.rth_dailies_failed`'s fetch refusal
+            # above — three states, not two.
+            out["ADR% used"] = Measured.absent("session not started")
+        else:
+            pct, dol, todays_open = _adr_terms(inp.rth_dailies)
+            out["ADR% used"] = adr_used(inp.rth_dailies[-1].close, todays_open, dol)
+            # **The SMA stack is UNRULED, computed and recorded, never
+            # displayed** (unchanged from the retired `_context_block`) — the
+            # mockup keeps it off this panel; `app.py`'s `CONTEXT_ORDER` is
+            # what keeps it off screen, not this function.
+            sma_price = inp.rth_dailies[-1].close
+            for n in (10, 20, 50):
+                out[f"ext {n}"] = extension_in_adr(
+                    sma_price, sma(inp.rth_dailies, n), dol)
     # else: pending.
 
     # --- RVOL -- own reading needs sessions AND the price stream -----------

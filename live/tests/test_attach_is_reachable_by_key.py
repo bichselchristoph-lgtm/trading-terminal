@@ -433,8 +433,14 @@ class FakeIB:
         size, duration = kw["barSizeSetting"], kw["durationStr"]
         if size == "1 day":
             n = 60 if duration == DAILY_DURATION else 260
-            return [StubBar(f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
+            bars = [StubBar(f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
                             100.0 + (i % 5), 1_000_000) for i in range(n)]
+            # **088.** `drive()` runs the real `_begin_attach`, which stamps
+            # `Stage2Inputs.today_et` from the actual current date — without
+            # this, `ADR% used` trips 088's day-boundary refusal on every
+            # test here, since none of these bars is dated today.
+            bars[-1].date = TODAY
+            return bars
         if duration == "1 D":                     # today's minutes
             return [StubBar(f"{TODAY} {9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00",
                             101.0, 1000.0) for i in range(30)]
