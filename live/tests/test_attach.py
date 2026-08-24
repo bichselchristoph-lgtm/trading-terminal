@@ -136,7 +136,7 @@ def stage2_of(md, c: Contract) -> tuple[dict, dict]:
     except Exception as exc:                            # noqa: BLE001
         inp.rth_dailies_failed = reason(exc)
     try:
-        inp.sessions = list(md.intraday_sessions(c, inp.rvol_basis))
+        inp.sessions = rvol_curve(list(md.intraday_sessions(c, inp.rvol_basis)))
     except Exception as exc:                            # noqa: BLE001
         inp.sessions_failed = reason(exc)
     if inp.has_sector:
@@ -147,7 +147,7 @@ def stage2_of(md, c: Contract) -> tuple[dict, dict]:
             inp.sector_today_failed = reason(exc)
         try:
             ss = md.sector_sessions(c, inp.rvol_basis)
-            inp.sector_sessions = list(ss) if ss is not None else None
+            inp.sector_sessions = rvol_curve(list(ss)) if ss is not None else None
         except Exception as exc:                        # noqa: BLE001
             inp.sector_sessions_failed = reason(exc)
     return compute_context_and_rail(inp)

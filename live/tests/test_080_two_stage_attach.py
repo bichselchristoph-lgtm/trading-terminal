@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 
-from core.indicators.context import ADR_BASIS, INTRADAY_BASIS, Measured, Unit
+from core.indicators.context import ADR_BASIS, INTRADAY_BASIS, Measured, Unit, rvol_curve
 
 from live.attach.attach import Contract, Stage2Inputs, compute_context_and_rail
 from live.tui.app import (STALE_THRESHOLD_S, attach_metrics_rows, context_rows,
@@ -65,14 +65,14 @@ def test_green_rows_land_independently_not_as_one_paint() -> None:
         f"RVOL landed before its own input (sessions) arrived: {sorted(ctx)}")
     assert rail, "the rail must land alongside rth_dailies"
 
-    inp.sessions = [_minutes() for _ in range(20)]
+    inp.sessions = rvol_curve([_minutes() for _ in range(20)])
     ctx, _rail = compute_context_and_rail(inp)
     assert "RVOL" in ctx and ctx["RVOL"].ok, "RVOL must land once sessions arrives"
     assert "RVOL_rel" not in ctx, (
         "the sector reading must stay pending until the sector's OWN inputs land")
 
     inp.sector_today = _minutes()
-    inp.sector_sessions = [_minutes() for _ in range(20)]
+    inp.sector_sessions = rvol_curve([_minutes() for _ in range(20)])
     ctx, _rail = compute_context_and_rail(inp)
     assert ctx["RVOL_rel"].ok, "the sector reading lands once ITS inputs arrive"
 

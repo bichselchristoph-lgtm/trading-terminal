@@ -65,6 +65,7 @@ import sys
 import time
 import unicodedata
 
+from collections import OrderedDict
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -78,7 +79,7 @@ from textual.widgets import Input, Static
 # local imports below were the whole of this module's reach, and `attach` was not
 # among them — which is the finding stated as a line of code.
 from core.indicators.context import (ADR_BASIS, ADR_DEFAULT_N, Bar,
-                                     SessionBasis)
+                                     SessionBasis, rvol_curve)
 
 from ..attach.attach import (COOLDOWN_S, Contract, MarketData, Stage2Inputs,
                              attach, compute_context_and_rail)
@@ -100,6 +101,67 @@ from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
 #: unfitted wherever provenance shows (this module has no provenance line
 #: of its own to carry it on; the done-note states it).
 STALE_THRESHOLD_S = 20.0
+
+#: **084 Part 0 item 2.** No definition of "the trading day" for caching
+#: purposes existed anywhere in the tree before this task —
+#: `DayRecord.session_date` is a field nothing sets or reads, confirmed by
+#: grep, not reused here since populating it is a separate, larger
+#: decision this task does not need to make. Defined fresh, for the
+#: cache's own narrow purpose: the calendar date in US/Eastern. A trading-
+#: day cache does not need `risk.yaml`'s 09:30 P&L-rollover boundary —
+#: only "did the date change since this was fetched" — so midnight ET is
+#: the right, simpler boundary here.
+def _session_date() -> str:
+    return datetime.now(EASTERN).strftime("%Y-%m-%d")
+
+
+#: **084.** A session cycles through a handful of tickers repeatedly, not
+#: dozens — 20 covers a generous watchlist with headroom. Bounded so the
+#: cache cannot grow without limit across a long session; the
+#: least-recently-SERVED entry (not merely the oldest) is evicted first,
+#: so a bound that IS hit drops the ticker least likely to be revisited
+#: next rather than the one most recently re-attached.
+RVOL_CURVE_CACHE_MAX = 20
+
+
+class RvolCurveCache:
+    """**084 Part 1.** The REDUCED curve only — ~390 medians
+    (`rvol_curve`'s own output), never the ~19,200 raw bars they were
+    built from; caching those would multiply the memory cost by fifty for
+    no benefit, per the task's own instruction.
+
+    **Key: `(symbol_or_etf, anchor_word, session_date)` — all three.**
+    A changed anchor or a new trading day misses rather than serving
+    stale/mismatched data (serving an RTH curve to an ETH numerator is
+    exactly B-049, arriving through a new door). Keyed on the SECTOR ETF
+    symbol for sector entries, never on the attached symbol — two symbols
+    mapping to the same sector share one entry, which is the saving this
+    exists to protect.
+
+    **Read and write only from the main thread** (`app.py`'s own
+    discipline for every mutation of anything `render_panels` can see) —
+    `get()` mutates LRU order as a side effect, so this is not
+    thread-safe to call from a worker.
+    """
+
+    def __init__(self, max_entries: int = RVOL_CURVE_CACHE_MAX) -> None:
+        self._max = max_entries
+        self._data: "OrderedDict[tuple[str, str, str], dict[str, float]]" = OrderedDict()
+
+    def get(self, key: tuple[str, str, str]) -> Optional[dict]:
+        curve = self._data.get(key)
+        if curve is not None:
+            self._data.move_to_end(key)
+        return curve
+
+    def put(self, key: tuple[str, str, str], curve: dict) -> None:
+        # **Never a partial or empty curve** — a cache write happens only
+        # from a SUCCESSFUL, complete fetch (`_apply_role_landed`); a
+        # failed fetch calls `_apply_role_error`, which never touches this.
+        self._data[key] = curve
+        self._data.move_to_end(key)
+        while len(self._data) > self._max:
+            self._data.popitem(last=False)
 
 #: Roles whose bars arrive pre-split by session (a list of lists), so their
 #: "received" count sums across sessions rather than counting the outer list.
@@ -951,6 +1013,12 @@ class MomentumApp(App):
         self._stage2_inputs = Stage2Inputs()
         self._stage1_started_at: Optional[float] = None
         self._stage2_started_at: Optional[float] = None
+        #: **084.** Survives ACROSS attaches, deliberately — this is the
+        #: whole point of the cache (084's own §1: "Christoph switches
+        #: between the same few tickers repeatedly through a session").
+        #: Never reset by `_begin_attach`; cancel-on-switch cancels
+        #: STREAMS, not this.
+        self._rvol_curve_cache = RvolCurveCache()
         super().__init__()
 
     @property
@@ -1191,13 +1259,13 @@ class MomentumApp(App):
             self.record.attach_refusal = ""
             self.record.attach_queued = ""
             await self._rerender()
-            self._dispatch_stage2(result.contract, generation)
+            await self._dispatch_stage2(result.contract, generation)
             return
         await self._rerender()
 
     # ---- 080, stage 2: independent landing --------------------------------
 
-    def _dispatch_stage2(self, contract: Contract, generation: int) -> None:
+    async def _dispatch_stage2(self, contract: Contract, generation: int) -> None:
         """**080 Part 1/Part 0 item 3.** Dispatched the instant stage 1's
         contract resolves — built and tested as ROUGHLY the same cost as
         sequencing it after stage 1, since every call below is already an
@@ -1209,6 +1277,12 @@ class MomentumApp(App):
         Two `keepUpToDate` streams (symbol, sector — only if a mapping
         exists) and up to three one-shot historical requests, each its own
         worker, each landing and repainting independently.
+
+        **084: the two curve-shaped roles (`sessions`/`sector_sessions`)
+        check the cache FIRST, on this thread, before dispatching anything.**
+        A hit is applied synchronously — no worker starts, no wire call, no
+        `_PacingGuard` consultation, exactly per the task's own instruction
+        — and a miss dispatches the worker exactly as before.
         """
         self._stage2_inputs.has_sector = bool(contract.sector_etf)
         self._stage2_started_at = time.monotonic()
@@ -1237,17 +1311,52 @@ class MomentumApp(App):
             functools.partial(self._role_worker, contract, generation, "rth_dailies"),
             thread=True, exclusive=False, group="attach",
             name=f"role-rth-dailies-{contract.symbol}")
-        self.run_worker(
-            functools.partial(self._role_worker, contract, generation, "sessions",
-                              rvol_basis),
-            thread=True, exclusive=False, group="attach",
-            name=f"role-sessions-{contract.symbol}")
-        if contract.sector_etf:
+
+        a = self.record.attached[0] if self.record.attached else None
+        date = _session_date()
+        anchor = anchor_word(rvol_basis)
+        any_cache_hit = False
+
+        own_key = (contract.symbol, anchor, date)
+        cached_own = self._rvol_curve_cache.get(own_key)
+        if cached_own is not None and a is not None:
+            self._apply_cached_curve(a, "sessions", cached_own)
+            any_cache_hit = True
+        else:
             self.run_worker(
-                functools.partial(self._role_worker, contract, generation,
-                                  "sector_sessions", rvol_basis),
+                functools.partial(self._role_worker, contract, generation, "sessions",
+                                  rvol_basis, own_key),
                 thread=True, exclusive=False, group="attach",
-                name=f"role-sector-sessions-{contract.symbol}")
+                name=f"role-sessions-{contract.symbol}")
+
+        if contract.sector_etf:
+            sector_key = (contract.sector_etf, anchor, date)
+            cached_sector = self._rvol_curve_cache.get(sector_key)
+            if cached_sector is not None and a is not None:
+                self._apply_cached_curve(a, "sector_sessions", cached_sector)
+                any_cache_hit = True
+            else:
+                self.run_worker(
+                    functools.partial(self._role_worker, contract, generation,
+                                      "sector_sessions", rvol_basis, sector_key),
+                    thread=True, exclusive=False, group="attach",
+                    name=f"role-sector-sessions-{contract.symbol}")
+
+        if any_cache_hit:
+            await self._rerender()
+
+    def _apply_cached_curve(self, a: Attached, role: str, curve: dict) -> None:
+        """**084.** A cache hit, applied the same way a fresh landing is —
+        `wall_s=0.0` and no bar count, since nothing was requested; **no
+        wire call, no `_PacingGuard` consultation, because no request was
+        made** (the task's own words)."""
+        a.metrics.requests[role] = RequestMetrics(role=role, wall_s=0.0, bars_received=None)
+        if role == "sessions":
+            self._stage2_inputs.sessions = curve
+        elif role == "sector_sessions":
+            self._stage2_inputs.sector_sessions = curve
+        self._recompute_and_merge(a)
+        self._note_row_landing()
 
     def _stream_worker(self, owner: Contract, generation: int, which: str,
                        stream_contract: Contract) -> None:
@@ -1309,7 +1418,8 @@ class MomentumApp(App):
         await self._rerender()
 
     def _role_worker(self, contract: Contract, generation: int, role: str,
-                     rvol_basis: Optional[SessionBasis] = None) -> None:
+                     rvol_basis: Optional[SessionBasis] = None,
+                     cache_key: Optional[tuple] = None) -> None:
         try:
             asyncio.get_event_loop()
         except RuntimeError:
@@ -1317,11 +1427,20 @@ class MomentumApp(App):
         started = time.monotonic()
         try:
             if role == "rth_dailies":
-                bars = self.md.daily_bars(contract, ADR_BASIS)
+                payload = self.md.daily_bars(contract, ADR_BASIS)
+                bars_received = _bar_count(role, payload)
             elif role == "sessions":
-                bars = self.md.intraday_sessions(contract, rvol_basis)
+                raw = self.md.intraday_sessions(contract, rvol_basis)
+                bars_received = _bar_count(role, raw)
+                # **084 Part 1: reduce HERE, on the worker thread — CPU-bound,
+                # not I/O, so this costs nothing extra to do off the main
+                # thread.** `_apply_role_landed` (and the cache) only ever
+                # see the reduced curve, never the ~19,200 raw bars.
+                payload = rvol_curve(raw)
             elif role == "sector_sessions":
-                bars = self.md.sector_sessions(contract, rvol_basis)
+                raw = self.md.sector_sessions(contract, rvol_basis)
+                bars_received = _bar_count(role, raw)
+                payload = rvol_curve(raw)
             else:                                        # pragma: no cover
                 raise ValueError(f"unknown stage-2 role {role!r}")
         except Exception as exc:                        # noqa: BLE001
@@ -1329,21 +1448,29 @@ class MomentumApp(App):
                                   time.monotonic() - started, _reason_str(exc))
             return
         self.call_from_thread(self._apply_role_landed, generation, role,
-                              time.monotonic() - started, bars)
+                              time.monotonic() - started, payload, bars_received,
+                              cache_key)
 
     async def _apply_role_landed(self, generation: int, role: str, wall_s: float,
-                                 bars) -> None:
+                                 payload, bars_received: Optional[int],
+                                 cache_key: Optional[tuple] = None) -> None:
         if generation != self._attach_generation or not self.record.attached:
             return
         a = self.record.attached[0]
         a.metrics.requests[role] = RequestMetrics(
-            role=role, wall_s=wall_s, bars_received=_bar_count(role, bars))
+            role=role, wall_s=wall_s, bars_received=bars_received)
         if role == "rth_dailies":
-            self._stage2_inputs.rth_dailies = bars
+            self._stage2_inputs.rth_dailies = payload
         elif role == "sessions":
-            self._stage2_inputs.sessions = bars
+            self._stage2_inputs.sessions = payload
         elif role == "sector_sessions":
-            self._stage2_inputs.sector_sessions = bars
+            self._stage2_inputs.sector_sessions = payload
+        # **084 Part 4: never a partial or empty curve.** This method only
+        # runs on a SUCCESSFUL landing — `_apply_role_error` is the failure
+        # path and never touches the cache — so a cache write here is
+        # always a complete, real curve.
+        if cache_key is not None and role in ("sessions", "sector_sessions"):
+            self._rvol_curve_cache.put(cache_key, payload)
         self._recompute_and_merge(a)
         self._note_row_landing()
         await self._rerender()

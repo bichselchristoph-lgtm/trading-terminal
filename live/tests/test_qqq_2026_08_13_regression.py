@@ -46,7 +46,7 @@ if str(REPO) not in sys.path:
 
 from types import SimpleNamespace
 
-from core.indicators.context import ADR_BASIS, Bar
+from core.indicators.context import ADR_BASIS, Bar, rvol_curve
 from live.attach.attach import Contract, Stage2Inputs, attach, compute_context_and_rail
 
 QQQ = Contract(symbol="QQQ", con_id=320227571, exchange="SMART", sector_etf=None)
@@ -174,7 +174,7 @@ def _attached():
     inp = Stage2Inputs(has_sector=False)
     inp.today = fixture.today_minutes(QQQ)
     inp.rth_dailies = fixture.daily_bars(QQQ, ADR_BASIS)
-    inp.sessions = fixture.intraday_sessions(QQQ)
+    inp.sessions = rvol_curve(fixture.intraday_sessions(QQQ))
     ctx, rail = compute_context_and_rail(inp)
     return SimpleNamespace(context=ctx, rail=rail, contract=r.contract,
                            attached=r.attached, qualified=r.qualified)

@@ -45,8 +45,8 @@ from core.indicators.context import (ADR_BASIS, Bar, INTRADAY_BASIS, Measured,
                                      PRIOR_DAY_BASIS, SMA_BASIS, SessionBasis,
                                      Unit, adr_dollar, adr_pct, adr_used,
                                      cumulative_volume, extension_in_adr,
-                                     level_rail, rvol_at, rvol_curve,
-                                     rvol_rel, sma, vwap_from_bars)
+                                     level_rail, rvol_at, rvol_rel, sma,
+                                     vwap_from_bars)
 from .streaming import StreamHandle
 
 #: The three origins, recorded from day one **even though only `typed` exists.**
@@ -252,9 +252,16 @@ class Stage2Inputs:
     sector_today_failed: str = ""
     rth_dailies: Optional[Sequence[Bar]] = None
     rth_dailies_failed: str = ""
-    sessions: Optional[Sequence[Sequence[Bar]]] = None
+    #: **084: the REDUCED curve (`rvol_curve`'s own output — ~390 medians,
+    #: `{"HH:MM": float}`), not raw session bars.** `app.py` reduces the
+    #: instant raw bars land (or serves an already-reduced curve straight
+    #: from its cache on a hit) — this field never holds the 19,200-bar
+    #: list that would multiply the cache's memory cost by fifty for no
+    #: benefit. `compute_context_and_rail` below reads it directly with no
+    #: further reduction.
+    sessions: Optional[dict[str, float]] = None
     sessions_failed: str = ""
-    sector_sessions: Optional[Sequence[Sequence[Bar]]] = None
+    sector_sessions: Optional[dict[str, float]] = None
     sector_sessions_failed: str = ""
     #: **083.** RVOL's basis — the ONE object both halves of the ratio read.
     #: `app.py` sets this from `live.attach.rvol_config.load_rvol_basis()`
@@ -344,7 +351,11 @@ def compute_context_and_rail(
         own = Measured.absent(inp.sessions_failed)
         out["RVOL"] = own
     elif inp.sessions and today_for_rvol:
-        own = rvol_at(today_for_rvol, rvol_curve(inp.sessions))
+        # **084.** `inp.sessions` is already the REDUCED curve — no
+        # `rvol_curve()` call here any more; a cache hit and a fresh fetch
+        # reach this line in the identical shape, which is what makes them
+        # produce IDENTICAL readings rather than merely close ones.
+        own = rvol_at(today_for_rvol, inp.sessions)
         out["RVOL"] = own
     elif inp.sessions is not None and not today_for_rvol:
         # Sessions landed with no bars at all -- a real, named empty result,
@@ -368,7 +379,7 @@ def compute_context_and_rail(
                 out["RVOL_rel"] = Measured.absent(reason)
             out["RVOL_sector"] = Measured.absent(reason)
         elif inp.sector_sessions and sector_today_for_rvol:
-            sector_rvol = rvol_at(sector_today_for_rvol, rvol_curve(inp.sector_sessions))
+            sector_rvol = rvol_at(sector_today_for_rvol, inp.sector_sessions)
             out["RVOL_sector"] = sector_rvol
             if own is not None:
                 out["RVOL_rel"] = rvol_rel(own, sector_rvol)

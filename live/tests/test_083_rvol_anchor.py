@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from core.indicators.context import Bar, Measured, SessionBasis, Unit
+from core.indicators.context import Bar, Measured, SessionBasis, Unit, rvol_curve
 
 from live.attach.attach import Contract, Stage2Inputs, compute_context_and_rail
 from live.attach.rvol_config import anchor_word, load_rvol_basis
@@ -61,7 +61,7 @@ def test_part0_the_config_default_is_rth() -> None:
 def test_green_rth_anchor_excludes_premarket_from_the_numerator() -> None:
     inp = Stage2Inputs(has_sector=False, rvol_basis=RTH_BASIS)
     inp.today = _today_with_premarket()
-    inp.sessions = [_rth_session() for _ in range(20)]
+    inp.sessions = rvol_curve([_rth_session() for _ in range(20)])
     ctx, _rail = compute_context_and_rail(inp)
     # 6 pre-market bars * 100 excluded; only the 6 RTH bars * 200 counted.
     assert ctx["RVOL"].ok
@@ -75,7 +75,7 @@ def test_green_rth_anchor_excludes_premarket_from_the_numerator() -> None:
 def test_green_eth_anchor_includes_premarket_and_row_reads_eth() -> None:
     inp = Stage2Inputs(has_sector=False, rvol_basis=ETH_BASIS)
     inp.today = _today_with_premarket()
-    inp.sessions = [_rth_session() for _ in range(20)]
+    inp.sessions = rvol_curve([_rth_session() for _ in range(20)])
     ctx, _rail = compute_context_and_rail(inp)
     assert ctx["RVOL"].ok
 
@@ -117,8 +117,8 @@ def test_divergence_numerator_filter_and_curve_request_read_the_same_object() ->
 
     # Exactly what `app.py`'s `_role_worker` does: pass `inp.rvol_basis`
     # itself to the request, never a copy or a re-derived value.
-    inp.sessions = md.intraday_sessions(QQQ, inp.rvol_basis)
-    inp.sector_sessions = md.sector_sessions(QQQ, inp.rvol_basis)
+    inp.sessions = rvol_curve(md.intraday_sessions(QQQ, inp.rvol_basis))
+    inp.sector_sessions = rvol_curve(md.sector_sessions(QQQ, inp.rvol_basis))
 
     assert md.recorded["sessions"] is inp.rvol_basis, (
         "the sessions request used a DIFFERENT basis object than "
@@ -141,7 +141,7 @@ def test_divergence_mutating_the_one_object_moves_both_halves_together() -> None
     cached or independently-read second value anywhere to lag behind."""
     inp = Stage2Inputs(has_sector=False, rvol_basis=RTH_BASIS)
     inp.today = _today_with_premarket()
-    inp.sessions = [_rth_session() for _ in range(20)]
+    inp.sessions = rvol_curve([_rth_session() for _ in range(20)])
     ctx_rth, _ = compute_context_and_rail(inp)
 
     inp.rvol_basis = ETH_BASIS
