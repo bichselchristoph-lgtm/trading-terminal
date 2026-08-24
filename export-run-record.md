@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-24T12:38:07+02:00
+last_attempt : 2026-08-24T13:54:57+02:00
 
-last_success : 2026-08-24T12:38:07+02:00
+last_success : 2026-08-24T13:54:57+02:00
 
-outcome      : 4 new - momentum-code-handoff/done/087-for-code-task-repaint-path.md, momentum-code-handoff/inbox/087-for-code-task-repaint-path.md, momentum-code-handoff/inbox/088-for-code-task-adr-percent-day-boundary.md, momentum-code-handoff/verify-output.md
+outcome      : 3 new - momentum-code-handoff/done/089-for-code-task-084-live-measurement.md, momentum-code-handoff/inbox/089-for-code-task-084-live-measurement.md, momentum-code-handoff/verify-output.md
 
-head         : bebeb1884520ab3208ee44476e09661a148cdef1 086: twelve red guards triaged, file by file, nothing fixed (B-101, B-108)
+head         : ef89ea5d06ae1c9311df1269cf31c9214605ad61 088: ADR% used reads a closed session at an 04:00 attach -- the day boundary was never checked (B-142)
