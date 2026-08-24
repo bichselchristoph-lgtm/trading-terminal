@@ -767,4 +767,10 @@ def level_rail(*, prev_day: Optional[Bar], premarket: Sequence[Bar],
                                  f"of ${price:,.2f}",
                           unit=Unit.COUNT, basis=None) if span > 0
                  else Measured.absent("no ADR $ to span"),
+        # **090.** NOT a LEVELS-SPEC level — `round`'s own already-established
+        # precedent for a non-level entry riding in this dict. `adr_dol`
+        # verbatim, so the LEVELS panel's window (mockup v1.5 §0: "one ADR
+        # either side of price") reads the SAME dollar figure `round`
+        # already spans, rather than a second computation of it.
+        "ADR $": adr_dol,
     }

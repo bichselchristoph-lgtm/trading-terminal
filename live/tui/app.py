@@ -92,6 +92,7 @@ from ..attach.streaming import StreamHandle
 from .day_record import (Attached, AttachMetrics, DayRecord, RequestMetrics,
                          StreamMetrics, empty_record)
 from .grammar import Cell
+from .levels_panel import build_levels_panel_rows, update_levels_included
 from .pending_config import load_pending_timeout_s
 from .layout import Layout
 from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
@@ -928,6 +929,29 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         key="health")
 
     p["pipeline"] = pipeline_panel(layout)
+
+    # **090.** The level rail, its own panel, one row full width — mockup
+    # v1.5. Reads `at[0]` (the SAME single-attach slot every other rail
+    # reader already assumes, SPEC.md §12.11) and its OWN, already-updated
+    # `levels_included` — computed by `app.py`'s recompute step, never
+    # here, so this stays a pure read of what that step already wrote.
+    if not at or record.attaching or record.attach_queued:
+        p["levels"] = Panel(
+            "LEVELS", "not attached",
+            [f"  {Cell.absent('nothing attached').render()}"], key="levels")
+    else:
+        lv = at[0]
+        price_m = lv.context.get("Last $")
+        price = price_m.value if price_m is not None and price_m.ok else None
+        result = build_levels_panel_rows(lv.rail, price, lv.levels_included)
+        # **090 Part C.** `viewport` defaults to 8; LEVELS at full 5-per-side
+        # is up to 13 rows (mockup v1.5 §7's own count). Set explicitly so
+        # the DESIGN-width render (`body()` with no args, what every
+        # snapshot test and `_body()` use) shows the whole rail rather than
+        # scroll-truncating it at the generic default meant for shorter
+        # panels.
+        p["levels"] = Panel("LEVELS", result.caption, result.rows,
+                            viewport=max(len(result.rows), 1), key="levels")
     return p
 
 
@@ -1008,6 +1032,15 @@ class MomentumApp(App):
     CSS = """
     Screen { layout: vertical; }
     .row { height: 1fr; }
+    /* **090 Part C, measured against a real 209x54 render.** Four equal
+       `1fr` rows gave LEVELS 3 real lines -- one content row behind its
+       own chrome, `+K more` for the rest of a ten-level rail. 15 fits the
+       FULL five-per-side layout (mockup v1.5 Part B): chrome (2) plus up
+       to 13 rows (5 above + divider + 5 below, or fewer once the
+       not-built/absent rows are folded in at up to 10 built levels).
+       Scoped to this one row; every other row keeps its own `1fr` share. */
+    .levels-row { height: 15; }
+    .levels-row Panel { height: 1fr; }
     Panel { border: none; padding: 0 1; width: 1fr; }
     /* One line, docked, no border. The prompt is transient and must not change
        what the too-small guard measured — a three-line bordered Input would take
@@ -1586,6 +1619,13 @@ class MomentumApp(App):
         vwap = ctx.get("VWAP") or a.context.get("VWAP")
         if vwap is not None:
             a.as_of, a.lag = self._stamp({"VWAP": vwap})
+        # **090 — mockup v1.5 Amendment 3.** The ONE place
+        # `levels_included` is mutated — every recompute, so hysteresis
+        # sees a fresh price on every landing, never just at attach.
+        # `render_panels` only ever READS this; it stays pure.
+        price_m = a.context.get("Last $")
+        price = price_m.value if price_m is not None and price_m.ok else None
+        a.levels_included = update_levels_included(a.rail, price, a.levels_included)
 
     def _note_row_landing(self) -> None:
         if self._stage2_started_at is None or not self.record.attached:
@@ -1675,6 +1715,7 @@ class MomentumApp(App):
         panels = render_panels(self.record, self.layout_cfg)
         visible = [c.id for c in self.layout_cfg.visible_only]
         rows = [("watchlist", "attached", "tape"),
+                ("levels",),
                 ("sizing", "risk", "health"),
                 ("pipeline",)]
         return [[panels[i] for i in r if i in visible and i in panels] for r in rows]
@@ -1802,8 +1843,16 @@ class MomentumApp(App):
             )
             if structural_change:
                 await frame.remove_children()
-                await frame.mount(*[Horizontal(*tiles, classes="row")
-                                    for tiles in rows if tiles])
+                # **090 Part C, measured.** At 209x54, four equal `1fr` rows
+                # gave LEVELS 3 real lines -- one visible content row behind
+                # its own chrome. `levels-row` is a SEPARATE class from
+                # `row`, scoped to this one row only; every other row's own
+                # `1fr` share is untouched, per the task's own "do not
+                # touch any other panel" instruction.
+                await frame.mount(*[
+                    Horizontal(*tiles, classes="row levels-row"
+                              if any(t.id == "levels" for t in tiles) else "row")
+                    for tiles in rows if tiles])
                 return
 
             # **087/B-141.** Same panels, new content — update each in place.

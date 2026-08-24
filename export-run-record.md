@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-24T13:54:57+02:00
+last_attempt : 2026-08-24T15:42:28+02:00
 
-last_success : 2026-08-24T13:54:57+02:00
+last_success : 2026-08-24T15:42:31+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/089-for-code-task-084-live-measurement.md, momentum-code-handoff/inbox/089-for-code-task-084-live-measurement.md, momentum-code-handoff/verify-output.md
+outcome      : 3 new - momentum-code-handoff/done/090-for-code-task-levels-panel.md, momentum-code-handoff/inbox/090-for-code-task-levels-panel.md, momentum-code-handoff/verify-output.md
 
-head         : ef89ea5d06ae1c9311df1269cf31c9214605ad61 088: ADR% used reads a closed session at an 04:00 attach -- the day boundary was never checked (B-142)
+head         : 3754af98c6ba24acbda9b1642d0f368bb093c052 089: complete 084's owed live measurement, now that TWS is up (B-138)

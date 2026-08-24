@@ -59,9 +59,10 @@ UAT_SIZE = (209, 54)
 #: (measured from the capture's pixel dimensions, not read from a terminal).
 SIZES = [(80, 24), (120, 40), (209, 54), (240, 70), (316, 37)]
 
-#: `render_panels` places exactly these seven, always — S009a's contract.
-EXPECTED_TITLES = {"WATCHLIST", "ATTACHED", "TAPE", "SIZING", "RISK",
-                   "HEALTH", "PIPELINE"}
+#: `render_panels` places exactly these eight, always — S009a's contract,
+#: extended by 090's own LEVELS panel.
+EXPECTED_TITLES = {"WATCHLIST", "ATTACHED", "TAPE", "LEVELS", "SIZING",
+                   "RISK", "HEALTH", "PIPELINE"}
 
 
 def panel_titles(app: MomentumApp) -> list[str]:

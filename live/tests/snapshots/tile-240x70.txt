@@ -12,6 +12,11 @@
   ──────────────────────────────────────────────────────────────────────────
   regime    [ NOT BUILT ] (no file for today)
 
+### levels @ 78
+┌─ LEVELS ───────────────────────────────────────────────────── not attached ┐
+  — (nothing attached)
+  1 of 1 · end
+
 ### pipeline @ 78
 ┌─ PIPELINE ────────────────────────────────────────────────── 1 of 12 built ┐
    1 ingest      [ NOT BUILT · S013 ]

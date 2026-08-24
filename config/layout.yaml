@@ -20,13 +20,16 @@ components:
   - {id: attached,   slot: 2, visible: true,  reason: ""}
   - {id: tape,       slot: 3, visible: true,  reason: ""}
 
+  # --- own row: the level rail, one ADR either side of price ---------------
+  - {id: levels,     slot: 4, visible: true,  reason: "090 — ten of twenty-three levels computed on every attach and reached no screen; this closes that gap"}
+
   # --- bottom row: what constrains you -------------------------------------
-  - {id: sizing,     slot: 4, visible: true,  reason: ""}
-  - {id: risk,       slot: 5, visible: true,  reason: ""}
-  - {id: health,     slot: 6, visible: true,  reason: "permanently visible per S009 §4g"}
+  - {id: sizing,     slot: 5, visible: true,  reason: ""}
+  - {id: risk,       slot: 6, visible: true,  reason: ""}
+  - {id: health,     slot: 7, visible: true,  reason: "permanently visible per S009 §4g"}
 
   # --- third row: what exists and what is coming ---------------------------
-  - {id: pipeline,   slot: 7, visible: true,  reason: "S009a part 3 — a stage absent from this file did not render at all, so 'not built yet' and 'not in the design' were the same picture"}
+  - {id: pipeline,   slot: 8, visible: true,  reason: "S009a part 3 — a stage absent from this file did not render at all, so 'not built yet' and 'not in the design' were the same picture"}
 
 # ---------------------------------------------------------------------------
 # stages — the twelve, declared. S009a part 3.

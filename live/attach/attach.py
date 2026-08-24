@@ -456,7 +456,21 @@ def compute_context_and_rail(
         yh = max(b.high for b in inp.rth_dailies)
         yl = min(b.low for b in inp.rth_dailies)
         prior = inp.rth_dailies      # PRIOR_DAY_BASIS shares rth_dailies -- both RTH.
-        prev_day = prior[-2] if len(prior) >= 2 else None
+        # **090 — B-144.** `prior[-2]` alone assumes `prior[-1]` is today's
+        # session in progress. `088` established that is false before RTH's
+        # first print: `daily_bars`'s `endDateTime=""` request answers "now"
+        # with the LAST COMPLETED session, so at a pre-open attach
+        # `prior[-1]` already IS the prior session — `prior[-2]` would name
+        # the one before that (Thursday's values where Friday's belong, on
+        # a Monday pre-open). **Selected by the bar's own date, never by
+        # position** (B-023) — reusing `today_et`, the one clock `088`
+        # already threads in, not a second source. The `today_et == ""`
+        # escape hatch stays live: every pre-088/pre-090 test that never
+        # sets it keeps the old positional behaviour unchanged.
+        if inp.today_et and prior and prior[-1].ts[:10] != inp.today_et:
+            prev_day = prior[-1]
+        else:
+            prev_day = prior[-2] if len(prior) >= 2 else None
         today = inp.today or ()
         premarket = [b for b in today if _clock(b.ts) < "09:30"]
         opening_5 = [b for b in today if "09:30" <= _clock(b.ts) < "09:35"]

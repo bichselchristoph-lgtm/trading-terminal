@@ -111,10 +111,12 @@ def test_the_pinned_minimum_keeps_the_label_not_the_value() -> None:
 def test_the_derived_minimum_for_the_shipped_layout() -> None:
     """Quoted so a change to it is visible in a diff rather than absorbed."""
     need_cols, need_rows, worst = MomentumApp.required(tile_rows())
-    assert (need_cols, need_rows) == (75, 11), (
+    assert (need_cols, need_rows) == (75, 14), (
         f"the shipped layout's derived minimum moved to {need_cols}x{need_rows}. "
         "That is not a failure — but BELOW_MINIMUM and the reason strings in "
-        "WIDTHS are written against 75x11 and must move with it.")
+        "WIDTHS are written against 75x14 (090's own LEVELS row: chrome (2) "
+        "plus one scrolling row (1) added to the prior 75x11) and must move "
+        "with it.")
     assert "WATCHLIST" in worst, "the message must name which tile ran out"
     assert BELOW_MINIMUM[0] == need_cols - 1
 

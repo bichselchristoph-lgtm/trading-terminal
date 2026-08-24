@@ -139,6 +139,14 @@ class Attached:
     #: `rth_dailies` lands (`compute_context_and_rail` returns it as a whole
     #: — the rail has no per-row landing requirement of its own).
     rail: dict = field(default_factory=dict)
+    #: **090 — mockup v1.5 Amendment 3.** The level keys CURRENTLY rendered
+    #: on LEVELS, carried across repaints so hysteresis has a memory to
+    #: check against (enters at <=1.00 ADR, leaves only past 1.10 ADR).
+    #: Updated by `app.py`'s own recompute step, alongside `context`/`rail`
+    #: — never inside `render_panels`, which stays a pure function of
+    #: whatever this already holds. Starts empty: a fresh attach has no
+    #: rendering history to be hysteretic about.
+    levels_included: frozenset = field(default_factory=frozenset)
     #: Where the numbers came from and how old they are. **Block-level, and that
     #: is a stated limitation rather than a shortcut**: `Measured` carries a
     #: `sample` but has no as-of or lag field, so a per-value stamp is not
