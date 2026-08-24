@@ -92,6 +92,7 @@ from ..attach.streaming import StreamHandle
 from .day_record import (Attached, AttachMetrics, DayRecord, RequestMetrics,
                          StreamMetrics, empty_record)
 from .grammar import Cell
+from .pending_config import load_pending_timeout_s
 from .layout import Layout
 from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
                       progress_bar)
@@ -101,6 +102,16 @@ from .numbers import (NO_BASIS, basis_label, format_value, needs_basis,
 #: unfitted wherever provenance shows (this module has no provenance line
 #: of its own to carry it on; the done-note states it).
 STALE_THRESHOLD_S = 20.0
+
+#: **087 — B-140.** How often the screen repaints with no data arriving —
+#: the clock tick that keeps the freshness age honest between stream
+#: pushes. Not a threshold and not fitted from data: `header_freshness()`
+#: renders whole seconds, so 1Hz is the finest granularity that could ever
+#: be visible; a slower tick would mean the header's own `Ns` sometimes
+#: skips a value it should have shown. Affordable now (087/B-141's
+#: in-place update path) in a way it was not when every repaint forced a
+#: full remount.
+REPAINT_INTERVAL_S = 1.0
 
 #: **084 Part 0 item 2.** No definition of "the trading day" for caching
 #: purposes existed anywhere in the tree before this task —
@@ -363,13 +374,20 @@ class Panel(Static):
     """
 
     def __init__(self, title: str, provenance: str, rows: list[str],
-                 pinned: list[str] | None = None, viewport: int = 8) -> None:
+                 pinned: list[str] | None = None, viewport: int = 8,
+                 *, key: str | None = None) -> None:
         self.title_text = title
         self.provenance = provenance
         self.rows = rows
         self.pinned = pinned or []
         self.viewport = viewport
-        super().__init__(self.body())
+        # **087.** `key` is `render_panels`'s own dict key (`"attached"`,
+        # `"health"`, ...) — a stable Textual `id`, so a later repaint can
+        # find THIS mounted widget and update it in place rather than
+        # rebuilding the DOM to change its text (B-141). Optional because
+        # every existing direct construction (tests, snapshots) predates
+        # this and has no need of one.
+        super().__init__(self.body(), id=key)
 
     # ---- what this panel needs, derived from what it holds -----------------
 
@@ -561,6 +579,29 @@ def _stale_suffix(age: Optional[float]) -> str:
     return f" stale {int(age)}s"
 
 
+def _pending_text(a: "Attached", what: str) -> str:
+    """**087 — B-143.** `pending`, or a named refusal once the row has sat
+    pending longer than `a.pending_timeout_s` — a hundred minutes of
+    `pending` is a refusal that never happened, per the task's own words.
+
+    **Elapsed since ATTACH, not since anything else.** A row with no
+    landing and no failure has no OTHER clock to measure itself against —
+    `a.metrics.attached_at` is the one fact this state can compare itself
+    to. Reuses `_age_now`, the same clock convention every stream-freshness
+    check on this panel already uses.
+
+    `what` names what did not arrive, so the refusal is actionable —
+    `Cell.absent`'s existing shape (`— (reason)`), never a new vocabulary,
+    per the task's own "HEALTH gets the same rule, not a new vocabulary"
+    instruction, extended here to every pending-capable row.
+    """
+    elapsed = _age_now(a.metrics.attached_at)
+    if elapsed is not None and elapsed >= a.pending_timeout_s:
+        return Cell.absent(
+            f"no {what} in {int(a.pending_timeout_s)}s, unfitted").render()
+    return PENDING
+
+
 def _rvol_row(a: "Attached") -> str:
     """**080.** `0.86x own · 1.4x vs XLC` — own-history reading first
     (`RVOL`, read first in `compute_context_and_rail` too), sector-relative
@@ -590,20 +631,20 @@ def _rvol_row(a: "Attached") -> str:
     own = a.context.get("RVOL")
     rel = a.context.get("RVOL_rel")
     if own is None and rel is None:
-        return f"    {label:<12} {PENDING}"
+        return f"    {label:<12} {_pending_text(a, 'RVOL')}"
 
     symbol_age = _age_now(a.metrics.streams.get("symbol", StreamMetrics()).last_update_at)
     sector_age = _age_now(a.metrics.streams.get("sector", StreamMetrics()).last_update_at)
 
     if own is None:
-        own_text = PENDING
+        own_text = _pending_text(a, "RVOL own reading")
     else:
         own_parts = _cell_parts(own)
         own_text = (f"{own_parts[0]} own{_stale_suffix(symbol_age)}"
                    if own_parts is not None else measured_cell(own))
 
     if rel is None:
-        rel_text = PENDING
+        rel_text = _pending_text(a, "RVOL sector reading")
     else:
         rel_parts = _cell_parts(rel)
         if rel_parts is not None:
@@ -615,7 +656,7 @@ def _rvol_row(a: "Attached") -> str:
     return f"    {label:<12} {own_text}  · {rel_text}"
 
 
-def _vwap_row(vwap) -> str:
+def _vwap_row(a: "Attached", vwap) -> str:
     """**080/v1.5.** The value and nothing else — `VWAP $714.25`. The
     signed-distance suffix (`VWAP_ext`, `· +$1.28`) this row carried since
     070 is gone: once `Last $` joined this panel (080), the two read the
@@ -624,7 +665,7 @@ def _vwap_row(vwap) -> str:
     both numbers on screen can already do the subtraction; the row states
     the level. `vwap_from_bars` itself is untouched."""
     if vwap is None:
-        return f"    {'VWAP':<12} {PENDING}"
+        return f"    {'VWAP':<12} {_pending_text(a, 'VWAP')}"
     parts = _cell_parts(vwap)
     if parts is None:
         return f"    {'VWAP':<12} {measured_cell(vwap)}"
@@ -632,9 +673,9 @@ def _vwap_row(vwap) -> str:
     return f"    {'VWAP':<12} {text}"
 
 
-def _adr_row(m) -> str:
+def _adr_row(a: "Attached", m) -> str:
     if m is None:
-        return f"    {'ADR% used':<12} {PENDING}"
+        return f"    {'ADR% used':<12} {_pending_text(a, 'ADR% used')}"
     return f"    {'ADR% used':<12} {_adr_used_cell(m)}"
 
 
@@ -679,11 +720,11 @@ def context_rows(a: Attached) -> list[str]:
         if name == "Last $":
             rows.append(_last_price_row(a.context.get("Last $")))
         elif name == "ADR% used":
-            rows.append(_adr_row(a.context.get("ADR% used")))
+            rows.append(_adr_row(a, a.context.get("ADR% used")))
         elif name == "RVOL":
             rows.append(_rvol_row(a))
         elif name == "VWAP":
-            rows.append(_vwap_row(a.context.get("VWAP")))
+            rows.append(_vwap_row(a, a.context.get("VWAP")))
     return rows
 
 
@@ -715,6 +756,13 @@ def attach_metrics_rows(record: DayRecord) -> list[str]:
     **States the trap rather than hiding it** (Part 4's own instruction): a
     degraded supplier and a quiet market both read as a long gap here —
     this renders the NUMBER, not a verdict about what produced it.
+
+    **087 — B-143.** A stream row now carries the SAME `stale Ns` marker
+    ATTACHED's own header uses, at the same `STALE_THRESHOLD_S` — reusing
+    `_stale_suffix` directly rather than inventing a second vocabulary for
+    the same fact. Before this, a dead stream (`sector 1 updates · 6014s
+    ago`) rendered identically to a live one; the number was there, but
+    nothing marked it as the thing to look at.
     """
     if not record.attached:
         return []
@@ -724,7 +772,8 @@ def attach_metrics_rows(record: DayRecord) -> list[str]:
         age = _age_now(sm.last_update_at)
         age_text = f"{int(age)}s ago" if age is not None else "no update yet"
         err = f" - {sm.error}" if sm.error else ""
-        rows.append(f"  stream {name:<7} {sm.update_count} updates · {age_text}{err}")
+        rows.append(f"  stream {name:<7} {sm.update_count} updates · "
+                    f"{age_text}{err}{_stale_suffix(age)}")
     for role, rm in sorted(m.requests.items()):
         wall = f"{rm.wall_s:.1f}s" if rm.wall_s is not None else "—"
         bars = f"{rm.bars_received} bars" if rm.bars_received is not None else "— bars"
@@ -751,7 +800,8 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
     p["watchlist"] = Panel(
         "WATCHLIST", "no ingest today" if not wl else "ingest · today",
         [f"  {t.symbol}  {t.state}" for t in wl]
-        or [f"  {Cell.absent('no watchlist ingested today').render()}"])
+        or [f"  {Cell.absent('no watchlist ingested today').render()}"],
+        key="watchlist")
 
     at = record.attached
     # **A refusal renders alongside what is attached, not instead of it** (032,
@@ -819,23 +869,27 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         provenance = header_freshness(at[0]) if at else ""
     p["attached"] = Panel(
         "ATTACHED", provenance,
-        attach_rows or [f"  {Cell.absent('nothing attached').render()}"])
+        attach_rows or [f"  {Cell.absent('nothing attached').render()}"],
+        key="attached")
 
     p["tape"] = Panel(
         "TAPE", "no source",
-        [f"  {Cell.no_source('no tape subscription in this slice').render()}"])
+        [f"  {Cell.no_source('no tape subscription in this slice').render()}"],
+        key="tape")
 
     p["sizing"] = Panel(
         "SIZING", "not transmitted",
         [f"  1R        {Cell.absent('no account snapshot').render()}",
          f"  shares    {Cell.absent('no entry, no stop').render()}"],
-        pinned=[f"risk      {Cell.absent('no account snapshot').render()}"])
+        pinned=[f"risk      {Cell.absent('no account snapshot').render()}"],
+        key="sizing")
 
     p["risk"] = Panel(
         "RISK", "not transmitted",
         [f"  day P&L   {Cell.absent('no trades today').render()}",
          f"  open R    {Cell.absent('no positions').render()}"],
-        pinned=[f"daily limit  {Cell.not_yet('no account snapshot').render()}"])
+        pinned=[f"daily limit  {Cell.not_yet('no account snapshot').render()}"],
+        key="risk")
 
     h = record.health
     ratio = (f"{h.frames_painted}/{h.ticks_received}"
@@ -870,7 +924,8 @@ def render_panels(record: DayRecord, layout: Layout) -> dict[str, Panel]:
         + attach_metrics_rows(record),
         pinned=[f"regime    {Cell.not_built().render()}"
                 if not record.regime_snapshot.ref
-                else f"regime    {record.regime_snapshot.ref}"])
+                else f"regime    {record.regime_snapshot.ref}"],
+        key="health")
 
     p["pipeline"] = pipeline_panel(layout)
     return p
@@ -931,7 +986,7 @@ def pipeline_panel(layout: Layout) -> Panel:
                                   slice_id=s.slice).render()
         rows.append(f"  {s.slot:>2} {s.name:<11} {cell}")
     return Panel("PIPELINE", f"{built} of {len(stages)} built", rows,
-                 viewport=len(stages) or 1)
+                 viewport=len(stages) or 1, key="pipeline")
 
 
 class Frame(Vertical):
@@ -1150,6 +1205,14 @@ class MomentumApp(App):
             self._stage2_inputs.rvol_basis = load_rvol_basis()
         except Exception:                                # noqa: BLE001
             pass
+        # **087 — B-143.** Same shape, same reasoning as `rvol_basis` above:
+        # loaded fresh per attach, falls back to `Stage2Inputs`'s own
+        # hardcoded default on any read failure rather than refusing the
+        # attach over a config problem.
+        try:
+            self._stage2_inputs.pending_timeout_s = load_pending_timeout_s()
+        except Exception:                                # noqa: BLE001
+            pass
         self._stage1_started_at = time.monotonic()
         self._stage2_started_at = None
         return self._attach_generation
@@ -1250,11 +1313,24 @@ class MomentumApp(App):
                         # can never name a different anchor than the one the
                         # request actually used.
                         rvol_anchor=anchor_word(self._stage2_inputs.rvol_basis),
+                        # **087 — B-143.** Known at attach, same shape as
+                        # `rvol_anchor` above — read once here from the SAME
+                        # `Stage2Inputs` instance stage 2's own dispatch
+                        # already loaded it into, so the bound a row is
+                        # measured against can never be a different read
+                        # than the one that landed the config.
+                        pending_timeout_s=self._stage2_inputs.pending_timeout_s,
                         source=self.source_name,
                         tape=result.tape, slot_state=result.slot_state)
             if self._stage1_started_at is not None:
                 a.metrics.stage1_keypress_to_paint_s = (
                     time.monotonic() - self._stage1_started_at)
+            # **087 — B-143.** The clock a still-pending row measures itself
+            # against. Set here, not at `_begin_attach` — that fires before
+            # a contract is even qualified, and "how long has THIS row been
+            # pending" should not start counting time an ambiguous or
+            # unresolved symbol never spent computing anything.
+            a.metrics.attached_at = time.monotonic()
             self.record.attached.append(a)
             self.record.attach_refusal = ""
             self.record.attach_queued = ""
@@ -1567,12 +1643,23 @@ class MomentumApp(App):
         swap) could remove the SAME already-empty frame and mount before
         this call's own `_apply_fit()` ran, which then saw panels already
         present and mounted nothing — an empty frame reaching the screen.
-        `force=True` makes the whole remove-then-mount decision one atomic
-        step under `_fit_lock`, the same guarantee `060`/B-001 already
-        established for concurrent resize-vs-attach; this is that guarantee
+        The whole decision — remount, update in place, or do nothing — is
+        made as one atomic step under `_fit_lock` (below), the same
+        guarantee `060`/B-001 established for concurrent resize-vs-attach,
         extended to concurrent attach-vs-attach.
+
+        **087/B-141: no longer `force=True`.** Every stream tick and row
+        landing used to force an unconditional remove-and-remount of the
+        ENTIRE frame — the full-screen flicker Christoph reported, once per
+        landed value. `_apply_fit` now updates each already-mounted panel's
+        own content in place (`Panel.update()`, which Textual diffs) when
+        the panel SET has not changed, and only remounts when it genuinely
+        has (first mount, or a too-small transition either direction). The
+        lock still serialises every caller, so dropping `force` here does
+        not reopen the race it was built to close — that guarantee lives in
+        the lock, not in always choosing the expensive path.
         """
-        await self._apply_fit(force=True)
+        await self._apply_fit()
 
     def tile_rows(self) -> list[list[Panel]]:
         """The tiling, as rows of tiles. One place, so the too-small guard and
@@ -1630,6 +1717,21 @@ class MomentumApp(App):
 
     async def on_mount(self) -> None:
         await self._apply_fit()
+        # **087 — B-140.** The ONE thing on this screen that must keep
+        # advancing with no data arriving: the freshness age. Before this,
+        # `header_freshness()`'s arithmetic was correct but only ever got
+        # PAINTED when a stream pushed — a fully stalled row froze at
+        # whatever age it last painted, forever, rather than revealing its
+        # own staleness. `_rerender()` is cheap now (087/B-141's in-place
+        # path), so a real, independent clock tick is affordable; it was
+        # not, when every tick would have forced a full remount.
+        self.set_interval(REPAINT_INTERVAL_S, self._tick)
+
+    async def _tick(self) -> None:
+        """**087 — B-140.** The repaint that does not depend on a stream.
+        A no-op when nothing is attached — `render_panels` already handles
+        an empty record cleanly, so there is nothing special to guard here."""
+        await self._rerender()
 
     async def _apply_fit(self, *, force: bool = False) -> None:
         """Switch between the refusal and the panels, **in both directions.**
@@ -1643,10 +1745,22 @@ class MomentumApp(App):
         well-formed value answering a different question — the defect this
         project is named for, rendered in the widget whose job is to prevent it.
 
-        **`force=True`** (080): `_rerender()`'s caller — remove and remount
-        unconditionally, as one atomic step under the lock below, rather
-        than trusting a prior `not self.query(Panel)` check that a second
-        concurrent caller could have already invalidated.
+        **`force=True`**: skip the in-place path and always remove-and-remount,
+        even if the panel set looks unchanged. No current caller passes it —
+        first mount and a too-small transition are both already detected by
+        the checks below (nothing mounted, or `#too-small` present) — kept
+        for a future caller that genuinely needs to skip the diff.
+
+        **087/B-141: the in-place path.** When the panel SET already mounted
+        matches what this call would mount (same ids — true for every
+        stream tick and row landing, since `tile_rows()`'s layout is
+        config-driven, never data-driven), each panel is updated via
+        `Panel.update()` — Textual diffs a `Static.update()` call; it
+        cannot diff a remove-then-mount. A resize can also take this path:
+        the panel SET textual doesn't depend on window size, only whether
+        the too-small refusal is showing, and that is checked below by
+        NAME (`#too-small`) rather than by re-deriving it from `cols`/`height`
+        a second time.
         """
         cols, height = self.size.width or 0, self.size.height or 0
         if not (cols and height):
@@ -1672,10 +1786,37 @@ class MomentumApp(App):
                 await frame.mount(Static(msg, id="too-small"))
                 return
 
-            if force or self.query("#too-small") or not self.query(Panel):
+            mounted = {p.id: p for p in self.query(Panel)}
+            wanted_ids = [p.id for tiles in rows for p in tiles]
+            structural_change = (
+                force
+                or bool(self.query("#too-small"))
+                or set(mounted) != set(wanted_ids)
+            )
+            if structural_change:
                 await frame.remove_children()
                 await frame.mount(*[Horizontal(*tiles, classes="row")
                                     for tiles in rows if tiles])
+                return
+
+            # **087/B-141.** Same panels, new content — update each in place.
+            # Every field `Panel.body()` reads is refreshed on the MOUNTED
+            # widget too, not just its rendered text: a later resize calls
+            # the mounted widget's OWN `on_resize()`, which recomputes
+            # `self.body()` from `self.rows`/`self.pinned`/etc — stale copies
+            # there would silently revert this update on the next resize.
+            for tiles in rows:
+                for p in tiles:
+                    target = mounted[p.id]
+                    target.title_text = p.title_text
+                    target.provenance = p.provenance
+                    target.rows = p.rows
+                    target.pinned = p.pinned
+                    target.viewport = p.viewport
+                    w = target.content_size.width or target.size.width
+                    h = target.content_size.height or target.size.height
+                    if w:
+                        target.update(target.body(w, h or None))
 
 
 # ---- starting it as a program ---------------------------------------------

@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-24T11:28:18+02:00
+last_attempt : 2026-08-24T12:38:07+02:00
 
-last_success : 2026-08-24T11:28:18+02:00
+last_success : 2026-08-24T12:38:07+02:00
 
-outcome      : 2 new - momentum-code-handoff/done/086-for-code-task-triage-the-twelve.md, momentum-code-handoff/verify-output.md
+outcome      : 4 new - momentum-code-handoff/done/087-for-code-task-repaint-path.md, momentum-code-handoff/inbox/087-for-code-task-repaint-path.md, momentum-code-handoff/inbox/088-for-code-task-adr-percent-day-boundary.md, momentum-code-handoff/verify-output.md
 
-head         : 17ee4b947e72550bd72c0966d9207eaeacb8e3d3 084: the reduced RVOL curve is cached in memory for the trading day (B-138)
+head         : bebeb1884520ab3208ee44476e09661a148cdef1 086: twelve red guards triaged, file by file, nothing fixed (B-101, B-108)

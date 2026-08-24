@@ -272,6 +272,12 @@ class Stage2Inputs:
     rvol_basis: SessionBasis = field(default_factory=lambda: SessionBasis(
         use_rth=True, label="09:30-16:00 ET",
         why="default RTH — see config/rvol.yaml"))
+    #: **087 — B-143.** Same shape as `rvol_basis` above: `app.py` sets this
+    #: from `live.tui.pending_config.load_pending_timeout_s()` once per
+    #: attach; the default here (matching `config/pending.yaml`'s own
+    #: default) exists so code constructing `Stage2Inputs` directly — every
+    #: test that predates this task — keeps working.
+    pending_timeout_s: float = 90.0
 
 
 def _adr_terms(rth_dailies: Sequence[Bar]) -> tuple[Measured, Measured, float]:

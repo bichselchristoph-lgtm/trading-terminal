@@ -87,6 +87,12 @@ class AttachMetrics:
     stage2_last_row_s: Optional[float] = None
     streams: dict = field(default_factory=dict)     # {"symbol": StreamMetrics, "sector": StreamMetrics}
     requests: dict = field(default_factory=dict)     # {"rth_dailies": RequestMetrics, ...}
+    #: **087 — B-143.** `time.monotonic()` at stage-1 landing. The one clock
+    #: a still-pending row (no landing, no failure recorded) can measure
+    #: itself against — without it, "how long has this been pending" has no
+    #: answer, and a stall renders identically to a request just barely in
+    #: flight.
+    attached_at: Optional[float] = None
 
 
 @dataclass
@@ -119,6 +125,13 @@ class Attached:
     #: not about a value that has landed yet (renders even while `RVOL` is
     #: still `pending`).
     rvol_anchor: str = ""
+    #: **087 — B-143.** Seconds a row may sit `pending` (no landing, no
+    #: failure recorded) before it renders a named refusal instead — set
+    #: once, at stage-1 landing, from `config/pending.yaml`, the same
+    #: "known at attach" shape `rvol_anchor` already uses. Defaults to the
+    #: config's own default so a test that never loads the file still gets
+    #: a real, if unfitted, bound rather than an unbounded wait.
+    pending_timeout_s: float = 90.0
     #: ADR, extension, VWAP, cum vol, both RVOL readings. Merged in row by
     #: row as `compute_context_and_rail` produces them — see the class note.
     context: dict = field(default_factory=dict)

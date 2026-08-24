@@ -1,0 +1,25 @@
+# config/pending.yaml — 087.
+#
+# How long a value row (RVOL's own reading, RVOL's sector reading, ADR% used,
+# VWAP) may sit `pending` -- no landing, no failure recorded -- before it
+# renders a named refusal instead of the bare `pending` token.
+#
+# UNFITTED. Christoph observed a row stuck at `pending` for roughly a
+# hundred minutes (2026-08-24, 087's own trigger) -- the sector-relative
+# RVOL reading, because its underlying price stream died silently with no
+# marker anywhere on screen. This number is not fitted from data: it is a
+# CEILING, chosen deliberately far above every live wall time 082 measured
+# (15 to over 60 seconds, with a 60% timeout rate on AMZN under concurrent
+# dispatch), so a genuinely slow but eventually-successful fetch is never
+# wrongly refused -- and far below the hundred-minute stall this task
+# exists to stop hiding. If this ever needs recalibrating against more
+# live data, that is Christoph's ruling to make, not a fit this session
+# performed.
+
+settings:
+  pending_timeout_s:
+    value: 90
+    note: >
+      UNFITTED. A ceiling, not a measured average -- see the file header.
+      90s sits comfortably past 082's worst observed live wall time (60s+)
+      and far short of the hundred-minute stall 087 was built to catch.
