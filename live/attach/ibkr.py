@@ -60,6 +60,7 @@ import yaml
 
 from core.indicators.context import (ADR_BASIS, ATR_BASIS, Bar,
                                      INTRADAY_BASIS, SessionBasis)
+from .accounts import AccountAssertionError, AccountConfig, assert_connected_account
 from .attach import Contract
 from .streaming import StreamHandle
 
@@ -831,14 +832,33 @@ class BrokerConnection:
             self._loop.close()
 
 
-def connect(cfg: IbkrConfig) -> BrokerConnection:
-    """Dial TWS. **Never raises** — every failure comes back as a rendered state.
+def connect(cfg: IbkrConfig, *, accounts: AccountConfig, paper: bool) -> BrokerConnection:
+    """Dial TWS. **Never raises for a CONNECTIVITY failure** — that part of
+    the contract is unchanged, and every such failure still comes back as a
+    rendered state (`SPEC.md` §4.2, surfaced not refused: TWS being
+    unreachable is a safe state, since no connection means no order path
+    either).
+
+    **092 changes what happens once the handshake DOES succeed.** The
+    connected account is asserted against `accounts.account_paper` /
+    `account_live` (chosen by `paper`) before this function returns
+    anything a caller could act on — `assert_connected_account`'s own
+    docstring has the three refusal shapes. **This DOES raise**
+    (`AccountAssertionError`), deliberately breaking the "never raises"
+    half of this docstring for exactly this one new case: a mismatched or
+    unconfirmable account is a STARTUP refusal, not a connectivity state,
+    the same way a malformed `config/ibkr.yaml` already crashes the
+    launcher before Textual takes the screen rather than rendering a
+    HEALTH row. **Positional, not procedural** — the assert lives inside
+    the one function every caller must pass through to get a working
+    connection, not in a step a caller could forget to take.
 
     **`readonly=True` is passed to `IB.connectAsync` and that is CODE, not
     convention.** The API session negotiates read-only with TWS, which then
     refuses order submission on this connection regardless of what any caller
     asks for. Only `tws_order` places orders; this is the enforcement in the
-    tree rather than a rule in a file.
+    tree rather than a rule in a file. **092 does not change this** — the
+    account assert is a separate, additional gate, not a relaxation of it.
     """
     source = f"IBKR {cfg.endpoint}"
     loop = _BrokerLoop(cfg.request_timeout_s)
@@ -891,6 +911,19 @@ def connect(cfg: IbkrConfig) -> BrokerConnection:
         # The prefix cost 16 of the ~56 columns a HEALTH row has and pushed the
         # reason off the end, which is the only part that is not guessable.
         return BrokerConnection(source=source, state=_why(exc))
+
+    # **092.** The handshake succeeded — before handing back anything a
+    # caller could act on, assert the connected account matches what this
+    # launch mode is configured for. `ib.managedAccounts()` is populated by
+    # TWS's own login handshake (`Client._accounts`, set from the
+    # `managedAccounts` wire message), independent of the `StartupFetch(0)`
+    # above, which only skips the OPTIONAL post-connect account/order/
+    # position SYNC — the account list itself is not one of those fields.
+    try:
+        assert_connected_account(ib.managedAccounts(), accounts, paper=paper)
+    except AccountAssertionError:
+        loop.close()
+        raise
 
     return BrokerConnection(source=source,
                             state=f"connected · client {cfg.client_id} · read-only",

@@ -28,10 +28,10 @@ Zero is written explicitly, per pair -- an absent field is never read as zero.
 The four fields below are at COLUMN ZERO. **The reader below also tolerates
 leading whitespace, and BOTH halves are deliberate** -- see `_FIELD`.
 
-last_attempt : 2026-08-22T22:55:32+02:00
+last_attempt : 2026-08-25T11:49:07+02:00
 
-last_success : 2026-08-15T11:46:20+02:00
+last_success : 2026-08-23T17:54:16+02:00
 
-outcome      : regime_snapshots: 0 new · up to date (2 unchanged) | handoff_inbox: 0 new · 3 REFUSED · 29 unchanged | christoph_open: 2 new · 035-for-christoph-task-claude-permissions-and-databento-history.md, 036-for-christoph-task-uat-060-panels-render-once.md · 0 differing
+outcome      : regime_snapshots: 1 new · 2026-08-25.md · 0 differing | handoff_inbox: 1 new · 092-for-code-task-paper-account-and-assert.md · 3 differing | christoph_open: 0 new · 10 suppressed (033 034 038 039 040 042 043 044 045 046) · up to date (4 unchanged)
 
-refused      : regime_snapshots: 0 | handoff_inbox: 3 | christoph_open: 0
+refused      : regime_snapshots: 0 | handoff_inbox: 4 | christoph_open: 0

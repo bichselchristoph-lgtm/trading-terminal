@@ -16,10 +16,10 @@ The four fields below are at COLUMN ZERO and must stay there. Indenting them to
 render as a markdown code block is what broke `Read-LastSuccess` on the first
 cut of this file.
 
-last_attempt : 2026-08-24T15:42:28+02:00
+last_attempt : 2026-08-25T11:40:50+02:00
 
-last_success : 2026-08-24T15:42:31+02:00
+last_success : 2026-08-25T11:40:52+02:00
 
-outcome      : 3 new - momentum-code-handoff/done/090-for-code-task-levels-panel.md, momentum-code-handoff/inbox/090-for-code-task-levels-panel.md, momentum-code-handoff/verify-output.md
+outcome      : 4 new - momentum-code-handoff/done/066-for-code-task-s031-fixed-dollar-risk.md, momentum-code-handoff/inbox/091-for-code-task-permission-policy-is-pinned.md, momentum-code-handoff/verify-output.md, momentum-christoph-done/033-for-christoph-task-auction-imbalance-ten-sessions.md
 
-head         : 3754af98c6ba24acbda9b1642d0f368bb093c052 089: complete 084's owed live measurement, now that TWS is up (B-138)
+head         : 0c1474f608aef99a6ee216c344904e8cab5be8c9 066: S031 -- size from a fixed dollar risk, --risk-usd in tws_order (B-041)

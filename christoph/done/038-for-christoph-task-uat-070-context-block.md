@@ -41,9 +41,9 @@ C:\venvs\trading\Scripts\python.exe -m live.tui.app
               from 04:00 · 18.4M sh · pre-mkt 2.1M of 18.4M
 ```
 
-- [ ] **Four rows, and the ADR row reads `ADR% used`**
-- [ ] **No ATR row anywhere in this panel**
-- [ ] **No `ADR$`, no `ADR%avail`, no room up, no room down**
+- [ x] **Four rows, and the ADR row reads `ADR% used`**
+- [x ] **No ATR row anywhere in this panel**
+- [ x] **No `ADR$`, no `ADR%avail`, no room up, no room down**
 - [ ] Something else is there — name it: `____________________`
 
 **If an ATR row is present, that is the finding**, and it settles a contradiction two documents have been carrying. Note it and carry on.
@@ -66,11 +66,13 @@ C:\venvs\trading\Scripts\python.exe -m live.tui.app
 **Rough check:** today's range divided by roughly `ADR20% × price`. On a quiet morning it should read low; by mid-afternoon on a trending day, high.
 
 - [ ] **It agrees with what the day has actually done**
-- [ ] **It does not** — what it showed: `________` · what you expected: `________`
+- [ x] **It does not** — what it showed: `_ QQQ  attached 03:28:51
+    Last $       $714.25
+    ADR% used    16.7% ▓▓▓░░░░░░░░░░░░░░░░░ of $10.66 ADR20 RTH_______` · what you expected: `__ADR% used 0%. Market not open yet.______`
 
 **Does the row say what it was computed over?** `ADR20` is RTH, 09:30–16:00 ET.
 
-- [ ] **Yes, and the basis tail is legible to the end of the line**
+- [x ] **Yes, and the basis tail is legible to the end of the line**
 - [ ] **The tail is cut off** — that is B-005 / B-011 and it matters here, because **the one row you need to verify a basis is the row the renderer cuts**
 
 ---
@@ -83,7 +85,7 @@ C:\venvs\trading\Scripts\python.exe -m live.tui.app
 
 - [ ] **Above 100% renders, bar full**
 - [ ] **It capped at 100%** — a silently capped number answers a different question
-- [ ] **No name did enough today to test it**
+- [x ] **No name did enough today to test it**
 
 ---
 
@@ -93,16 +95,16 @@ C:\venvs\trading\Scripts\python.exe -m live.tui.app
 
 **Attaching.** Attach a symbol and watch.
 
-- [ ] **Old values vanish at once, one badge, everything lands in one paint**
-- [ ] **Rows filled in one at a time** — that is the design that was ruled out
+- [x ] **Old values vanish at once, one badge, everything lands in one paint**
+- [x ] **Rows filled in one at a time** — that is the design that was ruled out
 
 **Nothing attached.** Start fresh, do not attach.
 
-- [ ] **Reads `not attached`, not `0 of 4`**
+- [x ] **Reads `not attached`, not `0 of 4`**
 
 **Cooldown.** Attach the same symbol twice inside fifteen seconds.
 
-- [ ] **Reads `queued · 11s`**
+- [ x] **Reads `queued · 11s`**
 - [ ] **Nothing visible happened** — a silent drop is the defect
 
 **Partial.** Only if it happens naturally — do not force it.
@@ -125,13 +127,13 @@ ____________________________________________________________
 
 ## Verdict
 
-- [ ] **Accepted.** The panel matches the mockup and `ADR% used` agrees with the day.
+- [x ] **Accepted.** The panel matches the mockup and `ADR% used` agrees with the day.
 - [ ] **Not accepted** — details above.
 
 **If accepted:** 070 reaches REVIEWED, and S034, S035 and S037 each clear Definition of Done condition 4.
 
 **If not accepted:** the finding re-enters at ideation as a row, and the mockup is corrected before the code is.
 
-Signed `____________________` Date `____________________`
+Signed `___Signed-off by Christoph, Aug 24, 2026	_________________` Date `____________________`
 
 *Copy to `christoph/done/` with your answers and the date.*

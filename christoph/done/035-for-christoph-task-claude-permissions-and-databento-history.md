@@ -80,7 +80,7 @@ Then open the file and compare the values against the key currently in use. **Do
 
 **So: keep it, and record the width as a known gap.** §8 says known gaps are rows in `BUGS`, not silent reverts. The paste-ready row is in chat.
 
-- [ x] All four ratified
+- [x ] All four ratified
 - [ ] Reverted — say which
 
 ---
@@ -95,7 +95,3 @@ Claude Code flagged, correctly, that `verify.ps1`, `sync.ps1` and `export-handof
 
 - [x ] Widen the three to trailing-wildcard form
 - [ ] Leave them prompting
-
-
-
-Christoph Aug 22 2026

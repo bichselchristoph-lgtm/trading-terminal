@@ -57,6 +57,7 @@ pass a check while every tile was far under what it needed.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import functools
 import os
@@ -86,6 +87,7 @@ from ..attach.attach import (COOLDOWN_S, Contract, MarketData, Stage2Inputs,
 # **034: the import that was missing one layer down.** `live/attach/ibkr.py` —
 # the only module in this tree that touches a broker — was imported by nothing
 # at all, not even a test, while 032 was fixing the same shape for `attach()`.
+from ..attach.accounts import load_account_config
 from ..attach.ibkr import IbkrConfig, connect
 from ..attach.rvol_config import anchor_word, load_rvol_basis
 from ..attach.streaming import StreamHandle
